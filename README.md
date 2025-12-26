@@ -1,2 +1,12 @@
 # remittance-system
 A blockchain-based remittance system implementing Ethereum smart contracts to enable secure and transparent cross-border money transfers.
+
+## Tech Stack
+- Frontend: React.js, Tailwind CSS
+- Backend: Node.js, Express.js
+- Database: MongoDB
+- Blockchain: Ethereum (Smart Contracts, Testnet)
+- Wallet Integration: MetaMask
+
+## Project Status
+Phase 1 – Project Setup & Architecture
