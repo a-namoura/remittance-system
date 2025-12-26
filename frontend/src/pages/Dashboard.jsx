@@ -12,7 +12,7 @@ export default function Dashboard() {
       return;
     }
 
-    apiRequest("/api/me", { token })
+    apiRequest("/api/users/me", { token })
       .then((data) => setMe(data.user))
       .catch((err) => setError(err.message));
   }, []);
