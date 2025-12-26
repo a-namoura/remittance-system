@@ -5,6 +5,10 @@ import { Transaction } from "../models/Transaction.js";
 import { Admin } from "../models/Admin.js";
 import { authRouter } from "./authRoutes.js";
 import { protect } from "../middleware/authMiddleware.js";
+import { authRouter } from "./authRoutes.js";
+import { userRouter } from "./userRoutes.js";
+import { walletRouter } from "./walletRoutes.js";
+import { transactionRouter } from "./transactionRoutes.js";
 
 export const apiRouter = express.Router();
 
@@ -13,6 +17,10 @@ apiRouter.get("/health", (req, res) => {
 });
 
 apiRouter.use("/auth", authRouter);
+apiRouter.use("/auth", authRouter);
+apiRouter.use("/users", userRouter);
+apiRouter.use("/wallet", walletRouter);
+apiRouter.use("/transactions", transactionRouter);
 
 apiRouter.get("/db-test", async (req, res) => {
   const [usersCount, walletsCount, txCount, adminsCount] = await Promise.all([
