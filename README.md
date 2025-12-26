@@ -8,5 +8,9 @@ A blockchain-based remittance system implementing Ethereum smart contracts to en
 - Blockchain: Ethereum (Smart Contracts, Testnet)
 - Wallet Integration: MetaMask
 
+## Repo Structure
+- frontend/ React + Tailwind
+- backend/ Node + Express
+
 ## Project Status
 Phase 1 – Project Setup & Architecture
