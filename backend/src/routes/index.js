@@ -5,7 +5,6 @@ import { Transaction } from "../models/Transaction.js";
 import { Admin } from "../models/Admin.js";
 import { authRouter } from "./authRoutes.js";
 import { protect } from "../middleware/authMiddleware.js";
-import { authRouter } from "./authRoutes.js";
 import { userRouter } from "./userRoutes.js";
 import { walletRouter } from "./walletRoutes.js";
 import { transactionRouter } from "./transactionRoutes.js";
@@ -16,7 +15,6 @@ apiRouter.get("/health", (req, res) => {
   res.json({ status: "API running" });
 });
 
-apiRouter.use("/auth", authRouter);
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/users", userRouter);
 apiRouter.use("/wallet", walletRouter);
