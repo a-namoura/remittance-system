@@ -20,3 +20,18 @@ Phase 1 – Project Setup & Architecture
 
 ## Environment Setup
 - Create a `.env` file inside `backend/` based on `.env.example`
+
+# Blockchain Deployment (Testnet)
+
+## Network
+- Network: BSC Testnet
+- Chain ID: 97
+- Explorer: https://testnet.bscscan.com
+
+## Remittance Contract
+- Address: see `deployment.json`
+- ABI: `Remittance.abi.json`
+
+## Deploy (from /contracts)
+```bash
+npx hardhat run scripts/deploy-remittance.ts --network bscTestnet
