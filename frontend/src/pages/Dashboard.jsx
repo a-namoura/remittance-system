@@ -35,10 +35,6 @@ export default function Dashboard() {
 
       {me ? (
         <div className="space-y-2">
-          <div><span className="font-medium">Email:</span> {me.email}</div>
-          <div><span className="font-medium">Username:</span> {me.username || "-"}</div>
-          <div><span className="font-medium">Role:</span> {me.role}</div>
-
           <button className="mt-4 bg-gray-900 text-white px-4 py-2 rounded" onClick={logout}>
             Logout
           </button>
