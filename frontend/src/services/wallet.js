@@ -27,3 +27,12 @@ export async function connectWallet() {
 
   return { address, chainId, balance };
 }
+
+export async function signLinkMessage(message) {
+  const ethereum = getEthereum();
+  const provider = new ethers.BrowserProvider(ethereum);
+  const signer = await provider.getSigner();
+  const signature = await signer.signMessage(message);
+  const address = await signer.getAddress();
+  return { address, signature };
+}
