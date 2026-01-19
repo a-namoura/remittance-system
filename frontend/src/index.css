@@ -1,3 +1,14 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Optional tiny global reset so things don’t look weird */
+body {
+  @apply bg-gray-50 text-gray-900;
+}
+
+/* Show pointer cursor on all interactive elements */
+button,
+a,
+[role="button"] {
+  cursor: pointer;
+}
+
