@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiRequest } from "../services/api.js";
+import AuthCard from "../components/AuthCard.jsx";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -31,51 +32,79 @@ export default function Register() {
   }
 
   return (
-    <div className="max-w-md mx-auto bg-white p-6 rounded-xl shadow">
-      <h1 className="text-2xl font-bold mb-4">Register</h1>
+    <AuthCard
+      title="Create your account"
+      subtitle="Register to send, receive, and track cross-border remittances securely."
+    >
+      {error && (
+        <div className="mb-4 p-3 rounded bg-red-100 text-red-700 text-sm">
+          {error}
+        </div>
+      )}
 
-      {error && <div className="mb-3 p-3 rounded bg-red-100 text-red-700">{error}</div>}
-
-      <form className="space-y-3" onSubmit={onSubmit}>
+      <form className="space-y-4" onSubmit={onSubmit}>
         <div>
-          <label className="block text-sm font-medium">Email</label>
+          <label className="block text-sm font-medium text-gray-700">
+            Email address
+          </label>
           <input
-            className="w-full border rounded p-2"
+            className="mt-1 w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             type="email"
             required
+            placeholder="you@example.com"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium">Username</label>
+          <label className="block text-sm font-medium text-gray-700">
+            Username (optional)
+          </label>
           <input
-            className="w-full border rounded p-2"
+            className="mt-1 w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             type="text"
+            placeholder="yourname"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium">Password</label>
+          <label className="block text-sm font-medium text-gray-700">
+            Password
+          </label>
           <input
-            className="w-full border rounded p-2"
+            className="mt-1 w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="password"
             required
+            placeholder="••••••••"
           />
         </div>
 
+        {/* Compliance / trust hint */}
+        <div className="text-xs text-gray-600 bg-gray-50 border rounded-md p-3">
+          For security and compliance reasons, wallet ownership will be verified
+          after registration using a cryptographic signature.
+        </div>
+
         <button
-          className="w-full bg-blue-600 text-white py-2 rounded disabled:opacity-60"
+          type="submit"
           disabled={loading}
+          className="w-full bg-blue-600 text-white py-2 rounded-md font-semibold hover:bg-blue-700 disabled:opacity-60"
         >
-          {loading ? "Creating account..." : "Register"}
+          {loading ? "Creating account..." : "Create account"}
         </button>
+
+        <p className="text-sm text-gray-600 text-center">
+          Already have an account?{" "}
+          <a href="/login" className="text-blue-600 hover:underline">
+            Sign in
+          </a>
+        </p>
       </form>
-    </div>
+    </AuthCard>
   );
 }
