@@ -24,6 +24,11 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       throw new Error("No linked wallet found. Please link your wallet first.");
     }
 
+    if (!senderWalletDoc.isVerified) {
+      res.status(400);
+      throw new Error("Wallet is not verified. Please verify ownership first.");
+    }
+
     const senderWallet = String(senderWalletDoc.address).toLowerCase().trim();
     const receiverWallet = String(receiver).toLowerCase().trim();
 
