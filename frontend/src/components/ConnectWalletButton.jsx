@@ -7,7 +7,7 @@ function shortenAddress(addr) {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
-export default function ConnectWalletButton() {
+export default function ConnectWalletButton({ onLinked }) {
   const [address, setAddress] = useState(null);
   const [balance, setBalance] = useState(null);
   const [isLinked, setIsLinked] = useState(false);
@@ -28,8 +28,11 @@ export default function ConnectWalletButton() {
       setBalance(balance);
       setStatus("connected");
     } catch (err) {
+      console.error(err);
       if (err?.code === -32002) {
-        setError("MetaMask request already pending. Open MetaMask and approve/reject it, then try again.");
+        setError(
+          "MetaMask request already pending. Open MetaMask and approve/reject it, then try again."
+        );
       } else {
         setError(err?.message || "Failed to connect wallet.");
       }
@@ -53,10 +56,9 @@ export default function ConnectWalletButton() {
     setStatus("linking");
 
     try {
-      const message = `Link wallet to Remittance System\n\nUser: ${token.slice(0, 12)}...\nTime: ${new Date().toISOString()}`;
+      const message = `Link wallet to Remittance System\n\nTime: ${new Date().toISOString()}`;
       const { address: signedAddress, signature } = await signLinkMessage(message);
 
-      // Safety: ensure user didn’t switch account mid-process
       if (signedAddress.toLowerCase() !== address.toLowerCase()) {
         throw new Error("Wallet account changed. Please reconnect and try again.");
       }
@@ -65,41 +67,44 @@ export default function ConnectWalletButton() {
 
       setIsLinked(true);
       setSuccess("Wallet verified and linked to your account.");
+      onLinked?.();
     } catch (err) {
-      setError(err?.message || "Failed to verify/link wallet.");
+      console.error(err);
+      setError(err?.message || "Failed to verify and link wallet.");
     } finally {
       setStatus("connected");
     }
   };
 
   return (
-    <div className="mt-6 rounded-xl border p-4 bg-white space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm font-semibold text-gray-900">Wallet</div>
-          <div className="text-xs text-gray-600">Connect and verify ownership to enable remittances.</div>
-        </div>
-
-        <span className={`text-xs px-2 py-1 rounded-full ${isLinked ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}>
-          {isLinked ? "Linked" : "Not linked"}
-        </span>
-      </div>
-
-      <div className="flex gap-2">
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={handleConnect}
           disabled={status === "connecting" || status === "linking"}
-          className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60"
+          className="
+            bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold
+            hover:bg-blue-700 active:scale-95 transition-all
+            disabled:opacity-60
+          "
         >
-          {status === "connecting" ? "Connecting..." : address ? "Reconnect" : "Connect Wallet"}
+          {status === "connecting"
+            ? "Connecting..."
+            : address
+            ? "Reconnect Wallet"
+            : "Connect Wallet"}
         </button>
 
         <button
           type="button"
           onClick={handleLink}
           disabled={!address || status === "connecting" || status === "linking" || isLinked}
-          className="px-4 py-2 rounded-md bg-gray-900 text-white text-sm font-semibold hover:bg-black disabled:opacity-60"
+          className="
+            bg-gray-900 text-white px-4 py-2 rounded-md text-sm font-semibold
+            hover:bg-black active:scale-95 transition-all
+            disabled:opacity-60
+          "
         >
           {status === "linking" ? "Verifying..." : isLinked ? "Verified" : "Verify & Link"}
         </button>
