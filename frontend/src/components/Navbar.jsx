@@ -29,7 +29,10 @@ export default function Navbar() {
           <button
             onClick={logout}
             className="bg-gray-900 text-white px-4 py-2 rounded-md
-                       hover:bg-black transition-colors"
+                       hovbg-gray-900 text-white px-4 py-2 rounded-md font-semibold
+                       hover:bg-black
+                       active:scale-95
+                       transition-all:bg-black transition-colors"
           >
             Logout
           </button>
