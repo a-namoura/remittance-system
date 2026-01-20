@@ -3,6 +3,7 @@ import { protect } from "../middleware/authMiddleware.js";
 import { sendRemittance } from "../blockchain/remittanceClient.js";
 import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
+import { User } from "../models/User.js";
 
 export const transactionRouter = express.Router();
 
@@ -16,7 +17,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       throw new Error("receiver and amountEth are required");
     }
 
-    // 1) Find sender wallet from DB (linked wallet)
+    // 1) Find sender wallet from DB (linked + verified wallet)
     const senderWalletDoc = await Wallet.findOne({ userId: req.user._id }).lean();
 
     if (!senderWalletDoc?.address) {
@@ -30,11 +31,41 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
     }
 
     const senderWallet = String(senderWalletDoc.address).toLowerCase().trim();
-    const receiverWallet = String(receiver).toLowerCase().trim();
 
-    // 2) Create tx record as pending (using YOUR schema)
+    // 2) Resolve receiver: wallet address OR registered user by email
+    let receiverWallet;
+    let receiverUserId = null;
+
+    // If it looks like an EVM address (0x + 40 hex chars)
+    if (receiver.startsWith("0x") && receiver.length === 42) {
+      receiverWallet = receiver.toLowerCase().trim();
+    } else {
+      // Treat as email of a registered user
+      const receiverUser = await User.findOne({ email: receiver }).lean();
+
+      if (!receiverUser) {
+        res.status(400);
+        throw new Error("Recipient user not found.");
+      }
+
+      const receiverWalletDoc = await Wallet.findOne({
+        userId: receiverUser._id,
+        isVerified: true,
+      }).lean();
+
+      if (!receiverWalletDoc) {
+        res.status(400);
+        throw new Error("Recipient does not have a verified wallet.");
+      }
+
+      receiverWallet = String(receiverWalletDoc.address).toLowerCase().trim();
+      receiverUserId = receiverUser._id;
+    }
+
+    // 3) Create tx record as pending (using your schema)
     const txDoc = await Transaction.create({
       senderUserId: req.user._id,
+      receiverUserId,
       senderWallet,
       receiverWallet,
       amount: Number(amountEth),
@@ -42,7 +73,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       type: "sent",
     });
 
-    // 3) Send on-chain transaction
+    // 4) Send on-chain transaction
     const result = await sendRemittance(receiverWallet, amountEth);
 
     // Attempt to extract txHash from whatever your client returns
@@ -52,7 +83,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       result?.transactionHash ||
       result?.receipt?.transactionHash;
 
-    // 4) Update record success
+    // 5) Update record success
     txDoc.status = "success";
     if (txHash) txDoc.txHash = txHash;
     await txDoc.save();
