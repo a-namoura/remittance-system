@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "../services/api.js";
 import ConnectWalletButton from "../components/ConnectWalletButton.jsx";
+import { getMyTransactions } from "../services/transactionApi.js";
 
 function badgeClass(ok) {
   return ok ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700";
@@ -12,6 +13,8 @@ export default function Dashboard() {
 
   // local UI state: wallet link status (updated by ConnectWalletButton)
   const [walletLinked, setWalletLinked] = useState(false);
+  const [transactions, setTransactions] = useState([]);
+  const [txError, setTxError] = useState("");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -20,6 +23,14 @@ export default function Dashboard() {
     apiRequest("/api/me", { token })
       .then((data) => setMe(data.user))
       .catch((err) => setError(err.message));
+  }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    getMyTransactions({ token, limit: 10 })
+    .then((data) => setTransactions(data.transactions || []))
+    .catch((err) => setTxError(err.message));
   }, []);
 
   if (!me && !error) {
@@ -149,9 +160,49 @@ export default function Dashboard() {
         <h2 className="text-sm font-semibold text-gray-900 mb-2">
           Recent Activity
         </h2>
-        <p className="text-sm text-gray-600">
-          No transactions yet. Once you send a remittance, it will appear here.
-        </p>
+        {txError && <div className="text-sm text-red-600 mb-3">{txError}</div>}
+        
+        {transactions.length === 0 ? (
+          <p className="text-sm text-gray-600">
+            No transactions yet. Once you send a remittance, it will appear here.
+            </p>
+            ) : (
+            <div className="divide-y">
+              {transactions.map((t) => (
+                <div key={t.id} className="py-3 flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">
+                      Sent {t.amount} ETH
+                    </div>
+                    <div className="text-xs text-gray-600 font-mono mt-1">
+                      To: {t.receiverWallet}
+                    </div>
+                    {t.txHash && (
+                    <div className="text-xs text-gray-500 font-mono mt-1">
+                      Tx: {t.txHash.slice(0, 10)}...{t.txHash.slice(-8)}
+                    </div>
+                  )}
+                  <div className="text-xs text-gray-500 mt-1">
+                    {new Date(t.createdAt).toLocaleString()}
+                  </div>
+              </div>
+
+        <span
+          className={`text-xs px-3 py-1 rounded-full ${
+            t.status === "success"
+              ? "bg-green-100 text-green-700"
+              : t.status === "failed"
+              ? "bg-red-100 text-red-700"
+              : "bg-yellow-100 text-yellow-800"
+          }`}
+        >
+          {t.status}
+        </span>
+      </div>
+    ))}
+  </div>
+)}
+
       </div>
     </div>
   );
