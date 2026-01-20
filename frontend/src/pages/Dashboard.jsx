@@ -2,9 +2,16 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "../services/api.js";
 import ConnectWalletButton from "../components/ConnectWalletButton.jsx";
 
+function badgeClass(ok) {
+  return ok ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700";
+}
+
 export default function Dashboard() {
   const [me, setMe] = useState(null);
   const [error, setError] = useState("");
+
+  // local UI state: wallet link status (updated by ConnectWalletButton)
+  const [walletLinked, setWalletLinked] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -25,11 +32,11 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-10 space-y-8">
-      {/* Header */}
+      {/* Header (clean: title only) */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-1">
-          Manage your wallet and track remittances.
+        <p className="text-sm text-gray-600 mt-1">
+          Account overview and wallet setup.
         </p>
       </div>
 
@@ -39,78 +46,101 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Top grid */}
+      {/* Top grid: Account status + Primary action */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Profile */}
+        {/* Account Status */}
         <div className="rounded-2xl border bg-white p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Profile</h2>
+              <h2 className="text-sm font-semibold text-gray-900">
+                Account Status
+              </h2>
               <p className="text-xs text-gray-500 mt-1">
-                Account information
+                Basic identity and readiness to send remittances.
               </p>
             </div>
 
-            <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-700">
-              {me.role === "admin" ? "Admin" : "Customer"}
+            <span className={`text-xs px-3 py-1 rounded-full ${badgeClass(true)}`}>
+              Active
             </span>
           </div>
 
-          <div className="mt-4">
+          <div className="mt-4 space-y-2 text-sm text-gray-800">
+            <div>
+              <span className="text-gray-600">Signed in as:</span>{" "}
+              <span className="font-medium">{me.email}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-gray-600">Wallet:</span>
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${badgeClass(walletLinked)}`}
+              >
+                {walletLinked ? "Linked" : "Not linked"}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-gray-600">Remittances:</span>
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${badgeClass(walletLinked)}`}
+              >
+                {walletLinked ? "Enabled" : "Disabled"}
+              </span>
+            </div>
           </div>
+
+          {!walletLinked && (
+            <div className="mt-4 text-xs text-gray-600 bg-gray-50 border rounded-md p-3">
+              To enable remittances, connect your wallet and verify ownership.
+            </div>
+          )}
         </div>
 
-        {/* Quick Actions */}
+        {/* Primary Action: Send Money */}
         <div className="rounded-2xl border bg-white p-6">
-          <h2 className="text-sm font-semibold text-gray-900 mb-4">
-            Quick Actions
-          </h2>
-
-          <div className="space-y-3">
+          <div className="flex items-start justify-between">
             <button
-              disabled
-              className="w-full py-2 rounded-md bg-blue-600 text-white font-semibold
-                         hover:bg-blue-700 transition-colors disabled:opacity-80"
+              type="button"
+              disabled={!walletLinked}
+              onClick={() => window.location.href = "/send"}
+              className="
+                mt-4 w-full py-2 rounded-md font-semibold
+                bg-blue-600 text-white
+                hover:bg-blue-700 active:scale-95 transition-all
+                disabled:bg-gray-200 disabled:text-gray-500 disabled:hover:bg-gray-200 disabled:active:scale-100
+              "
             >
-              Send Money (coming soon)
-            </button>
-
-            <button
-              disabled
-              className="w-full py-2 rounded-md bg-gray-100 text-gray-900 font-semibold
-                         hover:bg-gray-200 transition-colors"
-            >
-              Track Transfer (coming soon)
-            </button>
-
-            <button
-              disabled
-              className="w-full py-2 rounded-md bg-gray-100 text-gray-900 font-semibold
-                         hover:bg-gray-200 transition-colors"
-            >
-              Add Beneficiary (coming soon)
+              {walletLinked ? "Send Money" : "Complete wallet setup"}
             </button>
           </div>
+
+          {!walletLinked && (
+            <p className="text-xs text-gray-600 mt-3">
+              Link your wallet below to unlock this feature.
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Wallet */}
+      {/* Wallet setup (single section; no duplication) */}
       <div className="rounded-2xl border bg-white p-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Wallet</h2>
+            <h2 className="text-sm font-semibold text-gray-900">Wallet Setup</h2>
             <p className="text-xs text-gray-500 mt-1">
-              Connect and verify ownership to enable remittances.
+              Connect and verify ownership (signature) to link your wallet to this account.
             </p>
           </div>
 
-          <span className="text-xs px-3 py-1 rounded-full bg-gray-100 text-gray-700">
-            Not linked
+          <span className={`text-xs px-3 py-1 rounded-full ${badgeClass(walletLinked)}`}>
+            {walletLinked ? "Linked" : "Not linked"}
           </span>
         </div>
 
         <div className="mt-4">
-          <ConnectWalletButton />
+          {/* IMPORTANT: this component should NOT render its own header/badge anymore */}
+          <ConnectWalletButton onLinked={() => setWalletLinked(true)} />
         </div>
       </div>
 
