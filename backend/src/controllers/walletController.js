@@ -10,7 +10,6 @@ export async function linkWallet(req, res) {
     return res.status(400).json({ message: "address, signature, and message are required" });
   }
 
-  // Recover signer address from the signature
   let recovered;
   try {
     recovered = ethers.verifyMessage(message, signature);
@@ -22,12 +21,13 @@ export async function linkWallet(req, res) {
     return res.status(401).json({ message: "Signature does not match address" });
   }
 
-  // Upsert wallet linked to this user
+  // One wallet per user for now
   const doc = await Wallet.findOneAndUpdate(
     { userId: req.user._id },
     {
       userId: req.user._id,
       address,
+      network: "bsc-testnet",
       isVerified: true,
       verifiedAt: new Date(),
     },
@@ -38,6 +38,7 @@ export async function linkWallet(req, res) {
     ok: true,
     wallet: {
       address: doc.address,
+      network: doc.network,
       isVerified: doc.isVerified,
       verifiedAt: doc.verifiedAt,
     },
