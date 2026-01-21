@@ -11,7 +11,6 @@ export default function Dashboard() {
   const [me, setMe] = useState(null);
   const [error, setError] = useState("");
 
-  // local UI state: wallet link status (updated by ConnectWalletButton)
   const [walletLinked, setWalletLinked] = useState(false);
   const [transactions, setTransactions] = useState([]);
   const [txError, setTxError] = useState("");
@@ -28,9 +27,10 @@ export default function Dashboard() {
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;
-    getMyTransactions({ token, limit: 10 })
-    .then((data) => setTransactions(data.transactions || []))
-    .catch((err) => setTxError(err.message));
+
+    getMyTransactions({ token, limit: 5 })
+      .then((data) => setTransactions(data.transactions || []))
+      .catch((err) => setTxError(err.message));
   }, []);
 
   if (!me && !error) {
@@ -43,7 +43,7 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-10 space-y-8">
-      {/* Header (clean: title only) */}
+      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
         <p className="text-sm text-gray-600 mt-1">
@@ -134,7 +134,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Wallet setup (single section; no duplication) */}
+      {/* Wallet Setup */}
       <div className="rounded-2xl border bg-white p-6">
         <div className="flex items-start justify-between">
           <div>
@@ -150,26 +150,32 @@ export default function Dashboard() {
         </div>
 
         <div className="mt-4">
-          {/* IMPORTANT: this component should NOT render its own header/badge anymore */}
           <ConnectWalletButton onLinked={() => setWalletLinked(true)} />
         </div>
       </div>
 
-      {/* Activity */}
+      {/* Recent Activity */}
       <div className="rounded-2xl border bg-white p-6">
         <h2 className="text-sm font-semibold text-gray-900 mb-2">
           Recent Activity
         </h2>
-        {txError && <div className="text-sm text-red-600 mb-3">{txError}</div>}
-        
+
+        {txError && (
+          <div className="text-sm text-red-600 mb-3">{txError}</div>
+        )}
+
         {transactions.length === 0 ? (
           <p className="text-sm text-gray-600">
             No transactions yet. Once you send a remittance, it will appear here.
-            </p>
-            ) : (
+          </p>
+        ) : (
+          <>
             <div className="divide-y">
               {transactions.map((t) => (
-                <div key={t.id} className="py-3 flex items-start justify-between gap-4">
+                <div
+                  key={t.id}
+                  className="py-3 flex items-start justify-between gap-4"
+                >
                   <div>
                     <div className="text-sm font-medium text-gray-900">
                       Sent {t.amount} ETH
@@ -178,31 +184,40 @@ export default function Dashboard() {
                       To: {t.receiverWallet}
                     </div>
                     {t.txHash && (
-                    <div className="text-xs text-gray-500 font-mono mt-1">
-                      Tx: {t.txHash.slice(0, 10)}...{t.txHash.slice(-8)}
+                      <div className="text-xs text-gray-500 font-mono mt-1">
+                        Tx: {t.txHash.slice(0, 10)}...{t.txHash.slice(-8)}
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-500 mt-1">
+                      {new Date(t.createdAt).toLocaleString()}
                     </div>
-                  )}
-                  <div className="text-xs text-gray-500 mt-1">
-                    {new Date(t.createdAt).toLocaleString()}
                   </div>
-              </div>
 
-        <span
-          className={`text-xs px-3 py-1 rounded-full ${
-            t.status === "success"
-              ? "bg-green-100 text-green-700"
-              : t.status === "failed"
-              ? "bg-red-100 text-red-700"
-              : "bg-yellow-100 text-yellow-800"
-          }`}
-        >
-          {t.status}
-        </span>
-      </div>
-    ))}
-  </div>
-)}
+                  <span
+                    className={`text-xs px-3 py-1 rounded-full ${
+                      t.status === "success"
+                        ? "bg-green-100 text-green-700"
+                        : t.status === "failed"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-yellow-100 text-yellow-800"
+                    }`}
+                  >
+                    {t.status}
+                  </span>
+                </div>
+              ))}
+            </div>
 
+            <div className="mt-3 text-right">
+              <a
+                href="/transactions"
+                className="text-xs text-blue-600 hover:underline"
+              >
+                View all transactions
+              </a>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
