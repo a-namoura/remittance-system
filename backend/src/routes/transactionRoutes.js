@@ -1,6 +1,6 @@
 import express from "express";
 import { protect } from "../middleware/authMiddleware.js";
-import { sendRemittance } from "../blockchain/remittanceClient.js";
+import { sendRemittance, getEthBalance } from "../blockchain/remittanceClient.js";
 import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
 import { User } from "../models/User.js";
@@ -9,6 +9,8 @@ export const transactionRouter = express.Router();
 
 // POST /api/transactions/send
 transactionRouter.post("/send", protect, async (req, res, next) => {
+  let txDoc;
+
   try {
     const { receiver, amountEth } = req.body;
 
@@ -62,8 +64,23 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       receiverUserId = receiverUser._id;
     }
 
+    // 2.5) Check sender balance before sending
+    const senderBalance = await getEthBalance(senderWallet);
+
+    if (Number(amountEth) <= 0) {
+      res.status(400);
+      throw new Error("Amount must be greater than zero.");
+    }
+
+    if (senderBalance < Number(amountEth)) {
+      res.status(400);
+      throw new Error(
+        `Insufficient funds. Available: ${senderBalance} (on BSC testnet).`
+      );
+    }
+
     // 3) Create tx record as pending (using your schema)
-    const txDoc = await Transaction.create({
+    txDoc = await Transaction.create({
       senderUserId: req.user._id,
       receiverUserId,
       senderWallet,
@@ -73,34 +90,45 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       type: "sent",
     });
 
-    // 4) Send on-chain transaction
-    const result = await sendRemittance(receiverWallet, amountEth);
+    // 4) Send on-chain transaction (with safe error handling)
+    let chainResult;
+    try {
+      chainResult = await sendRemittance(receiverWallet, amountEth);
 
-    // Attempt to extract txHash from whatever your client returns
-    const txHash =
-      result?.txHash ||
-      result?.hash ||
-      result?.transactionHash ||
-      result?.receipt?.transactionHash;
+      const txHash =
+        chainResult?.txHash ||
+        chainResult?.hash ||
+        chainResult?.transactionHash;
 
-    // 5) Update record success
-    txDoc.status = "success";
-    if (txHash) txDoc.txHash = txHash;
-    await txDoc.save();
+      if (!txHash) {
+        throw new Error("Blockchain transaction did not return a hash.");
+      }
 
-    res.status(201).json({
-      message: "Remittance transaction submitted",
-      tx: {
-        id: txDoc._id,
-        senderWallet: txDoc.senderWallet,
-        receiverWallet: txDoc.receiverWallet,
-        amount: txDoc.amount,
-        status: txDoc.status,
-        txHash: txDoc.txHash || null,
-        createdAt: txDoc.createdAt,
-      },
-      chain: result,
-    });
+      txDoc.status = "success";
+      txDoc.txHash = txHash;
+      await txDoc.save();
+
+      return res.status(201).json({
+        message: "Remittance transaction submitted",
+        tx: {
+          id: txDoc._id,
+          senderWallet: txDoc.senderWallet,
+          receiverWallet: txDoc.receiverWallet,
+          amount: txDoc.amount,
+          status: txDoc.status,
+          txHash: txDoc.txHash || null,
+          createdAt: txDoc.createdAt,
+        },
+        chain: chainResult,
+      });
+    } catch (chainError) {
+      // mark as failed if blockchain send fails
+      txDoc.status = "failed";
+      await txDoc.save();
+
+      res.status(500);
+      throw new Error(chainError.message || "Blockchain transaction failed.");
+    }
   } catch (err) {
     next(err);
   }
@@ -136,7 +164,6 @@ transactionRouter.get("/my", protect, async (req, res, next) => {
         if (!isNaN(fromDate)) query.createdAt.$gte = fromDate;
       }
       if (to) {
-        // include the whole "to" day by setting end of day
         const toDate = new Date(to);
         if (!isNaN(toDate)) {
           toDate.setHours(23, 59, 59, 999);
