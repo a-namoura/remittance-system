@@ -4,6 +4,7 @@ import { sendRemittance, getEthBalance } from "../blockchain/remittanceClient.js
 import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
 import { User } from "../models/User.js";
+import { getUsdPerEthRate, convertEthToUsd } from "../utils/fiat.js";
 
 export const transactionRouter = express.Router();
 
@@ -108,6 +109,16 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       txDoc.txHash = txHash;
       await txDoc.save();
 
+      // 5) Fiat conversion (best-effort)
+      let rateUsdPerEth = null;
+      let fiatAmountUsd = null;
+      try {
+        rateUsdPerEth = getUsdPerEthRate();
+        fiatAmountUsd = convertEthToUsd(txDoc.amount, rateUsdPerEth);
+      } catch {
+        // if fx config missing, leave them null – don't break the tx
+      }
+
       return res.status(201).json({
         message: "Remittance transaction submitted",
         tx: {
@@ -118,6 +129,9 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
           status: txDoc.status,
           txHash: txDoc.txHash || null,
           createdAt: txDoc.createdAt,
+          fiatAmountUsd,
+          fiatCurrency: rateUsdPerEth ? "USD" : null,
+          rateUsdPerEth,
         },
         chain: chainResult,
       });
@@ -172,6 +186,14 @@ transactionRouter.get("/my", protect, async (req, res, next) => {
       }
     }
 
+    // Try to load FX rate once
+    let rateUsdPerEth = null;
+    try {
+      rateUsdPerEth = getUsdPerEthRate();
+    } catch {
+      rateUsdPerEth = null;
+    }
+
     const [txs, total] = await Promise.all([
       Transaction.find(query)
         .sort({ createdAt: -1 })
@@ -186,14 +208,28 @@ transactionRouter.get("/my", protect, async (req, res, next) => {
       total,
       page: numericPage,
       limit: numericLimit,
-      transactions: txs.map((t) => ({
-        id: t._id,
-        receiverWallet: t.receiverWallet,
-        amount: t.amount,
-        status: t.status,
-        txHash: t.txHash || null,
-        createdAt: t.createdAt,
-      })),
+      transactions: txs.map((t) => {
+        let fiatAmountUsd = null;
+        if (rateUsdPerEth != null) {
+          try {
+            fiatAmountUsd = convertEthToUsd(t.amount, rateUsdPerEth);
+          } catch {
+            fiatAmountUsd = null;
+          }
+        }
+
+        return {
+          id: t._id,
+          receiverWallet: t.receiverWallet,
+          amount: t.amount,
+          status: t.status,
+          txHash: t.txHash || null,
+          createdAt: t.createdAt,
+          fiatAmountUsd,
+          fiatCurrency: rateUsdPerEth ? "USD" : null,
+          rateUsdPerEth,
+        };
+      }),
     });
   } catch (err) {
     next(err);
