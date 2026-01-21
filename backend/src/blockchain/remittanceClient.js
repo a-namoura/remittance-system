@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import { JsonRpcProvider, Wallet, Contract, isAddress, parseEther } from "ethers";
+import { JsonRpcProvider, Wallet, Contract, isAddress, parseEther, formatEther } from "ethers";
 
 dotenv.config();
 
@@ -82,4 +82,25 @@ export async function sendRemittance(receiver, amountEth) {
     blockNumber: receipt?.blockNumber,
     status: receipt?.status,
   };
+}
+
+/**
+ * Helper to read the ETH balance of any address (in BNB/ETH units).
+ * Returns a Number (e.g., 0.1234)
+ */
+export async function getEthBalance(address) {
+  if (!isAddress(address)) {
+    throw new Error("Address must be a valid EVM address.");
+  }
+
+  const RPC_URL = process.env.BSC_TESTNET_RPC_URL;
+  if (!RPC_URL) {
+    throw new Error("BSC_TESTNET_RPC_URL is not set in backend/.env");
+  }
+
+  const provider = new JsonRpcProvider(RPC_URL);
+  const balanceWei = await provider.getBalance(address);
+  const balanceEth = Number(formatEther(balanceWei));
+
+  return balanceEth;
 }
