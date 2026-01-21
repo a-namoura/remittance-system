@@ -106,18 +106,59 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
   }
 });
 
-// GET /api/transactions/my?limit=10
+// GET /api/transactions/my?limit=&page=&status=&from=&to=
 transactionRouter.get("/my", protect, async (req, res, next) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit || "10", 10), 50);
+    const {
+      status,
+      from,
+      to,
+      page = "1",
+      limit = "10",
+    } = req.query;
 
-    const txs = await Transaction.find({ senderUserId: req.user._id })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .lean();
+    const numericLimit = Math.min(parseInt(limit, 10) || 10, 50);
+    const numericPage = Math.max(parseInt(page, 10) || 1, 1);
+
+    const query = { senderUserId: req.user._id };
+
+    // Optional status filter
+    const allowedStatuses = ["pending", "success", "failed"];
+    if (status && allowedStatuses.includes(status)) {
+      query.status = status;
+    }
+
+    // Optional date range filter
+    if (from || to) {
+      query.createdAt = {};
+      if (from) {
+        const fromDate = new Date(from);
+        if (!isNaN(fromDate)) query.createdAt.$gte = fromDate;
+      }
+      if (to) {
+        // include the whole "to" day by setting end of day
+        const toDate = new Date(to);
+        if (!isNaN(toDate)) {
+          toDate.setHours(23, 59, 59, 999);
+          query.createdAt.$lte = toDate;
+        }
+      }
+    }
+
+    const [txs, total] = await Promise.all([
+      Transaction.find(query)
+        .sort({ createdAt: -1 })
+        .skip((numericPage - 1) * numericLimit)
+        .limit(numericLimit)
+        .lean(),
+      Transaction.countDocuments(query),
+    ]);
 
     res.json({
       ok: true,
+      total,
+      page: numericPage,
+      limit: numericLimit,
       transactions: txs.map((t) => ({
         id: t._id,
         receiverWallet: t.receiverWallet,
