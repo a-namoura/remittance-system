@@ -155,6 +155,12 @@ export default function Transactions() {
                 <div>
                   <div className="text-sm font-medium text-gray-900">
                     Sent {t.amount} ETH
+                    {typeof t.fiatAmountUsd === "number" && (
+                      <span className="text-xs text-gray-500 ml-1">
+                        (~ {t.fiatAmountUsd.toFixed(2)}{" "}
+                        {t.fiatCurrency || "USD"})
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-gray-600 font-mono mt-1">
                     To: {t.receiverWallet}
