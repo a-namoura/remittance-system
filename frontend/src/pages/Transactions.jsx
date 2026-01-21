@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getMyTransactions } from "../services/transactionsApi.js";
+import { getMyTransactions } from "../services/transactionApi.js";
 
 function statusBadgeClasses(status) {
   if (status === "success") return "bg-green-100 text-green-700";
