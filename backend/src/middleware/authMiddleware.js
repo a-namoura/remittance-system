@@ -33,3 +33,17 @@ export async function protect(req, res, next) {
     next(new Error("Invalid or expired token"));
   }
 }
+
+export function requireAdmin(req, res, next) {
+  if (!req.user) {
+    res.status(401);
+    return next(new Error("Not authenticated"));
+  }
+
+  if (req.user.role !== "admin") {
+    res.status(403);
+    return next(new Error("Admin access only"));
+  }
+
+  next();
+}
