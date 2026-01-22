@@ -6,6 +6,7 @@ import Register from "./pages/Register.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import SendMoney from "./pages/SendMoney.jsx";
 import Transactions from "./pages/Transactions.jsx";
+import Admin from "./pages/Admin.jsx";
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
         <Route path="/send" element={<SendMoney />} />
         <Route path="/transactions" element={<Transactions />} />
+        <Route path="/admin" element={<Admin />} />
       </Routes>
     </div>
   );
