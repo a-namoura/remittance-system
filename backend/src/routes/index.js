@@ -4,10 +4,11 @@ import { Wallet } from "../models/Wallet.js";
 import { Transaction } from "../models/Transaction.js";
 import { Admin } from "../models/Admin.js";
 import { authRouter } from "./authRoutes.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { protect, requireAdmin } from "../middleware/authMiddleware.js";
 import { userRouter } from "./userRoutes.js";
 import { walletRouter } from "./walletRoutes.js";
 import { transactionRouter } from "./transactionRoutes.js";
+import { adminRouter } from "./adminRoutes.js";
 
 export const apiRouter = express.Router();
 
@@ -19,6 +20,9 @@ apiRouter.use("/auth", authRouter);
 apiRouter.use("/users", userRouter);
 apiRouter.use("/wallet", walletRouter);
 apiRouter.use("/transactions", transactionRouter);
+
+// Admin-only routes
+apiRouter.use("/admin", protect, requireAdmin, adminRouter);
 
 apiRouter.get("/db-test", async (req, res) => {
   const [usersCount, walletsCount, txCount, adminsCount] = await Promise.all([
