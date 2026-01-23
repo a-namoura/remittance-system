@@ -11,7 +11,9 @@ export default function Dashboard() {
   const [me, setMe] = useState(null);
   const [error, setError] = useState("");
 
-  const [walletLinked, setWalletLinked] = useState(false);
+  const [walletLinked, setWalletLinked] = useState(() => {
+    return localStorage.getItem("walletConnected") === "1";
+  });
 
   const [transactions, setTransactions] = useState([]);
   const [txError, setTxError] = useState("");
@@ -151,7 +153,17 @@ export default function Dashboard() {
         </div>
 
         <div className="mt-4">
-          <ConnectWalletButton onLinked={() => setWalletLinked(true)} />
+          <ConnectWalletButton
+            connected={walletLinked}
+            onLinked={() => {
+              setWalletLinked(true);
+              localStorage.setItem("walletConnected", "1");
+            }}
+            onDisconnected={() => {
+              setWalletLinked(false);
+              localStorage.removeItem("walletConnected");
+            }}
+          />
         </div>
       </div>
 
