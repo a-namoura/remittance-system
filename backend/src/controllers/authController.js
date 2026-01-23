@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { User } from "../models/User.js";
+import { logAudit } from "../utils/audit.js";
 
 function signToken(userId) {
   const secret = process.env.JWT_SECRET;
@@ -37,6 +38,16 @@ export async function register(req, res) {
   });
 
   const token = signToken(user._id);
+
+  await logAudit({
+    user,
+    action: "REGISTER",
+    metadata: {
+      email: user.email,
+      username: user.username || null,
+    },
+    req,
+  });
 
   res.status(201).json({
     message: "User registered",
@@ -77,6 +88,15 @@ export async function login(req, res) {
 
   const token = signToken(user._id);
 
+  await logAudit({
+    user,
+    action: "LOGIN",
+    metadata: {
+      email: user.email,
+    },
+    req,
+  });
+
   res.json({
     message: "Login successful",
     user: {
@@ -86,5 +106,28 @@ export async function login(req, res) {
       role: user.role,
     },
     token,
+  });
+}
+
+export async function logout(req, res) {
+  const user = req.user || null;
+
+  if (user) {
+    try {
+      await logAudit({
+        user,
+        action: "LOGOUT",
+        metadata: {
+          email: user.email,
+        },
+        req,
+      });
+    } catch (err) {
+      console.error("Failed to write LOGOUT audit log:", err.message);
+    }
+  }
+
+  res.json({
+    message: "Logout successful",
   });
 }
