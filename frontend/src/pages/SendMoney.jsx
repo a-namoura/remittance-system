@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { apiRequest } from "../services/api.js";
 import { useNavigate } from "react-router-dom";
+import BackButton from "../components/BackButton.jsx";
 
 export default function SendMoney() {
   const navigate = useNavigate();
@@ -17,7 +18,6 @@ export default function SendMoney() {
     setError("");
     setSuccess("");
 
-    // Basic check before moving to confirmation
     if (!receiver || !amount) {
       setError("Receiver and amount are required.");
       return;
@@ -56,6 +56,10 @@ export default function SendMoney() {
 
   return (
     <div className="max-w-lg mx-auto px-6 py-10">
+      {/* Back Button */}
+      <div className="mb-6">
+        <BackButton fallback="/dashboard" />
+      </div>
       <h1 className="text-2xl font-bold mb-1">Send Money</h1>
       <p className="text-sm text-gray-600 mb-6">
         Send crypto remittance to another wallet address or a registered user (by email).
