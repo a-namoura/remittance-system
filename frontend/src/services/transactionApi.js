@@ -9,13 +9,15 @@ export async function getMyTransactions({
   to,
 }) {
   const params = new URLSearchParams();
-  params.set("limit", String(limit));
-  params.set("page", String(page));
 
+  if (limit) params.set("limit", String(limit));
+  if (page) params.set("page", String(page));
   if (status) params.set("status", status);
   if (from) params.set("from", from);
   if (to) params.set("to", to);
 
-  const query = params.toString();
-  return apiRequest(`/api/transactions/my?${query}`, { token });
+  const qs = params.toString();
+  const path = qs ? `/api/transactions/my?${qs}` : "/api/transactions/my";
+
+  return apiRequest(path, { token });
 }
