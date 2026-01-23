@@ -5,6 +5,7 @@ import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
 import { User } from "../models/User.js";
 import { getUsdPerEthRate, convertEthToUsd } from "../utils/fiat.js";
+import { logAudit } from "../utils/audit.js";
 
 export const transactionRouter = express.Router();
 
@@ -119,6 +120,18 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
         // if fx config missing, leave them null – don't break the tx
       }
 
+      await logAudit({
+        user: req.user,
+        action: "SEND_REMITTANCE",
+        metadata: {
+          amountEth: txDoc.amount,
+          receiverWallet: txDoc.receiverWallet,
+          receiverUserId: receiverUserId || null,
+          txHash: txDoc.txHash || null,
+        },
+        req,
+      });
+
       return res.status(201).json({
         message: "Remittance transaction submitted",
         tx: {
@@ -136,9 +149,21 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
         chain: chainResult,
       });
     } catch (chainError) {
-      // mark as failed if blockchain send fails
-      txDoc.status = "failed";
-      await txDoc.save();
+      if (txDoc) {
+        txDoc.status = "failed";
+        await txDoc.save();
+      }
+
+      await logAudit({
+        user: req.user,
+        action: "SEND_REMITTANCE_FAILED",
+        metadata: {
+          receiver,
+          amountEth,
+          error: chainError.message,
+        },
+        req,
+      });
 
       res.status(500);
       throw new Error(chainError.message || "Blockchain transaction failed.");
