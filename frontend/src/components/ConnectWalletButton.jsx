@@ -1,132 +1,125 @@
-import { useMemo, useState } from "react";
-import { connectWallet, signLinkMessage } from "../services/wallet";
-import { linkWalletToUser } from "../services/walletApi";
+import { useEffect, useState } from "react";
+import { apiRequest } from "../services/api.js";
+import { ethers } from "ethers";
 
-function shortenAddress(addr) {
-  if (!addr) return "";
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-}
+export default function ConnectWalletButton({
+  connected,
+  onLinked,
+  onDisconnected,
+}) {
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-export default function ConnectWalletButton({ onLinked }) {
-  const [address, setAddress] = useState(null);
-  const [balance, setBalance] = useState(null);
-  const [isLinked, setIsLinked] = useState(false);
-  const [status, setStatus] = useState("idle"); // idle | connecting | connected | linking
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
+  // Watch for wallet disconnect / account removal and notify parent
+  useEffect(() => {
+    if (!window.ethereum) return;
 
-  const token = useMemo(() => localStorage.getItem("token"), []);
-
-  const handleConnect = async () => {
-    setError(null);
-    setSuccess(null);
-    setStatus("connecting");
-
-    try {
-      const { address, balance } = await connectWallet();
-      setAddress(address);
-      setBalance(balance);
-      setStatus("connected");
-    } catch (err) {
-      console.error(err);
-      if (err?.code === -32002) {
-        setError(
-          "MetaMask request already pending. Open MetaMask and approve/reject it, then try again."
-        );
-      } else {
-        setError(err?.message || "Failed to connect wallet.");
+    const handleAccountsChanged = (accounts) => {
+      if (!accounts || accounts.length === 0) {
+        if (typeof onDisconnected === "function") {
+          onDisconnected();
+        }
+        setStatus("");
       }
-      setStatus("idle");
-    }
-  };
+    };
 
-  const handleLink = async () => {
-    setError(null);
-    setSuccess(null);
+    window.ethereum.on("accountsChanged", handleAccountsChanged);
 
-    if (!token) {
-      setError("Missing login token. Please login again.");
-      return;
-    }
-    if (!address) {
-      setError("Connect your wallet first.");
-      return;
-    }
+    return () => {
+      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
+    };
+  }, [onDisconnected]);
 
-    setStatus("linking");
-
+  async function handleConnectAndVerify() {
     try {
-      const message = `Link wallet to Remittance System\n\nTime: ${new Date().toISOString()}`;
-      const { address: signedAddress, signature } = await signLinkMessage(message);
+      setError("");
+      setStatus("");
+      setLoading(true);
 
-      if (signedAddress.toLowerCase() !== address.toLowerCase()) {
-        throw new Error("Wallet account changed. Please reconnect and try again.");
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("You must be logged in to link a wallet.");
       }
 
-      await linkWalletToUser({ token, address, signature, message });
+      if (!window.ethereum) {
+        throw new Error("No Ethereum wallet detected. Please install MetaMask.");
+      }
 
-      setIsLinked(true);
-      setSuccess("Wallet verified and linked to your account.");
-      onLinked?.();
+      // 1) Request accounts
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const accounts = await provider.send("eth_requestAccounts", []);
+      if (!accounts || accounts.length === 0) {
+        throw new Error("No account returned from wallet.");
+      }
+
+      const address = accounts[0];
+
+      // 2) Verify ownership by signing a message
+      const signer = await provider.getSigner();
+      const message = `Link wallet to remittance account at ${new Date().toISOString()}`;
+      const signature = await signer.signMessage(message);
+
+      // 3) Call backend to link + verify
+      const res = await apiRequest("/api/wallet/link", {
+        method: "POST",
+        token,
+        body: {
+          address,
+          message,
+          signature,
+        },
+      });
+
+      setStatus(res.message || "Wallet linked and verified.");
+
+      if (typeof onLinked === "function") {
+        onLinked(address);
+      }
     } catch (err) {
-      console.error(err);
-      setError(err?.message || "Failed to verify and link wallet.");
+      setError(err.message || "Failed to connect wallet.");
     } finally {
-      setStatus("connected");
+      setLoading(false);
     }
-  };
+  }
+
+  const label = loading
+    ? "Connecting & Verifying..."
+    : connected
+    ? "Connected"
+    : "Connect & Verify Wallet";
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={handleConnect}
-          disabled={status === "connecting" || status === "linking"}
-          className="
-            bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold
-            hover:bg-blue-700 active:scale-95 transition-all
-            disabled:opacity-60
-          "
-        >
-          {status === "connecting"
-            ? "Connecting..."
-            : address
-            ? "Reconnect Wallet"
-            : "Connect Wallet"}
-        </button>
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={handleConnectAndVerify}
+        disabled={loading || connected}
+        className={`
+          inline-flex items-center justify-center
+          px-4 py-2 rounded-md text-sm font-semibold
+          transition-all
+          ${connected
+            ? "bg-green-600 text-white hover:bg-green-600 cursor-default"
+            : "bg-gray-900 text-white hover:bg-gray-800 active:scale-95"
+          }
+          disabled:opacity-60 disabled:active:scale-100
+        `}
+      >
+        {label}
+      </button>
 
-        <button
-          type="button"
-          onClick={handleLink}
-          disabled={!address || status === "connecting" || status === "linking" || isLinked}
-          className="
-            bg-gray-900 text-white px-4 py-2 rounded-md text-sm font-semibold
-            hover:bg-black active:scale-95 transition-all
-            disabled:opacity-60
-          "
-        >
-          {status === "linking" ? "Verifying..." : isLinked ? "Verified" : "Verify & Link"}
-        </button>
-      </div>
-
-      {address && (
-        <div className="text-sm text-gray-700 space-y-1">
-          <div>
-            <span className="font-medium">Address:</span>{" "}
-            <span className="font-mono">{shortenAddress(address)}</span>
-          </div>
-          {balance != null && (
-            <div>
-              <span className="font-medium">Balance:</span>{" "}
-              <span className="font-mono">{balance}</span>
-            </div>
-          )}
+      {status && !error && (
+        <div className="text-xs text-green-700 bg-green-50 border border-green-100 rounded px-2 py-1">
+          {status}
         </div>
       )}
 
-      {error && <div className="text-sm text-red-600">{error}</div>}
-      {success && <div className="text-sm text-green-700">{success}</div>}
+      {error && (
+        <div className="text-xs text-red-700 bg-red-50 border border-red-100 rounded px-2 py-1">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
