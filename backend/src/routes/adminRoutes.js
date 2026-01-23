@@ -2,12 +2,20 @@ import express from "express";
 import { User } from "../models/User.js";
 import { Wallet } from "../models/Wallet.js";
 import { Transaction } from "../models/Transaction.js";
+import { logAudit } from "../utils/audit.js";
 
 export const adminRouter = express.Router();
 
 // GET /api/admin/summary
 adminRouter.get("/summary", async (req, res, next) => {
   try {
+    await logAudit({
+      user: req.user,
+      action: "ADMIN_VIEW",
+      metadata: { endpoint: "/api/admin/summary" },
+      req,
+    });
+
     const [
       totalUsers,
       activeUsers,
@@ -67,6 +75,18 @@ adminRouter.get("/transactions", async (req, res, next) => {
       page = "1",
       limit = "20",
     } = req.query;
+
+    await logAudit({
+      user: req.user,
+      action: "ADMIN_VIEW",
+      metadata: {
+        endpoint: "/api/admin/transactions",
+        status: status || null,
+        page,
+        limit,
+      },
+      req,
+    });
 
     const numericLimit = Math.min(parseInt(limit, 10) || 20, 100);
     const numericPage = Math.max(parseInt(page, 10) || 1, 1);
