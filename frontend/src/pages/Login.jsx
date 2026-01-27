@@ -1,53 +1,73 @@
 import { useState } from "react";
-import AuthCard from "../components/AuthCard";
-import { apiRequest } from "../services/api";
+import { useNavigate } from "react-router-dom";
+import { apiRequest } from "../services/api.js";
+import AuthCard from "../components/AuthCard.jsx";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
+  const navigate = useNavigate();
+  const [identifier, setIdentifier] = useState(""); // email OR username
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function onSubmit(e) {
     e.preventDefault();
     setError("");
 
+    if (!identifier || !password) {
+      setError("Email/username and password are required.");
+      return;
+    }
+
+    setLoading(true);
+
     try {
       const data = await apiRequest("/api/auth/login", {
         method: "POST",
-        body: { email, password },
+        body: { identifier, password },
       });
 
       localStorage.setItem("token", data.token);
-      location.href = "/dashboard";
+      navigate("/dashboard");
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Login failed.");
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
     <AuthCard
       title="Sign in"
-      subtitle="Access your account to send and track remittances."
+      subtitle="Access your remittance dashboard and linked wallet."
     >
-      {error && <div className="mb-3 p-3 rounded bg-red-100 text-red-700 text-sm">{error}</div>}
+      {error && (
+        <div className="mb-4 p-3 rounded bg-red-100 text-red-700 text-sm">
+          {error}
+        </div>
+      )}
 
       <form className="space-y-4" onSubmit={onSubmit}>
         <div>
-          <label className="block text-sm font-medium text-gray-700">Email</label>
+          <label className="block text-sm font-medium text-gray-700">
+            Email or username
+          </label>
           <input
-            className="mt-1 w-full border rounded-md px-3 py-2"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
+            className="mt-1 w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            type="text"
             required
-            placeholder="you@example.com"
+            placeholder="you@example.com or yourname"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Password</label>
+          <label className="block text-sm font-medium text-gray-700">
+            Password
+          </label>
           <input
-            className="mt-1 w-full border rounded-md px-3 py-2"
+            className="mt-1 w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="password"
@@ -56,13 +76,17 @@ export default function Login() {
           />
         </div>
 
-        <button className="w-full bg-blue-600 text-white py-2 rounded-md font-semibold hover:bg-blue-700">
-          Sign in
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-blue-600 text-white py-2 rounded-md font-semibold hover:bg-blue-700 disabled:opacity-60"
+        >
+          {loading ? "Signing in..." : "Sign in"}
         </button>
 
-        <p className="text-sm text-gray-600">
-          Don’t have an account?{" "}
-          <a className="text-blue-600 hover:underline" href="/register">
+        <p className="text-sm text-gray-600 text-center">
+          Don&apos;t have an account?{" "}
+          <a href="/register" className="text-blue-600 hover:underline">
             Create one
           </a>
         </p>
