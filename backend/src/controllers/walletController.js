@@ -7,7 +7,9 @@ export async function linkWallet(req, res) {
   const { address, signature, message } = req.body;
 
   if (!address || !signature || !message) {
-    return res.status(400).json({ message: "address, signature, and message are required" });
+    return res
+      .status(400)
+      .json({ message: "address, signature, and message are required" });
   }
 
   let recovered;
@@ -18,7 +20,9 @@ export async function linkWallet(req, res) {
   }
 
   if (recovered.toLowerCase() !== address.toLowerCase()) {
-    return res.status(401).json({ message: "Signature does not match address" });
+    return res
+      .status(401)
+      .json({ message: "Signature does not match address" });
   }
 
   // One wallet per user for now
@@ -26,8 +30,7 @@ export async function linkWallet(req, res) {
     { userId: req.user._id },
     {
       userId: req.user._id,
-      address,
-      network: "bsc-testnet",
+      address: address.toLowerCase(),
       isVerified: true,
       verifiedAt: new Date(),
     },
@@ -38,9 +41,20 @@ export async function linkWallet(req, res) {
     ok: true,
     wallet: {
       address: doc.address,
-      network: doc.network,
       isVerified: doc.isVerified,
       verifiedAt: doc.verifiedAt,
     },
+  });
+}
+
+// DELETE /api/wallet/link
+export async function unlinkWallet(req, res) {
+  const userId = req.user._id;
+
+  await Wallet.findOneAndDelete({ userId });
+
+  return res.json({
+    ok: true,
+    message: "Wallet unlinked from this account.",
   });
 }
