@@ -14,6 +14,17 @@ export default function Register() {
   async function onSubmit(e) {
     e.preventDefault();
     setError("");
+
+    if (!email || !username || !password) {
+      setError("Email, username, and password are required.");
+      return;
+    }
+
+    if (username.trim().length < 3) {
+      setError("Username must be at least 3 characters.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -59,13 +70,14 @@ export default function Register() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700">
-            Username (optional)
+            Username
           </label>
           <input
             className="mt-1 w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             type="text"
+            required
             placeholder="yourname"
           />
         </div>
