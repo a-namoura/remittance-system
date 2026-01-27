@@ -3,7 +3,6 @@ import { protect } from "../middleware/authMiddleware.js";
 
 export const userRouter = express.Router();
 
-// backend/src/routes/userRoutes.js
 userRouter.get("/me", protect, (req, res) => {
   res.json({
     ok: true,
