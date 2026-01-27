@@ -13,104 +13,125 @@ function signToken(userId) {
 export async function register(req, res) {
   const { email, password, username } = req.body;
 
-  if (!email || !password) {
-    res.status(400);
-    throw new Error("Email and password are required");
+  if (!email || !password || !username) {
+    return res
+      .status(400)
+      .json({ message: "Email, username, and password are required" });
   }
 
-  const existing = await User.findOne({ email: email.toLowerCase() });
-  if (existing) {
-    res.status(409);
-    throw new Error("Email already in use");
+  const normalizedEmail = String(email).toLowerCase().trim();
+  const normalizedUsername = String(username).trim();
+
+  if (normalizedUsername.length < 3) {
+    return res
+      .status(400)
+      .json({ message: "Username must be at least 3 characters" });
+  }
+
+  if (normalizedUsername.length > 30) {
+    return res
+      .status(400)
+      .json({ message: "Username must be at most 30 characters" });
   }
 
   if (password.length < 8) {
-    res.status(400);
-    throw new Error("Password must be at least 8 characters");
+    return res
+      .status(400)
+      .json({ message: "Password must be at least 8 characters" });
+  }
+
+  const existingEmail = await User.findOne({ email: normalizedEmail });
+  if (existingEmail) {
+    return res.status(409).json({ message: "Email already in use" });
+  }
+
+  const existingUsername = await User.findOne({ username: normalizedUsername });
+  if (existingUsername) {
+    return res.status(409).json({ message: "Username already in use" });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
 
   const user = await User.create({
-    email,
-    username,
+    email: normalizedEmail,
+    username: normalizedUsername,
     passwordHash,
   });
 
+  try {
+    await logAudit({
+      user,
+      action: "REGISTER",
+      metadata: { email: user.email, username: user.username },
+      req,
+    });
+  } catch (err) {
+    console.error("Failed to write REGISTER audit log:", err.message);
+  }
+
   const token = signToken(user._id);
 
-  await logAudit({
-    user,
-    action: "REGISTER",
-    metadata: {
-      email: user.email,
-      username: user.username || null,
-    },
-    req,
-  });
-
-  res.status(201).json({
-    message: "User registered",
-    user: {
-      id: user._id,
-      email: user.email,
-      username: user.username,
-      role: user.role,
-    },
-    token,
-  });
+  res.status(201).json({ token });
 }
 
 export async function login(req, res) {
-  const { email, password } = req.body;
+  const { identifier, email, username, password } = req.body;
 
-  if (!email || !password) {
-    res.status(400);
-    throw new Error("Email and password are required");
+  if (!password || (!identifier && !email && !username)) {
+    return res.status(400).json({
+      message: "Identifier (email or username) and password are required",
+    });
   }
 
-  const user = await User.findOne({ email: email.toLowerCase() }).select("+passwordHash");
+  // Support old clients that send `email` or `username`,
+  // and new ones that send `identifier`
+  let rawIdentifier = identifier || email || username;
+
+  rawIdentifier = String(rawIdentifier).trim();
+  const isEmail = rawIdentifier.includes("@");
+
+  let query;
+  if (isEmail) {
+    query = { email: rawIdentifier.toLowerCase() };
+  } else {
+    query = { username: rawIdentifier };
+  }
+
+  const user = await User.findOne(query).select("+passwordHash");
+
   if (!user) {
-    res.status(401);
-    throw new Error("Invalid email or password");
+    return res.status(401).json({ message: "Invalid credentials" });
   }
 
   if (user.isDisabled) {
-    res.status(403);
-    throw new Error("Account is disabled");
+    return res
+      .status(403)
+      .json({ message: "This account has been disabled" });
   }
 
-  const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) {
-    res.status(401);
-    throw new Error("Invalid email or password");
+  const passwordOk = await bcrypt.compare(password, user.passwordHash);
+  if (!passwordOk) {
+    return res.status(401).json({ message: "Invalid credentials" });
   }
 
   const token = signToken(user._id);
 
-  await logAudit({
-    user,
-    action: "LOGIN",
-    metadata: {
-      email: user.email,
-    },
-    req,
-  });
+  try {
+    await logAudit({
+      user,
+      action: "LOGIN",
+      metadata: { loginWith: isEmail ? "email" : "username" },
+      req,
+    });
+  } catch (err) {
+    console.error("Failed to write LOGIN audit log:", err.message);
+  }
 
-  res.json({
-    message: "Login successful",
-    user: {
-      id: user._id,
-      email: user.email,
-      username: user.username,
-      role: user.role,
-    },
-    token,
-  });
+  res.json({ token });
 }
 
 export async function logout(req, res) {
-  const user = req.user || null;
+  const user = req.user;
 
   if (user) {
     try {
