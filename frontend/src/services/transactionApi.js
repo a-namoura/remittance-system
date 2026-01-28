@@ -21,3 +21,12 @@ export async function getMyTransactions({
 
   return apiRequest(path, { token });
 }
+
+export async function getTransactionById({ token, id }) {
+  if (!id) {
+    throw new Error("Transaction id is required");
+  }
+
+  const path = `/api/transactions/${id}`;
+  return apiRequest(path, { token });
+}
