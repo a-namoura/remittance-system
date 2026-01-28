@@ -8,6 +8,7 @@ import SendMoney from "./pages/SendMoney.jsx";
 import Transactions from "./pages/Transactions.jsx";
 import Admin from "./pages/Admin.jsx";
 import AdminAuditLogs from "./pages/AdminAuditLogs.jsx";
+import TransactionDetails from "./pages/TransactionDetails.jsx";
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
         <Route path="/send" element={<SendMoney />} />
         <Route path="/transactions" element={<Transactions />} />
+        <Route path="/transactions/:id" element={<TransactionDetails />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/audit-logs" element={<AdminAuditLogs />} />
       </Routes>
