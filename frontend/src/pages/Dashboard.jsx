@@ -98,7 +98,7 @@ export default function Dashboard() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">
-          Welcome{me ? `, ${me.username || me.email}` : ""} 👋
+          Welcome{me ? `, ${me.username}` : ""} 👋
         </h1>
         <p className="text-sm text-gray-600 mt-1">
           View your account status, link your wallet, and track recent
