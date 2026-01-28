@@ -115,7 +115,7 @@ export default function Navbar() {
               )}
 
               <span className="hidden sm:inline text-xs text-gray-500">
-                {me.email}
+                {me.username}
               </span>
 
               <button
