@@ -7,6 +7,7 @@ export async function getMyTransactions({
   status,
   from,
   to,
+  view, // "all" | "sent" | "received"
 }) {
   const params = new URLSearchParams();
 
@@ -15,6 +16,7 @@ export async function getMyTransactions({
   if (status) params.set("status", status);
   if (from) params.set("from", from);
   if (to) params.set("to", to);
+  if (view && view !== "all") params.set("view", view);
 
   const qs = params.toString();
   const path = qs ? `/api/transactions/my?${qs}` : "/api/transactions/my";
