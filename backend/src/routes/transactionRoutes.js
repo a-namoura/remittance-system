@@ -260,3 +260,59 @@ transactionRouter.get("/my", protect, async (req, res, next) => {
     next(err);
   }
 });
+
+// GET /api/transactions/:id
+transactionRouter.get("/:id", protect, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const tx = await Transaction.findById(id).lean();
+    if (!tx) {
+      res.status(404);
+      throw new Error("Transaction not found.");
+    }
+
+    const userId = req.user._id.toString();
+    const isAdmin = req.user.role === "admin";
+
+    const involved =
+      (tx.senderUserId && tx.senderUserId.toString() === userId) ||
+      (tx.receiverUserId && tx.receiverUserId.toString() === userId);
+
+    if (!isAdmin && !involved) {
+      res.status(403);
+      throw new Error("You are not allowed to view this transaction.");
+    }
+
+    // Optional fiat conversion, like in /my
+    let rateUsdPerEth = null;
+    let fiatAmountUsd = null;
+
+    try {
+      rateUsdPerEth = getUsdPerEthRate();
+      fiatAmountUsd = convertEthToUsd(tx.amount, rateUsdPerEth);
+    } catch {
+      // FX not configured – keep fiat fields null
+    }
+
+    res.json({
+      ok: true,
+      transaction: {
+        id: tx._id,
+        senderWallet: tx.senderWallet,
+        receiverWallet: tx.receiverWallet,
+        amount: tx.amount,
+        status: tx.status,
+        txHash: tx.txHash || null,
+        type: tx.type || null,
+        createdAt: tx.createdAt,
+        updatedAt: tx.updatedAt,
+        fiatAmountUsd,
+        fiatCurrency: rateUsdPerEth ? "USD" : null,
+        rateUsdPerEth,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
