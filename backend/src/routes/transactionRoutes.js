@@ -3,7 +3,6 @@ import { protect } from "../middleware/authMiddleware.js";
 import { sendRemittance, getEthBalance } from "../blockchain/remittanceClient.js";
 import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
-import { User } from "../models/User.js";
 import { getUsdPerEthRate, convertEthToUsd } from "../utils/fiat.js";
 import { logAudit } from "../utils/audit.js";
 
@@ -14,172 +13,100 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
   let txDoc;
 
   try {
-    const { receiver, amountEth } = req.body;
+    const { receiverWallet, amountEth } = req.body;
 
-    if (!receiver || !amountEth) {
+    if (!receiverWallet || !amountEth) {
       res.status(400);
-      throw new Error("receiver and amountEth are required");
+      throw new Error("receiverWallet and amountEth are required.");
     }
 
-    // 1) Find sender wallet from DB (linked + verified wallet)
-    const senderWalletDoc = await Wallet.findOne({ userId: req.user._id }).lean();
-
-    if (!senderWalletDoc?.address) {
+    const walletDoc = await Wallet.findOne({ userId: req.user._id });
+    if (!walletDoc || !walletDoc.isVerified) {
       res.status(400);
-      throw new Error("No linked wallet found. Please link your wallet first.");
+      throw new Error("You must link and verify a wallet before sending.");
     }
 
-    if (!senderWalletDoc.isVerified) {
-      res.status(400);
-      throw new Error("Wallet is not verified. Please verify ownership first.");
-    }
-
-    const senderWallet = String(senderWalletDoc.address).toLowerCase().trim();
-
-    // 2) Resolve receiver: wallet address OR registered user by email
-    let receiverWallet;
-    let receiverUserId = null;
-
-    // If it looks like an EVM address (0x + 40 hex chars)
-    if (receiver.startsWith("0x") && receiver.length === 42) {
-      receiverWallet = receiver.toLowerCase().trim();
-    } else {
-      // Treat as email of a registered user
-      const receiverUser = await User.findOne({ email: receiver }).lean();
-
-      if (!receiverUser) {
-        res.status(400);
-        throw new Error("Recipient user not found.");
-      }
-
-      const receiverWalletDoc = await Wallet.findOne({
-        userId: receiverUser._id,
-        isVerified: true,
-      }).lean();
-
-      if (!receiverWalletDoc) {
-        res.status(400);
-        throw new Error("Recipient does not have a verified wallet.");
-      }
-
-      receiverWallet = String(receiverWalletDoc.address).toLowerCase().trim();
-      receiverUserId = receiverUser._id;
-    }
-
-    // 2.5) Check sender balance before sending
-    const senderBalance = await getEthBalance(senderWallet);
-
-    if (Number(amountEth) <= 0) {
-      res.status(400);
-      throw new Error("Amount must be greater than zero.");
-    }
-
-    if (senderBalance < Number(amountEth)) {
-      res.status(400);
-      throw new Error(
-        `Insufficient funds. Available: ${senderBalance} (on BSC testnet).`
-      );
-    }
-
-    // 3) Create tx record as pending (using your schema)
+    // Create DB record first with pending status
     txDoc = await Transaction.create({
       senderUserId: req.user._id,
-      receiverUserId,
-      senderWallet,
+      senderWallet: walletDoc.address,
       receiverWallet,
       amount: Number(amountEth),
       status: "pending",
-      type: "sent",
     });
 
-    // 4) Send on-chain transaction (with safe error handling)
-    let chainResult;
+    // Call blockchain
+    const result = await sendRemittance(receiverWallet, amountEth);
+
+    // Update DB with success and tx hash
+    txDoc.status = "success";
+    txDoc.txHash = result.txHash;
+    await txDoc.save();
+
     try {
-      chainResult = await sendRemittance(receiverWallet, amountEth);
-
-      const txHash =
-        chainResult?.txHash ||
-        chainResult?.hash ||
-        chainResult?.transactionHash;
-
-      if (!txHash) {
-        throw new Error("Blockchain transaction did not return a hash.");
-      }
-
-      txDoc.status = "success";
-      txDoc.txHash = txHash;
-      await txDoc.save();
-
-      // 5) Fiat conversion (best-effort)
-      let rateUsdPerEth = null;
-      let fiatAmountUsd = null;
-      try {
-        rateUsdPerEth = getUsdPerEthRate();
-        fiatAmountUsd = convertEthToUsd(txDoc.amount, rateUsdPerEth);
-      } catch {
-        // if fx config missing, leave them null – don't break the tx
-      }
-
       await logAudit({
         user: req.user,
         action: "SEND_REMITTANCE",
         metadata: {
-          amountEth: txDoc.amount,
-          receiverWallet: txDoc.receiverWallet,
-          receiverUserId: receiverUserId || null,
-          txHash: txDoc.txHash || null,
-        },
-        req,
-      });
-
-      return res.status(201).json({
-        message: "Remittance transaction submitted",
-        tx: {
-          id: txDoc._id,
-          senderWallet: txDoc.senderWallet,
-          receiverWallet: txDoc.receiverWallet,
-          amount: txDoc.amount,
-          status: txDoc.status,
-          txHash: txDoc.txHash || null,
-          createdAt: txDoc.createdAt,
-          fiatAmountUsd,
-          fiatCurrency: rateUsdPerEth ? "USD" : null,
-          rateUsdPerEth,
-        },
-        chain: chainResult,
-      });
-    } catch (chainError) {
-      if (txDoc) {
-        txDoc.status = "failed";
-        await txDoc.save();
-      }
-
-      await logAudit({
-        user: req.user,
-        action: "SEND_REMITTANCE_FAILED",
-        metadata: {
-          receiver,
+          txId: txDoc._id.toString(),
           amountEth,
-          error: chainError.message,
+          senderWallet: walletDoc.address,
+          receiverWallet,
+          txHash: result.txHash,
         },
         req,
       });
-
-      res.status(500);
-      throw new Error(chainError.message || "Blockchain transaction failed.");
+    } catch (err) {
+      console.error("Failed to write SEND_REMITTANCE audit log:", err.message);
     }
+
+    res.status(201).json({
+      ok: true,
+      transaction: {
+        id: txDoc._id,
+        status: txDoc.status,
+        txHash: txDoc.txHash,
+      },
+    });
+  } catch (err) {
+    // If blockchain call failed, mark the transaction as failed
+    if (txDoc) {
+      txDoc.status = "failed";
+      await txDoc.save().catch(() => {});
+    }
+    next(err);
+  }
+});
+
+// GET /api/transactions/balance?wallet=0x...
+transactionRouter.get("/balance", protect, async (req, res, next) => {
+  try {
+    const { wallet } = req.query;
+    if (!wallet) {
+      res.status(400);
+      throw new Error("wallet query parameter is required");
+    }
+
+    const balance = await getEthBalance(wallet);
+
+    res.json({
+      ok: true,
+      wallet,
+      balance,
+    });
   } catch (err) {
     next(err);
   }
 });
 
-// GET /api/transactions/my?limit=&page=&status=&from=&to=
+// GET /api/transactions/my
 transactionRouter.get("/my", protect, async (req, res, next) => {
   try {
     const {
       status,
       from,
       to,
+      view = "all",
       page = "1",
       limit = "10",
     } = req.query;
@@ -187,7 +114,19 @@ transactionRouter.get("/my", protect, async (req, res, next) => {
     const numericLimit = Math.min(parseInt(limit, 10) || 10, 50);
     const numericPage = Math.max(parseInt(page, 10) || 1, 1);
 
-    const query = { senderUserId: req.user._id };
+    const userIdStr = req.user._id.toString();
+
+    // Direction filter
+    let query;
+    if (view === "sent") {
+      query = { senderUserId: req.user._id };
+    } else if (view === "received") {
+      query = { receiverUserId: req.user._id };
+    } else {
+      query = {
+        $or: [{ senderUserId: req.user._id }, { receiverUserId: req.user._id }],
+      };
+    }
 
     // Optional status filter
     const allowedStatuses = ["pending", "success", "failed"];
@@ -211,7 +150,7 @@ transactionRouter.get("/my", protect, async (req, res, next) => {
       }
     }
 
-    // Try to load FX rate once
+    // Try to load FX rate once (uses REM_RATE_USD_PER_ETH)
     let rateUsdPerEth = null;
     try {
       rateUsdPerEth = getUsdPerEthRate();
@@ -228,33 +167,44 @@ transactionRouter.get("/my", protect, async (req, res, next) => {
       Transaction.countDocuments(query),
     ]);
 
+    const transactions = txs.map((t) => {
+      const isSender =
+        t.senderUserId &&
+        t.senderUserId.toString &&
+        t.senderUserId.toString() === userIdStr;
+
+      const direction = isSender ? "sent" : "received";
+
+      let fiatAmountUsd = null;
+      if (rateUsdPerEth != null) {
+        try {
+          fiatAmountUsd = convertEthToUsd(t.amount, rateUsdPerEth);
+        } catch {
+          fiatAmountUsd = null;
+        }
+      }
+
+      return {
+        id: t._id,
+        senderWallet: t.senderWallet,
+        receiverWallet: t.receiverWallet,
+        amount: t.amount,
+        status: t.status,
+        txHash: t.txHash || null,
+        createdAt: t.createdAt,
+        direction,
+        fiatAmountUsd,
+        fiatCurrency: rateUsdPerEth ? "USD" : null,
+        rateUsdPerEth,
+      };
+    });
+
     res.json({
       ok: true,
       total,
       page: numericPage,
       limit: numericLimit,
-      transactions: txs.map((t) => {
-        let fiatAmountUsd = null;
-        if (rateUsdPerEth != null) {
-          try {
-            fiatAmountUsd = convertEthToUsd(t.amount, rateUsdPerEth);
-          } catch {
-            fiatAmountUsd = null;
-          }
-        }
-
-        return {
-          id: t._id,
-          receiverWallet: t.receiverWallet,
-          amount: t.amount,
-          status: t.status,
-          txHash: t.txHash || null,
-          createdAt: t.createdAt,
-          fiatAmountUsd,
-          fiatCurrency: rateUsdPerEth ? "USD" : null,
-          rateUsdPerEth,
-        };
-      }),
+      transactions,
     });
   } catch (err) {
     next(err);
@@ -284,15 +234,14 @@ transactionRouter.get("/:id", protect, async (req, res, next) => {
       throw new Error("You are not allowed to view this transaction.");
     }
 
-    // Optional fiat conversion, like in /my
     let rateUsdPerEth = null;
     let fiatAmountUsd = null;
-
     try {
       rateUsdPerEth = getUsdPerEthRate();
       fiatAmountUsd = convertEthToUsd(tx.amount, rateUsdPerEth);
     } catch {
-      // FX not configured – keep fiat fields null
+      rateUsdPerEth = null;
+      fiatAmountUsd = null;
     }
 
     res.json({
