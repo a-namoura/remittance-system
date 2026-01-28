@@ -101,8 +101,7 @@ export default function Dashboard() {
           Welcome{me ? `, ${me.username}` : ""} 👋
         </h1>
         <p className="text-sm text-gray-600 mt-1">
-          View your account status, link your wallet, and track recent
-          remittances.
+          View your account status, link your wallet, and track recent transactions.
         </p>
       </div>
 
@@ -121,7 +120,7 @@ export default function Dashboard() {
                 Account Status
               </h2>
               <p className="text-xs text-gray-500 mt-1">
-                Basic identity and readiness to send remittances.
+                Basic identity and readiness to send transactions.
               </p>
             </div>
 
@@ -176,7 +175,7 @@ export default function Dashboard() {
 
           <div className="mt-4 flex items-center justify-between">
             <div className="text-xs text-gray-500">
-              To send a remittance, you must have a linked wallet with funds.
+              To send a transaction, you must have a linked wallet with funds.
             </div>
             <a
               href={walletLinked ? "/send" : "#"}
@@ -239,7 +238,7 @@ export default function Dashboard() {
 
           {!walletLinked && (
             <p className="text-xs text-gray-600 mt-3">
-              Link your wallet above to unlock sending remittances and tracking
+              Link your wallet above to unlock sending transaction and tracking
               balances.
             </p>
           )}
@@ -254,7 +253,7 @@ export default function Dashboard() {
               Recent Transactions
             </h2>
             <p className="text-xs text-gray-500 mt-1">
-              A quick view of your last remittances.
+              A quick view of your last transactions.
             </p>
           </div>
         </div>
@@ -265,7 +264,7 @@ export default function Dashboard() {
 
         {transactions.length === 0 ? (
           <p className="text-sm text-gray-600">
-            No transactions yet. Once you send a remittance, it will appear
+            No transactions yet. Once you send a transaction, it will appear
             here.
           </p>
         ) : (
