@@ -83,8 +83,6 @@ export async function login(req, res) {
     });
   }
 
-  // Support old clients that send `email` or `username`,
-  // and new ones that send `identifier`
   let rawIdentifier = identifier || email || username;
 
   rawIdentifier = String(rawIdentifier).trim();
