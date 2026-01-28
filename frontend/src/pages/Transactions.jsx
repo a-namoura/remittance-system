@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getMyTransactions } from "../services/transactionApi.js";
 import BackButton from "../components/BackButton.jsx";
 
@@ -17,6 +18,7 @@ export default function Transactions() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const limit = 10;
 
@@ -154,7 +156,8 @@ export default function Transactions() {
             {transactions.map((t) => (
               <div
                 key={t.id}
-                className="py-3 flex items-start justify-between gap-4"
+                className="py-3 flex items-start justify-between gap-4 hover:bg-gray-50 cursor-pointer"
+                onClick={() => navigate(`/transactions/${t.id}`)}
               >
                 <div>
                   <div className="text-sm font-medium text-gray-900">
