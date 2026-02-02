@@ -22,8 +22,8 @@ export default function SendMoney() {
 
   // Modal state for "Add new beneficiary"
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalLabel, setModalLabel] = useState("");      // Name saved by the user
-  const [modalUsername, setModalUsername] = useState(""); // Beneficiary username
+  const [modalLabel, setModalLabel] = useState("");
+  const [modalUsername, setModalUsername] = useState("");
   const [modalWallet, setModalWallet] = useState("");
   const [modalNotes, setModalNotes] = useState("");
   const [modalError, setModalError] = useState("");
