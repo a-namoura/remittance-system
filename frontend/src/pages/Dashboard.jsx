@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
+import { Link } from "react-router-dom";
 import { apiRequest } from "../services/api.js";
 import ConnectWalletButton from "../components/ConnectWalletButton.jsx";
 import { getMyTransactions } from "../services/transactionApi.js";
@@ -98,7 +99,7 @@ export default function Dashboard() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">
-          Welcome{me ? `, ${me.username}` : ""} 👋
+          Welcome{me ? `, ${me.username}` : ""}
         </h1>
         <p className="text-sm text-gray-600 mt-1">
           View your account status, link your wallet, and track recent transactions.
@@ -138,13 +139,6 @@ export default function Dashboard() {
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-gray-600">Role:</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-                {me?.role || "user"}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
               <span className="text-gray-600">Wallet:</span>
               <span
                 className={`text-xs px-3 py-1 rounded-full ${badgeClass(
@@ -177,20 +171,20 @@ export default function Dashboard() {
             <div className="text-xs text-gray-500">
               To send a transaction, you must have a linked wallet with funds.
             </div>
-            <a
-              href={walletLinked ? "/send" : "#"}
+            <Link
+              to={walletLinked ? "/send" : "#"}
               className={`
                 inline-flex items-center justify-center px-3 py-1.5 rounded-md
                 text-xs font-semibold
                 ${
                   walletLinked
                     ? "bg-blue-600 text-white hover:bg-blue-700"
-                    : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                    : "bg-gray-200 text-gray-500 cursor-not-allowed pointer-events-none"
                 }
               `}
             >
               {walletLinked ? "Send Money" : "Complete wallet setup"}
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -271,9 +265,10 @@ export default function Dashboard() {
           <>
             <div className="divide-y">
               {transactions.map((t) => (
-                <div
+                <Link
                   key={t.id}
-                  className="py-3 flex items-start justify-between gap-4"
+                  to={`/transactions/${t.id}`}   // 🔹 now clickable
+                  className="py-3 flex items-start justify-between gap-4 hover:bg-gray-50 rounded-lg px-2 -mx-2 cursor-pointer"
                 >
                   <div>
                     <div className="text-sm font-medium text-gray-900">
@@ -305,17 +300,17 @@ export default function Dashboard() {
                   >
                     {t.status}
                   </span>
-                </div>
+                </Link>
               ))}
             </div>
 
             <div className="mt-3 text-right">
-              <a
-                href="/transactions"
+              <Link
+                to="/transactions"
                 className="text-xs text-blue-600 hover:underline"
               >
                 View all transactions
-              </a>
+              </Link>
             </div>
           </>
         )}
