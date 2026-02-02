@@ -19,6 +19,9 @@ const walletSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    verifiedAt: {
+      type: Date,
+    },
   },
   { timestamps: true }
 );
