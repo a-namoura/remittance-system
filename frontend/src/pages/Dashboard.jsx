@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import { apiRequest } from "../services/api.js";
 import ConnectWalletButton from "../components/ConnectWalletButton.jsx";
 import { getMyTransactions } from "../services/transactionApi.js";
+import { getExplorerTxUrl } from "../utils/explorer.js";
+import { formatDateTime } from "../utils/datetime.js";
 
 function badgeClass(ok) {
   return ok ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700";
@@ -135,7 +137,7 @@ export default function Dashboard() {
           <div className="mt-4 space-y-2 text-sm text-gray-800">
             <div>
               <span className="text-gray-600">Signed in as:</span>{" "}
-              <span className="font-medium">{me?.email}</span>
+              <span className="font-medium">{me?.username}</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -264,44 +266,67 @@ export default function Dashboard() {
         ) : (
           <>
             <div className="divide-y">
-              {transactions.map((t) => (
-                <Link
-                  key={t.id}
-                  to={`/transactions/${t.id}`}   // 🔹 now clickable
-                  className="py-3 flex items-start justify-between gap-4 hover:bg-gray-50 rounded-lg px-2 -mx-2 cursor-pointer"
-                >
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">
-                      {t.amount} ETH
-                      {typeof t.fiatAmountUsd === "number" && (
-                        <span className="text-xs text-gray-500 ml-1">
-                          (~ {t.fiatAmountUsd.toFixed(2)}{" "}
-                          {t.fiatCurrency || "USD"})
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-600 font-mono mt-1">
-                      To: {t.receiverWallet}
-                    </div>
-                    {t.txHash && (
-                      <div className="text-xs text-gray-500 font-mono mt-1">
-                        Tx: {t.txHash.slice(0, 10)}…{t.txHash.slice(-8)}
-                      </div>
-                    )}
-                    <div className="text-xs text-gray-500 mt-1">
-                      {new Date(t.createdAt).toLocaleString()}
-                    </div>
-                  </div>
+              {transactions.map((t) => {
+                const explorerUrl = getExplorerTxUrl(t.txHash);
 
-                  <span
-                    className={`text-xs px-3 py-1 rounded-full ${statusBadgeClasses(
-                      t.status
-                    )}`}
+                return (
+                  <Link
+                    key={t.id}
+                    to={`/transactions/${t.id}`}
+                    className="py-3 flex items-start justify-between gap-4 hover:bg-gray-50 rounded-lg px-2 -mx-2 cursor-pointer"
                   >
-                    {t.status}
-                  </span>
-                </Link>
-              ))}
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {t.amount} ETH
+                        {typeof t.fiatAmountUsd === "number" && (
+                          <span className="text-xs text-gray-500 ml-1">
+                            (~ {t.fiatAmountUsd.toFixed(2)}{" "}
+                            {t.fiatCurrency || "USD"})
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-600 font-mono mt-1">
+                        To: {t.receiverWallet}
+                      </div>
+                      {t.txHash && (
+                        <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                          <div className="font-mono">
+                            Tx: {t.txHash.slice(0, 10)}…
+                            {t.txHash.slice(-8)}
+                          </div>
+                          {explorerUrl && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(
+                                  explorerUrl,
+                                  "_blank",
+                                  "noreferrer"
+                                );
+                              }}
+                              className="text-[11px] text-blue-600 hover:underline"
+                            >
+                              View on BscScan
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      <div className="text-xs text-gray-500 mt-1">
+                        {formatDateTime(t.createdAt) || "—"}
+                      </div>
+                    </div>
+
+                    <span
+                      className={`text-xs px-3 py-1 rounded-full ${statusBadgeClasses(
+                        t.status
+                      )}`}
+                    >
+                      {t.status}
+                    </span>
+                  </Link>
+                );
+              })}
             </div>
 
             <div className="mt-3 text-right">
