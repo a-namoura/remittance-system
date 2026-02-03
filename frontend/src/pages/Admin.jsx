@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiRequest } from "../services/api.js";
+import { getExplorerTxUrl } from "../utils/explorer.js";
+import { formatDateOnly, formatDateTime } from "../utils/datetime.js";
 
 function StatCard({ label, value, sub }) {
   return (
@@ -85,7 +87,7 @@ export default function Admin() {
     const verb = newDisabled ? "disable" : "enable";
 
     const confirmed = window.confirm(
-      `Are you sure you want to ${verb} this user?\n\n${user.email}`
+      `Are you sure you want to ${verb} this user?\n\n${user.username}`
     );
     if (!confirmed) return;
 
@@ -107,7 +109,6 @@ export default function Admin() {
         prev.map((u) => (u.id === updatedUser.id ? updatedUser : u))
       );
 
-      // Optional: keep summary counts in sync
       if (summary) {
         setSummary((prev) => {
           if (!prev) return prev;
@@ -262,9 +263,7 @@ export default function Admin() {
                       </span>
                     </td>
                     <td className="px-4 py-2 text-xs text-gray-500">
-                      {u.createdAt
-                        ? new Date(u.createdAt).toLocaleDateString()
-                        : "—"}
+                      {formatDateOnly(u.createdAt) || "—"}
                     </td>
                     <td className="px-4 py-2 text-xs text-right">
                       <button
@@ -328,60 +327,78 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {transactions.map((t) => (
-                  <tr
-                    key={t.id}
-                    className="border-t border-gray-100 hover:bg-gray-50/60"
-                  >
-                    <td className="px-4 py-2 text-xs text-gray-600">
-                      {t.createdAt
-                        ? new Date(t.createdAt).toLocaleString()
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-2 text-xs">
-                      <div className="flex flex-col">
-                        <span className="font-mono text-[11px]">
-                          {t.senderWallet || "—"}
-                        </span>
-                        {t.senderEmail && (
-                          <span className="text-[11px] text-gray-500">
-                            {t.senderEmail}
+                {transactions.map((t) => {
+                  const explorerUrl = getExplorerTxUrl(t.txHash);
+
+                  return (
+                    <tr
+                      key={t.id}
+                      className="border-t border-gray-100 hover:bg-gray-50/60"
+                    >
+                      <td className="px-4 py-2 text-xs text-gray-600">
+                        {formatDateTime(t.createdAt) || "—"}
+                      </td>
+                      <td className="px-4 py-2 text-xs">
+                        <div className="flex flex-col">
+                          <span className="font-mono text-[11px]">
+                            {t.senderWallet || "—"}
                           </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-xs">
-                      <div className="flex flex-col">
-                        <span className="font-mono text-[11px]">
-                          {t.receiverWallet || "—"}
-                        </span>
-                        {t.receiverEmail && (
-                          <span className="text-[11px] text-gray-500">
-                            {t.receiverEmail}
+                          {t.senderEmail && (
+                            <span className="text-[11px] text-gray-500">
+                              {t.senderEmail}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-xs">
+                        <div className="flex flex-col">
+                          <span className="font-mono text-[11px]">
+                            {t.receiverWallet || "—"}
                           </span>
+                          {t.receiverEmail && (
+                            <span className="text-[11px] text-gray-500">
+                              {t.receiverEmail}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-xs font-mono">
+                        {typeof t.amount === "number"
+                          ? t.amount.toFixed(4)
+                          : t.amount}
+                      </td>
+                      <td className="px-4 py-2 text-xs">
+                        <span
+                          className={
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium " +
+                            statusBadgeClasses(t.status)
+                          }
+                        >
+                          {t.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-xs font-mono">
+                        {t.txHash ? (
+                          <div className="space-y-0.5">
+                            <div>{t.txHash.slice(0, 12)}…</div>
+                            {explorerUrl && (
+                              <a
+                                href={explorerUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[10px] text-blue-600 hover:underline"
+                              >
+                                View on BscScan
+                              </a>
+                            )}
+                          </div>
+                        ) : (
+                          "—"
                         )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-xs font-mono">
-                      {typeof t.amount === "number"
-                        ? t.amount.toFixed(4)
-                        : t.amount}
-                    </td>
-                    <td className="px-4 py-2 text-xs">
-                      <span
-                        className={
-                          "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium " +
-                          statusBadgeClasses(t.status)
-                        }
-                      >
-                        {t.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-xs font-mono">
-                      {t.txHash ? t.txHash.slice(0, 12) + "…" : "—"}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
