@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import BackButton from "../components/BackButton.jsx";
 import { getTransactionById } from "../services/transactionApi.js";
+import { getExplorerTxUrl } from "../utils/explorer.js";
+import { formatDateTime } from "../utils/datetime.js";
 
 function statusBadgeClasses(status) {
   if (status === "success") return "bg-green-100 text-green-700";
@@ -47,11 +49,6 @@ export default function TransactionDetails() {
     }
   }, [id]);
 
-  function formatDate(value) {
-    if (!value) return "—";
-    return new Date(value).toLocaleString();
-  }
-
   function formatEth(value) {
     if (typeof value !== "number") return "—";
     return `${value} ETH`;
@@ -61,6 +58,8 @@ export default function TransactionDetails() {
     if (typeof value !== "number") return "—";
     return `${value.toFixed(2)} ${currency || "USD"}`;
   }
+
+  const explorerUrl = tx ? getExplorerTxUrl(tx.txHash) : null;
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
@@ -144,8 +143,20 @@ export default function TransactionDetails() {
           <div className="space-y-1">
             <div className="text-xs text-gray-500">Transaction Hash</div>
             {tx.txHash ? (
-              <div className="font-mono text-xs break-all text-gray-900">
-                {tx.txHash}
+              <div className="space-y-1">
+                <div className="font-mono text-xs break-all text-gray-900">
+                  {tx.txHash}
+                </div>
+                {explorerUrl && (
+                  <a
+                    href={explorerUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    View on BscScan
+                  </a>
+                )}
               </div>
             ) : (
               <div className="text-sm text-gray-500">Not available.</div>
@@ -157,13 +168,13 @@ export default function TransactionDetails() {
             <div className="space-y-1">
               <div className="text-xs text-gray-500">Created at</div>
               <div className="text-sm text-gray-900">
-                {formatDate(tx.createdAt)}
+                {formatDateTime(tx.createdAt) || "—"}
               </div>
             </div>
             <div className="space-y-1">
               <div className="text-xs text-gray-500">Last updated</div>
               <div className="text-sm text-gray-900">
-                {formatDate(tx.updatedAt)}
+                {formatDateTime(tx.updatedAt) || "—"}
               </div>
             </div>
           </div>
