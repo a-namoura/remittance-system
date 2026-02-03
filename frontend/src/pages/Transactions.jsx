@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getMyTransactions } from "../services/transactionApi.js";
 import BackButton from "../components/BackButton.jsx";
+import { getExplorerTxUrl } from "../utils/explorer.js";
+import { formatDateTime } from "../utils/datetime.js";
 
 function statusBadgeClasses(status) {
   if (status === "success") return "bg-green-100 text-green-700";
@@ -173,6 +175,7 @@ export default function Transactions() {
             <div className="divide-y">
               {transactions.map((t) => {
                 const isSent = t.direction === "sent";
+                const explorerUrl = getExplorerTxUrl(t.txHash);
 
                 return (
                   <div
@@ -198,14 +201,32 @@ export default function Transactions() {
                       </div>
 
                       {t.txHash && (
-                        <div className="text-xs text-gray-500 font-mono mt-1">
-                          Tx: {t.txHash.slice(0, 10)}...
-                          {t.txHash.slice(-8)}
+                        <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                          <div className="font-mono">
+                            Tx: {t.txHash.slice(0, 10)}...
+                            {t.txHash.slice(-8)}
+                          </div>
+                          {explorerUrl && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(
+                                  explorerUrl,
+                                  "_blank",
+                                  "noreferrer"
+                                );
+                              }}
+                              className="text-[11px] text-blue-600 hover:underline"
+                            >
+                              View on BscScan
+                            </button>
+                          )}
                         </div>
                       )}
 
                       <div className="text-xs text-gray-500 mt-1">
-                        {new Date(t.createdAt).toLocaleString()}
+                        {formatDateTime(t.createdAt) || "—"}
                       </div>
                     </div>
 
