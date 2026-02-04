@@ -25,12 +25,28 @@ export async function linkWallet(req, res) {
       .json({ message: "Signature does not match address" });
   }
 
-  // One wallet per user for now
+  const userId = req.user._id;
+  const normalizedAddress = address.toLowerCase();
+
+  const existingForAddress = await Wallet.findOne({
+    address: normalizedAddress,
+  });
+
+  if (
+    existingForAddress &&
+    existingForAddress.userId.toString() !== userId.toString()
+  ) {
+    return res.status(409).json({
+      message:
+        "This wallet address is already linked to another account. A wallet can only be linked to one user.",
+    });
+  }
+
   const doc = await Wallet.findOneAndUpdate(
-    { userId: req.user._id },
+    { userId },
     {
-      userId: req.user._id,
-      address: address.toLowerCase(),
+      userId,
+      address: normalizedAddress,
       isVerified: true,
       verifiedAt: new Date(),
     },
