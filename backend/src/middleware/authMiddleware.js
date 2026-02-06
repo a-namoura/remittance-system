@@ -16,11 +16,15 @@ export async function protect(req, res, next) {
 
     const decoded = jwt.verify(token, secret);
 
-    const user = await User.findById(decoded.userId);
+    const user = await User.findById(decoded.userId).select(
+      "+loginCode +loginCodeExpiresAt"
+    );
+
     if (!user) {
       res.status(401);
       return next(new Error("User not found for token"));
     }
+
     if (user.isDisabled) {
       res.status(403);
       return next(new Error("Account is disabled"));
