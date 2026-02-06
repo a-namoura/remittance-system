@@ -40,7 +40,7 @@ export default function Navbar() {
     } finally {
       localStorage.removeItem("token");
       setMe(null);
-      navigate("/login");
+      navigate("/");
     }
   }
 
