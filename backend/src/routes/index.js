@@ -23,7 +23,6 @@ apiRouter.use("/wallet", walletRouter);
 apiRouter.use("/transactions", transactionRouter);
 apiRouter.use("/beneficiaries", beneficiaryRouter);
 
-// Admin-only routes
 apiRouter.use("/admin", protect, requireAdmin, adminRouter);
 
 apiRouter.get("/db-test", async (req, res) => {
