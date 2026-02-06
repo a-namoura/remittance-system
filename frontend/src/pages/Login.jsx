@@ -1,96 +1,137 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiRequest } from "../services/api.js";
 import AuthCard from "../components/AuthCard.jsx";
 
+const STEP_METHOD = "method";
+const STEP_CREDENTIALS = "credentials";
+const STEP_CODE = "code";
+
 export default function Login() {
   const navigate = useNavigate();
-  const [identifier, setIdentifier] = useState(""); // email OR username
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
-  async function onSubmit(e) {
+  const [step, setStep] = useState(STEP_METHOD);
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [pendingToken, setPendingToken] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    localStorage.removeItem("token");
+  }, []);
+
+  useEffect(() => {
+    if (!cooldown) return;
+    const t = setInterval(() => setCooldown((c) => c - 1), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
+
+  async function submitCredentials(e) {
     e.preventDefault();
     setError("");
 
-    if (!identifier || !password) {
-      setError("Email/username and password are required.");
-      return;
-    }
-
-    setLoading(true);
-
     try {
-      const data = await apiRequest("/api/auth/login", {
+      setLoading(true);
+      const res = await apiRequest("/api/auth/login", {
         method: "POST",
         body: { identifier, password },
       });
 
-      localStorage.setItem("token", data.token);
-      navigate("/dashboard");
-    } catch (err) {
-      setError(err.message || "Login failed.");
+      setPendingToken(res.token);
+      setStep(STEP_CODE);
+      setCooldown(30);
+    } catch (e) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
   }
 
+  async function submitCode(e) {
+    e.preventDefault();
+    setError("");
+
+    try {
+      await apiRequest("/api/auth/verify-code", {
+        method: "POST",
+        token: pendingToken,
+        body: { code },
+      });
+
+      localStorage.setItem("token", pendingToken);
+      navigate("/dashboard");
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function resend() {
+    if (cooldown > 0) return;
+    await apiRequest("/api/auth/resend-code", {
+      method: "POST",
+      token: pendingToken,
+    });
+    setCooldown(30);
+  }
+
   return (
-    <AuthCard
-      title="Sign in"
-      subtitle="Access your remittance dashboard and linked wallet."
-    >
-      {error && (
-        <div className="mb-4 p-3 rounded bg-red-100 text-red-700 text-sm">
-          {error}
-        </div>
+    <AuthCard title="Login" onBack={() => navigate("/")}>
+      {error && <div className="text-red-600 text-sm mb-3">{error}</div>}
+
+      {step === STEP_METHOD && (
+        <button
+          className="w-full bg-purple-600 text-white rounded-full py-2"
+          onClick={() => setStep(STEP_CREDENTIALS)}
+        >
+          Continue with email
+        </button>
       )}
 
-      <form className="space-y-4" onSubmit={onSubmit}>
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Email or username
-          </label>
+      {step === STEP_CREDENTIALS && (
+        <form onSubmit={submitCredentials} className="space-y-4">
           <input
-            className="mt-1 w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Email or username"
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
-            type="text"
-            required
-            placeholder="you@example.com or yourname"
+            className="w-full border rounded-xl px-3 py-2"
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Password
-          </label>
           <input
-            className="mt-1 w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Password"
+            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            type="password"
-            required
-            placeholder="••••••••"
+            className="w-full border rounded-xl px-3 py-2"
           />
-        </div>
+          <button className="w-full bg-purple-600 text-white rounded-full py-2">
+            Continue
+          </button>
+        </form>
+      )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 text-white py-2 rounded-md font-semibold hover:bg-blue-700 disabled:opacity-60"
-        >
-          {loading ? "Signing in..." : "Sign in"}
-        </button>
-
-        <p className="text-sm text-gray-600 text-center">
-          Don&apos;t have an account?{" "}
-          <a href="/register" className="text-blue-600 hover:underline">
-            Create one
-          </a>
-        </p>
-      </form>
+      {step === STEP_CODE && (
+        <form onSubmit={submitCode} className="space-y-4">
+          <input
+            placeholder="••••••"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className="w-full border rounded-xl px-3 py-2 text-center tracking-widest"
+          />
+          <button className="w-full bg-purple-600 text-white rounded-full py-2">
+            Verify & sign in
+          </button>
+          <button
+            type="button"
+            disabled={cooldown > 0}
+            onClick={resend}
+            className="text-sm text-purple-600"
+          >
+            {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
+          </button>
+        </form>
+      )}
     </AuthCard>
   );
 }
