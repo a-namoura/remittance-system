@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiRequest } from "../services/api.js";
 import ConnectWalletButton from "../components/ConnectWalletButton.jsx";
 import { getMyTransactions } from "../services/transactionApi.js";
@@ -18,16 +18,13 @@ function statusBadgeClasses(status) {
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+
   const [me, setMe] = useState(null);
   const [error, setError] = useState("");
 
-  const [walletLinked, setWalletLinked] = useState(() => {
-    return localStorage.getItem("walletConnected") === "1";
-  });
-
-  const [walletAddress, setWalletAddress] = useState(() => {
-    return localStorage.getItem("walletAddress") || "";
-  });
+  const [walletLinked, setWalletLinked] = useState(false);
+  const [walletAddress, setWalletAddress] = useState("");
 
   const [walletBalance, setWalletBalance] = useState(null);
   const [balanceError, setBalanceError] = useState("");
@@ -35,17 +32,34 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState([]);
   const [txError, setTxError] = useState("");
 
-  // Load current user
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
     apiRequest("/api/me", { token })
       .then((data) => setMe(data.user))
-      .catch((err) => setError(err.message));
-  }, []);
+      .catch((err) => {
+        setError(err.message);
+        if (err.status === 401 || err.status === 403) {
+          localStorage.removeItem("token");
+          navigate("/login", { replace: true });
+        }
+      });
+  }, [navigate]);
 
-  // Load recent transactions
+  useEffect(() => {
+    if (!me) return;
+
+    const connectedKey = `walletConnected_${me.id}`;
+    const addressKey = `walletAddress_${me.id}`;
+
+    const storedLinked = localStorage.getItem(connectedKey) === "1";
+    const storedAddress = localStorage.getItem(addressKey) || "";
+
+    setWalletLinked(storedLinked);
+    setWalletAddress(storedAddress);
+  }, [me]);
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;
@@ -55,7 +69,7 @@ export default function Dashboard() {
       .catch((err) => setTxError(err.message));
   }, []);
 
-  // Load on-chain wallet balance when linked
+  // Fetch wallet balance when wallet changes
   useEffect(() => {
     async function fetchBalance() {
       if (!walletLinked || !walletAddress) {
@@ -96,6 +110,9 @@ export default function Dashboard() {
     );
   }
 
+  const connectedKey = me ? `walletConnected_${me.id}` : null;
+  const addressKey = me ? `walletAddress_${me.id}` : null;
+
   return (
     <div className="max-w-6xl mx-auto px-6 py-10 space-y-6">
       {/* Header */}
@@ -135,11 +152,6 @@ export default function Dashboard() {
           </div>
 
           <div className="mt-4 space-y-2 text-sm text-gray-800">
-            <div>
-              <span className="text-gray-600">Signed in as:</span>{" "}
-              <span className="font-medium">{me?.username}</span>
-            </div>
-
             <div className="flex items-center gap-2">
               <span className="text-gray-600">Wallet:</span>
               <span
@@ -219,22 +231,28 @@ export default function Dashboard() {
                 setWalletLinked(true);
                 setWalletAddress(address);
                 setWalletBalance(null);
-                localStorage.setItem("walletConnected", "1");
-                localStorage.setItem("walletAddress", address);
+
+                if (me && connectedKey && addressKey) {
+                  localStorage.setItem(connectedKey, "1");
+                  localStorage.setItem(addressKey, address);
+                }
               }}
               onDisconnected={() => {
                 setWalletLinked(false);
                 setWalletAddress("");
                 setWalletBalance(null);
-                localStorage.removeItem("walletConnected");
-                localStorage.removeItem("walletAddress");
+
+                if (me && connectedKey && addressKey) {
+                  localStorage.removeItem(connectedKey);
+                  localStorage.removeItem(addressKey);
+                }
               }}
             />
           </div>
 
           {!walletLinked && (
             <p className="text-xs text-gray-600 mt-3">
-              Link your wallet above to unlock sending transaction and tracking
+              Link your wallet above to unlock sending transactions and tracking
               balances.
             </p>
           )}
@@ -291,19 +309,14 @@ export default function Dashboard() {
                       {t.txHash && (
                         <div className="text-xs text-gray-500 mt-1 space-y-0.5">
                           <div className="font-mono">
-                            Tx: {t.txHash.slice(0, 10)}…
-                            {t.txHash.slice(-8)}
+                            Tx: {t.txHash.slice(0, 10)}…{t.txHash.slice(-8)}
                           </div>
                           {explorerUrl && (
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                window.open(
-                                  explorerUrl,
-                                  "_blank",
-                                  "noreferrer"
-                                );
+                                window.open(explorerUrl, "_blank", "noreferrer");
                               }}
                               className="text-[11px] text-blue-600 hover:underline"
                             >
