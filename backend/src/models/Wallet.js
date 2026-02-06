@@ -6,7 +6,7 @@ const walletSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      unique: true, // one wallet per user (you can relax later if needed)
+      unique: true,
     },
     address: {
       type: String,
