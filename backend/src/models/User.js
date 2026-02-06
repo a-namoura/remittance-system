@@ -12,7 +12,7 @@ const userSchema = new mongoose.Schema(
     passwordHash: {
       type: String,
       required: true,
-      select: false, // don't return by default
+      select: false,
     },
     username: {
       type: String,
@@ -21,6 +21,57 @@ const userSchema = new mongoose.Schema(
       trim: true,
       minlength: 3,
       maxlength: 30,
+    },
+    registerCode: {
+      type: String,
+      select: false,
+    },
+    registerCodeExpiresAt: {
+      type: Date,
+    },
+    emailVerifiedAt: {
+      type: Date,
+    },
+    loginCode: {
+      type: String,
+      select: false,
+    },
+    loginCodeExpiresAt: {
+      type: Date,
+    },
+    firstName: {
+      type: String,
+      trim: true,
+    },
+    lastName: {
+      type: String,
+      trim: true,
+    },
+    countryOfResidence: {
+      type: String,
+      trim: true,
+    },
+    phoneNumber: {
+      type: String,
+      trim: true,
+    },
+    phoneVerifiedAt: {
+      type: Date,
+    },
+    dateOfBirth: {
+      type: Date,
+    },
+    employmentStatus: {
+      type: String,
+      trim: true,
+    },
+    sourceOfFunds: {
+      type: String,
+      trim: true,
+    },
+    expectedMonthlyVolume: {
+      type: String,
+      trim: true,
     },
     role: {
       type: String,
