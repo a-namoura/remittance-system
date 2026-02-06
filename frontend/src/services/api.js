@@ -1,12 +1,23 @@
-const API_URL = import.meta.env.API_URL || "http://localhost:5000";
+
+const API_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:5000";
 
 export async function apiRequest(path, { method = "GET", body, token } = {}) {
+  const finalToken = token ?? localStorage.getItem("token") ?? null;
+
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  if (finalToken) {
+    headers.Authorization = `Bearer ${finalToken}`;
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
     method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 
