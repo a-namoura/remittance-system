@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
-import { apiRequest } from "../services/api.js";
+import { Link, Navigate } from "react-router-dom";
+import { getCurrentUser } from "../services/authApi.js";
+import { getAuthToken } from "../services/session.js";
 
 export default function AdminRoute({ children }) {
+  const token = getAuthToken();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    async function checkAdmin() {
-      const token = localStorage.getItem("token");
+    let isCancelled = false;
+
+    async function validateAdminRole() {
       if (!token) {
+        if (isCancelled) return;
         setLoading(false);
         setIsAdmin(false);
         setError("");
@@ -21,25 +25,34 @@ export default function AdminRoute({ children }) {
         setLoading(true);
         setError("");
 
-        const data = await apiRequest("/api/me", { token });
-        if (data.user && data.user.role === "admin") {
+        const user = await getCurrentUser({ token });
+        if (isCancelled) return;
+
+        if (user?.role === "admin") {
           setIsAdmin(true);
-        } else {
-          setIsAdmin(false);
-          setError("You do not have permission to view this page.");
+          return;
         }
+
+        setIsAdmin(false);
+        setError("You do not have permission to view this page.");
       } catch (err) {
+        if (isCancelled) return;
         setIsAdmin(false);
         setError(err.message || "Failed to verify permissions.");
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    checkAdmin();
-  }, []);
+    validateAdminRole();
 
-  const token = localStorage.getItem("token");
+    return () => {
+      isCancelled = true;
+    };
+  }, [token]);
+
   if (!token) {
     return <Navigate to="/login" replace />;
   }
@@ -47,7 +60,7 @@ export default function AdminRoute({ children }) {
   if (loading) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-10 text-sm text-gray-600">
-        Checking admin permissions…
+        Checking admin permissions...
       </div>
     );
   }
@@ -59,12 +72,12 @@ export default function AdminRoute({ children }) {
         <p className="text-sm text-gray-600">
           {error || "You do not have permission to view this page."}
         </p>
-        <a
-          href="/dashboard"
+        <Link
+          to="/dashboard"
           className="inline-flex text-sm text-blue-600 hover:underline"
         >
           Go back to dashboard
-        </a>
+        </Link>
       </div>
     );
   }
