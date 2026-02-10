@@ -6,23 +6,19 @@ export default function BackButton({ fallback = "/dashboard" }) {
   function goBack() {
     if (window.history.length > 1) {
       navigate(-1);
-    } else {
-      navigate(fallback);
+      return;
     }
+    navigate(fallback);
   }
 
   return (
     <button
       type="button"
       onClick={goBack}
-      className="
-        inline-flex items-center gap-2
-        text-sm font-medium text-gray-600
-        hover:text-gray-900
-        transition
-      "
+      className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition"
+      aria-label="Go back"
     >
-      <span className="text-lg">←</span>
+      <span className="text-lg">{"<"}</span>
       Back
     </button>
   );
