@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const beneficiarySchema = new mongoose.Schema(
+const friendSchema = new mongoose.Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -35,9 +35,6 @@ const beneficiarySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-beneficiarySchema.index(
-  { userId: 1, name: 1, walletAddress: 1 },
-  { unique: true }
-);
+friendSchema.index({ userId: 1, label: 1 }, { unique: true });
 
-export const Beneficiary = mongoose.model("Beneficiary", beneficiarySchema);
+export const Friend = mongoose.model("Friend", friendSchema);

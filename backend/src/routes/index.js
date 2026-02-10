@@ -9,7 +9,7 @@ import { userRouter } from "./userRoutes.js";
 import { walletRouter } from "./walletRoutes.js";
 import { transactionRouter } from "./transactionRoutes.js";
 import { adminRouter } from "./adminRoutes.js";
-import { beneficiaryRouter } from "./beneficiaryRoutes.js";
+import { friendRouter } from "./friendRoutes.js";
 
 export const apiRouter = express.Router();
 
@@ -21,7 +21,7 @@ apiRouter.use("/auth", authRouter);
 apiRouter.use("/users", userRouter);
 apiRouter.use("/wallet", walletRouter);
 apiRouter.use("/transactions", transactionRouter);
-apiRouter.use("/beneficiaries", beneficiaryRouter);
+apiRouter.use("/friends", friendRouter);
 
 apiRouter.use("/admin", protect, requireAdmin, adminRouter);
 

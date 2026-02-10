@@ -1,28 +1,26 @@
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { Link, useNavigate } from "react-router-dom";
-import ConnectWalletButton from "../components/ConnectWalletButton.jsx";
 import { getCurrentUser } from "../services/authApi.js";
+import { listFriends } from "../services/friendApi.js";
 import { getMyTransactions } from "../services/transactionApi.js";
 import {
   clearSessionStorage,
-  clearWalletState,
   getAuthToken,
   readWalletState,
-  writeWalletState,
 } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
 
-function badgeClass(ok) {
-  return ok ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700";
-}
-
 function statusBadgeClasses(status) {
   if (status === "success") return "bg-green-100 text-green-700";
   if (status === "failed") return "bg-red-100 text-red-700";
   return "bg-yellow-100 text-yellow-800";
+}
+
+function linkedBadgeClass(linked) {
+  return linked ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700";
 }
 
 export default function Dashboard() {
@@ -31,11 +29,13 @@ export default function Dashboard() {
   const [me, setMe] = useState(null);
   const [error, setError] = useState("");
 
-  const [walletLinked, setWalletLinked] = useState(false);
-  const [walletAddress, setWalletAddress] = useState("");
-
-  const [walletBalance, setWalletBalance] = useState(null);
+  const [accountLinked, setAccountLinked] = useState(false);
+  const [accountAddress, setAccountAddress] = useState("");
+  const [accountBalance, setAccountBalance] = useState(null);
   const [balanceError, setBalanceError] = useState("");
+
+  const [friends, setFriends] = useState([]);
+  const [friendsError, setFriendsError] = useState("");
 
   const [transactions, setTransactions] = useState([]);
   const [txError, setTxError] = useState("");
@@ -43,7 +43,7 @@ export default function Dashboard() {
   useEffect(() => {
     let isCancelled = false;
 
-    async function loadDashboardContext() {
+    async function loadDashboard() {
       const token = getAuthToken();
       if (!token) {
         navigate("/login", { replace: true });
@@ -57,17 +57,17 @@ export default function Dashboard() {
 
         setMe(user);
         if (!user?.id) {
-          setWalletLinked(false);
-          setWalletAddress("");
+          setAccountLinked(false);
+          setAccountAddress("");
           return;
         }
 
-        const storedWallet = readWalletState(user.id);
-        setWalletLinked(storedWallet.linked);
-        setWalletAddress(storedWallet.address);
+        const walletState = readWalletState(user.id);
+        setAccountLinked(walletState.linked);
+        setAccountAddress(walletState.address);
       } catch (err) {
         if (isCancelled) return;
-        setError(err.message || "Failed to load account details.");
+        setError(err.message || "Failed to load dashboard.");
 
         if (err.status === 401 || err.status === 403) {
           clearSessionStorage();
@@ -76,7 +76,7 @@ export default function Dashboard() {
       }
     }
 
-    loadDashboardContext();
+    loadDashboard();
 
     return () => {
       isCancelled = true;
@@ -86,22 +86,22 @@ export default function Dashboard() {
   useEffect(() => {
     let isCancelled = false;
 
-    async function loadRecentTransactions() {
+    async function loadFriends() {
       const token = getAuthToken();
       if (!token) return;
 
       try {
-        setTxError("");
-        const data = await getMyTransactions({ token, limit: 5 });
+        setFriendsError("");
+        const data = await listFriends({ token });
         if (isCancelled) return;
-        setTransactions(data.transactions || []);
+        setFriends(data.friends || []);
       } catch (err) {
         if (isCancelled) return;
-        setTxError(err.message || "Failed to load recent transactions.");
+        setFriendsError(err.message || "Failed to load friends.");
       }
     }
 
-    loadRecentTransactions();
+    loadFriends();
 
     return () => {
       isCancelled = true;
@@ -111,40 +111,67 @@ export default function Dashboard() {
   useEffect(() => {
     let isCancelled = false;
 
-    async function fetchBalance() {
-      if (!walletLinked || !walletAddress) {
+    async function loadTransactions() {
+      const token = getAuthToken();
+      if (!token) return;
+
+      try {
+        setTxError("");
+        const data = await getMyTransactions({ token, limit: 12 });
         if (isCancelled) return;
-        setWalletBalance(null);
-        setBalanceError("");
+        setTransactions(data.transactions || []);
+      } catch (err) {
+        if (isCancelled) return;
+        setTxError(err.message || "Failed to load activity.");
+      }
+    }
+
+    loadTransactions();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function fetchAccountBalance() {
+      if (!accountLinked || !accountAddress) {
+        if (!isCancelled) {
+          setAccountBalance(null);
+          setBalanceError("");
+        }
         return;
       }
 
       if (!window.ethereum) {
-        if (isCancelled) return;
-        setBalanceError("Wallet provider not available to fetch balance.");
-        setWalletBalance(null);
+        if (!isCancelled) {
+          setBalanceError("Wallet provider not available to fetch balance.");
+        }
         return;
       }
 
       try {
         setBalanceError("");
         const provider = new ethers.BrowserProvider(window.ethereum);
-        const balanceBigInt = await provider.getBalance(walletAddress);
+        const balanceBigInt = await provider.getBalance(accountAddress);
         if (isCancelled) return;
-        setWalletBalance(Number(ethers.formatEther(balanceBigInt)));
+        setAccountBalance(Number(ethers.formatEther(balanceBigInt)));
       } catch {
-        if (isCancelled) return;
-        setBalanceError("Failed to load wallet balance.");
-        setWalletBalance(null);
+        if (!isCancelled) {
+          setBalanceError("Failed to load account balance.");
+          setAccountBalance(null);
+        }
       }
     }
 
-    fetchBalance();
+    fetchAccountBalance();
 
     return () => {
       isCancelled = true;
     };
-  }, [walletLinked, walletAddress]);
+  }, [accountLinked, accountAddress]);
 
   if (!me && !error) {
     return (
@@ -155,240 +182,200 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-10 space-y-6">
+    <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">
           Welcome{me ? `, ${me.username}` : ""}
         </h1>
-        <p className="text-sm text-gray-600 mt-1">
-          View your account status, link your wallet, and track recent
-          transactions.
+        <p className="mt-1 text-sm text-gray-600">
+          Manage your account, friends, and payment activity.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <div className="rounded-2xl border bg-white p-6">
-          <div className="flex items-start justify-between">
+      <section className="grid gap-4 md:grid-cols-2">
+        <Link
+          to="/account"
+          className="rounded-3xl border bg-white p-6 hover:border-purple-300 hover:shadow-sm transition"
+        >
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">
-                Account Status
-              </h2>
-              <p className="text-xs text-gray-500 mt-1">
-                Basic identity and readiness to send transactions.
+              <h2 className="text-xl font-semibold text-gray-900">Account</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Linked wallet used as your remittance account.
               </p>
             </div>
-
             <span
-              className={`text-xs px-3 py-1 rounded-full ${badgeClass(true)}`}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${linkedBadgeClass(
+                accountLinked
+              )}`}
             >
-              Active
+              {accountLinked ? "Linked" : "Not linked"}
             </span>
           </div>
 
-          <div className="mt-4 space-y-2 text-sm text-gray-800">
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600">Wallet:</span>
-              <span
-                className={`text-xs px-3 py-1 rounded-full ${badgeClass(
-                  walletLinked
-                )}`}
-              >
-                {walletLinked ? "Linked" : "Not linked"}
-              </span>
-            </div>
-
-            {walletLinked && walletAddress && (
-              <div className="text-xs text-gray-600 mt-2">
-                <div className="font-mono break-all">
-                  Address: {walletAddress}
-                </div>
-                <div className="mt-1">
+          <div className="mt-4 space-y-1 text-sm text-gray-700">
+            {accountLinked && accountAddress ? (
+              <>
+                <div className="font-mono text-xs break-all">{accountAddress}</div>
+                <div>
                   Balance:{" "}
-                  {walletBalance == null
+                  {accountBalance == null
                     ? "Loading..."
-                    : `${walletBalance.toFixed(4)} ETH`}
+                    : `${accountBalance.toFixed(4)} ETH`}
                 </div>
                 {balanceError && (
-                  <div className="mt-1 text-red-600">{balanceError}</div>
+                  <div className="text-xs text-red-600">{balanceError}</div>
                 )}
+              </>
+            ) : (
+              <div className="text-sm text-gray-600">
+                Link your account to enable crypto transfers and top-ups.
               </div>
             )}
           </div>
 
-          <div className="mt-4 flex items-center justify-between">
-            <div className="text-xs text-gray-500">
-              To send a transaction, you must have a linked wallet with funds.
-            </div>
-            <Link
-              to={walletLinked ? "/send" : "#"}
-              className={`
-                inline-flex items-center justify-center px-3 py-1.5 rounded-md
-                text-xs font-semibold
-                ${
-                  walletLinked
-                    ? "bg-blue-600 text-white hover:bg-blue-700"
-                    : "bg-gray-200 text-gray-500 cursor-not-allowed pointer-events-none"
-                }
-              `}
-            >
-              {walletLinked ? "Send Money" : "Complete wallet setup"}
-            </Link>
+          <div className="mt-4 inline-flex rounded-full bg-rose-500 px-4 py-2 text-sm font-semibold text-white">
+            Add money
           </div>
-        </div>
+        </Link>
 
-        <div className="rounded-2xl border bg-white p-6">
-          <div className="flex items-start justify-between">
+        <Link
+          to="/friends"
+          className="rounded-3xl border bg-white p-6 hover:border-purple-300 hover:shadow-sm transition"
+        >
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">
-                Wallet Setup
-              </h2>
-              <p className="text-xs text-gray-500 mt-1">
-                Connect and verify ownership to link your wallet to this
-                account.
+              <h2 className="text-xl font-semibold text-gray-900">Friends</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Saved recipients for faster transfers.
               </p>
             </div>
-
-            <span
-              className={`text-xs px-3 py-1 rounded-full ${badgeClass(
-                walletLinked
-              )}`}
-            >
-              {walletLinked ? "Linked" : "Not linked"}
+            <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
+              {friends.length}
             </span>
           </div>
 
-          <div className="mt-4">
-            <ConnectWalletButton
-              connected={walletLinked}
-              onLinked={(address) => {
-                setWalletLinked(true);
-                setWalletAddress(address);
-                setWalletBalance(null);
-
-                if (me?.id) {
-                  writeWalletState(me.id, address);
-                }
-              }}
-              onDisconnected={() => {
-                setWalletLinked(false);
-                setWalletAddress("");
-                setWalletBalance(null);
-
-                if (me?.id) {
-                  clearWalletState(me.id);
-                }
-              }}
-            />
-          </div>
-
-          {!walletLinked && (
-            <p className="text-xs text-gray-600 mt-3">
-              Link your wallet to unlock sending transactions and tracking
-              balances.
+          {friendsError ? (
+            <p className="mt-4 text-sm text-red-600">{friendsError}</p>
+          ) : friends.length === 0 ? (
+            <p className="mt-4 text-sm text-gray-600">
+              No friends saved yet. Add friends to send money faster.
             </p>
+          ) : (
+            <div className="mt-4 space-y-2">
+              {friends.slice(0, 3).map((friend) => (
+                <div
+                  key={friend.id}
+                  className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2"
+                >
+                  <div className="text-sm font-medium text-gray-900">
+                    {friend.label}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {friend.username || "No username"}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
-        </div>
-      </div>
 
-      <div className="rounded-2xl border bg-white p-6">
-        <div className="flex items-start justify-between mb-3">
+          <div className="mt-4 inline-flex rounded-full bg-purple-600 px-4 py-2 text-sm font-semibold text-white">
+            Open friends
+          </div>
+        </Link>
+      </section>
+
+      <section className="rounded-3xl border bg-white p-6">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">
-              Recent Transactions
-            </h2>
-            <p className="text-xs text-gray-500 mt-1">
-              A quick view of your latest transactions.
+            <h2 className="text-2xl font-semibold text-gray-900">Activity</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              All your recent transactions in one place.
             </p>
           </div>
+          <Link
+            to="/transactions"
+            className="text-xs font-medium text-purple-600 hover:underline"
+          >
+            View all
+          </Link>
         </div>
 
-        {txError && <div className="text-sm text-red-600 mb-3">{txError}</div>}
+        {txError && <div className="mt-3 text-sm text-red-600">{txError}</div>}
 
         {transactions.length === 0 ? (
-          <p className="text-sm text-gray-600">
-            No transactions yet. Once you send a transaction, it will appear
-            here.
-          </p>
+          <div className="mt-6 rounded-2xl border border-dashed border-gray-200 p-8 text-center">
+            <p className="text-lg font-medium text-gray-900">No transactions yet</p>
+            <p className="mt-1 text-sm text-gray-600">
+              Funding and payments will be shown here.
+            </p>
+            <Link
+              to="/account"
+              className="mt-4 inline-flex rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+            >
+              Add money
+            </Link>
+          </div>
         ) : (
-          <>
-            <div className="divide-y">
-              {transactions.map((transaction) => {
-                const explorerUrl = getExplorerTxUrl(transaction.txHash);
-
-                return (
-                  <Link
-                    key={transaction.id}
-                    to={`/transactions/${transaction.id}`}
-                    className="py-3 flex items-start justify-between gap-4 hover:bg-gray-50 rounded-lg px-2 -mx-2 cursor-pointer"
-                  >
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {transaction.amount} ETH
-                        {typeof transaction.fiatAmountUsd === "number" && (
-                          <span className="text-xs text-gray-500 ml-1">
-                            (~ {transaction.fiatAmountUsd.toFixed(2)}{" "}
-                            {transaction.fiatCurrency || "USD"})
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-600 font-mono mt-1">
-                        To: {transaction.receiverWallet}
-                      </div>
-                      {transaction.txHash && (
-                        <div className="text-xs text-gray-500 mt-1 space-y-0.5">
-                          <div className="font-mono">
-                            Tx: {transaction.txHash.slice(0, 10)}...
-                            {transaction.txHash.slice(-8)}
-                          </div>
-                          {explorerUrl && (
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                openExternalUrl(explorerUrl);
-                              }}
-                              className="text-[11px] text-blue-600 hover:underline"
-                            >
-                              View on BscScan
-                            </button>
-                          )}
-                        </div>
+          <div className="mt-4 divide-y">
+            {transactions.map((transaction) => {
+              const explorerUrl = getExplorerTxUrl(transaction.txHash);
+              return (
+                <Link
+                  key={transaction.id}
+                  to={`/transactions/${transaction.id}`}
+                  className="flex items-start justify-between gap-4 rounded-lg px-2 py-3 hover:bg-gray-50"
+                >
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {transaction.amount} ETH
+                      {typeof transaction.fiatAmountUsd === "number" && (
+                        <span className="ml-1 text-xs text-gray-500">
+                          (~ {transaction.fiatAmountUsd.toFixed(2)}{" "}
+                          {transaction.fiatCurrency || "USD"})
+                        </span>
                       )}
-                      <div className="text-xs text-gray-500 mt-1">
-                        {formatDateTime(transaction.createdAt) || "-"}
-                      </div>
                     </div>
+                    <div className="mt-1 text-xs text-gray-600 font-mono">
+                      To: {transaction.receiverWallet}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {formatDateTime(transaction.createdAt) || "-"}
+                    </div>
+                    {explorerUrl && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          openExternalUrl(explorerUrl);
+                        }}
+                        className="mt-1 text-[11px] text-blue-600 hover:underline"
+                      >
+                        View on BscScan
+                      </button>
+                    )}
+                  </div>
 
-                    <span
-                      className={`text-xs px-3 py-1 rounded-full ${statusBadgeClasses(
-                        transaction.status
-                      )}`}
-                    >
-                      {transaction.status}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-
-            <div className="mt-3 text-right">
-              <Link
-                to="/transactions"
-                className="text-xs text-blue-600 hover:underline"
-              >
-                View all transactions
-              </Link>
-            </div>
-          </>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${statusBadgeClasses(
+                      transaction.status
+                    )}`}
+                  >
+                    {transaction.status}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

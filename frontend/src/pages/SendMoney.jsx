@@ -2,10 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BackButton from "../components/BackButton.jsx";
 import { apiRequest } from "../services/api.js";
-import {
-  createBeneficiary,
-  listBeneficiaries,
-} from "../services/beneficiaryApi.js";
+import { createFriend, listFriends } from "../services/friendApi.js";
 import { getCurrentUser } from "../services/authApi.js";
 import {
   clearLegacyWalletAddress,
@@ -16,9 +13,9 @@ import {
 } from "../services/session.js";
 import { isValidEvmAddress } from "../utils/security.js";
 
-const MAX_BENEFICIARY_LABEL_LENGTH = 80;
-const MAX_BENEFICIARY_USERNAME_LENGTH = 40;
-const MAX_BENEFICIARY_NOTES_LENGTH = 280;
+const MAX_FRIEND_LABEL_LENGTH = 80;
+const MAX_FRIEND_USERNAME_LENGTH = 40;
+const MAX_FRIEND_NOTES_LENGTH = 280;
 
 async function fetchWalletBalance({ token, walletAddress }) {
   const query = new URLSearchParams({ wallet: walletAddress });
@@ -44,10 +41,10 @@ export default function SendMoney() {
 
   const [confirmData, setConfirmData] = useState(null);
 
-  const [beneficiaries, setBeneficiaries] = useState([]);
-  const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState("");
-  const [beneficiaryError, setBeneficiaryError] = useState("");
-  const [beneficiaryLoading, setBeneficiaryLoading] = useState(false);
+  const [friends, setFriends] = useState([]);
+  const [selectedFriendId, setSelectedFriendId] = useState("");
+  const [friendError, setFriendError] = useState("");
+  const [friendLoading, setFriendLoading] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalLabel, setModalLabel] = useState("");
@@ -70,19 +67,19 @@ export default function SendMoney() {
       }
 
       try {
-        setBeneficiaryLoading(true);
+        setFriendLoading(true);
         setBalanceLoading(true);
-        setBeneficiaryError("");
+        setFriendError("");
         setBalanceError("");
 
-        const [beneficiaryData, user] = await Promise.all([
-          listBeneficiaries({ token }),
+        const [friendData, user] = await Promise.all([
+          listFriends({ token }),
           getCurrentUser({ token }),
         ]);
 
         if (isCancelled) return;
 
-        setBeneficiaries(beneficiaryData.beneficiaries || []);
+        setFriends(friendData.friends || []);
 
         let storedAddress = "";
         if (user?.id) {
@@ -105,7 +102,7 @@ export default function SendMoney() {
         if (!storedAddress) {
           setAvailableBalance(null);
           setBalanceError(
-            "You must link your wallet on the dashboard before sending."
+            "You must link your account on the dashboard before sending."
           );
           return;
         }
@@ -120,11 +117,11 @@ export default function SendMoney() {
       } catch (err) {
         if (isCancelled) return;
         const message = err.message || "Failed to load send money page data.";
-        setBeneficiaryError(message);
+        setFriendError(message);
         setBalanceError(message);
       } finally {
         if (!isCancelled) {
-          setBeneficiaryLoading(false);
+          setFriendLoading(false);
           setBalanceLoading(false);
         }
       }
@@ -155,12 +152,12 @@ export default function SendMoney() {
     }
   }
 
-  function handleSelectBeneficiary(event) {
+  function handleSelectFriend(event) {
     const selectedId = event.target.value;
-    setSelectedBeneficiaryId(selectedId);
+    setSelectedFriendId(selectedId);
 
-    const selected = beneficiaries.find(
-      (beneficiary) => String(beneficiary.id) === String(selectedId)
+    const selected = friends.find(
+      (friend) => String(friend.id) === String(selectedId)
     );
     if (selected?.walletAddress) {
       setReceiverWallet(selected.walletAddress);
@@ -182,7 +179,7 @@ export default function SendMoney() {
     setModalError("");
   }
 
-  async function handleSaveBeneficiary(event) {
+  async function handleSaveFriend(event) {
     event.preventDefault();
     setModalError("");
 
@@ -192,7 +189,7 @@ export default function SendMoney() {
     const notes = modalNotes.trim();
 
     if (!label) {
-      setModalError("Name is required for the beneficiary.");
+      setModalError("Name is required for the friend.");
       return;
     }
 
@@ -215,7 +212,7 @@ export default function SendMoney() {
     try {
       setModalSaving(true);
 
-      const response = await createBeneficiary({
+      const response = await createFriend({
         token,
         label,
         username: username || undefined,
@@ -223,9 +220,9 @@ export default function SendMoney() {
         notes: notes || undefined,
       });
 
-      const created = response.beneficiary;
-      setBeneficiaries((prev) => [created, ...prev]);
-      setSelectedBeneficiaryId(String(created.id));
+      const created = response.friend;
+      setFriends((prev) => [created, ...prev]);
+      setSelectedFriendId(String(created.id));
 
       if (created.walletAddress) {
         setReceiverWallet(created.walletAddress);
@@ -233,7 +230,7 @@ export default function SendMoney() {
 
       closeModal();
     } catch (err) {
-      setModalError(err.message || "Failed to save beneficiary.");
+      setModalError(err.message || "Failed to save friend.");
     } finally {
       setModalSaving(false);
     }
@@ -288,7 +285,7 @@ export default function SendMoney() {
 
     if (!walletAddress) {
       setSendError(
-        "You must link your wallet on the dashboard before sending a transaction."
+        "You must link your account on the dashboard before sending a transaction."
       );
       return;
     }
@@ -346,7 +343,7 @@ export default function SendMoney() {
         <h1 className="text-2xl font-bold text-gray-900">Send Money</h1>
         <p className="text-sm text-gray-600 mt-1">
           Send a transaction to a receiver wallet using your linked on-chain
-          balance. You can choose a saved beneficiary or add a new one.
+          balance. You can choose a saved friend or add a new one.
         </p>
       </div>
 
@@ -369,42 +366,42 @@ export default function SendMoney() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="block text-sm font-medium text-gray-700">
-              Saved beneficiary
+              Saved friend
             </label>
             <button
               type="button"
               onClick={openModal}
               className="text-xs text-blue-600 hover:underline"
             >
-              Add new beneficiary
+              Add new friend
             </button>
           </div>
 
           <select
             className="w-full border rounded-md px-3 py-2 text-sm"
-            value={selectedBeneficiaryId}
-            onChange={handleSelectBeneficiary}
-            disabled={beneficiaryLoading || beneficiaries.length === 0}
+            value={selectedFriendId}
+            onChange={handleSelectFriend}
+            disabled={friendLoading || friends.length === 0}
           >
             <option value="">
-              {beneficiaries.length === 0
-                ? "No beneficiaries saved yet"
-                : "Select a saved beneficiary"}
+              {friends.length === 0
+                ? "No friends saved yet"
+                : "Select a saved friend"}
             </option>
-            {beneficiaries.map((beneficiary) => (
-              <option key={beneficiary.id} value={beneficiary.id}>
-                {beneficiary.label}
-                {beneficiary.username ? ` - ${beneficiary.username}` : ""}
+            {friends.map((friend) => (
+              <option key={friend.id} value={friend.id}>
+                {friend.label}
+                {friend.username ? ` - ${friend.username}` : ""}
                 {" "}
-                {beneficiary.walletAddress
-                  ? `(${beneficiary.walletAddress.slice(0, 8)}...)`
+                {friend.walletAddress
+                  ? `(${friend.walletAddress.slice(0, 8)}...)`
                   : "(no wallet)"}
               </option>
             ))}
           </select>
 
-          {beneficiaryError && (
-            <div className="mt-1 text-xs text-red-600">{beneficiaryError}</div>
+          {friendError && (
+            <div className="mt-1 text-xs text-red-600">{friendError}</div>
           )}
         </div>
 
@@ -465,7 +462,7 @@ export default function SendMoney() {
 
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>
-              You must have a linked wallet with sufficient balance to complete
+              You must have a linked account with sufficient balance to complete
               this transaction.
             </span>
             <button
@@ -553,20 +550,20 @@ export default function SendMoney() {
           <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-900">
-                Add new beneficiary
+                Add new friend
               </h2>
               <button
                 type="button"
                 onClick={closeModal}
                 className="text-gray-400 hover:text-gray-600 text-sm"
-                aria-label="Close beneficiary modal"
+                aria-label="Close friend modal"
               >
                 X
               </button>
             </div>
 
             <p className="text-xs text-gray-500">
-              Give this beneficiary a name, and optionally store their username
+              Give this friend a name, and optionally store their username
               and wallet. At least a username or a wallet is required.
             </p>
 
@@ -576,17 +573,17 @@ export default function SendMoney() {
               </div>
             )}
 
-            <form onSubmit={handleSaveBeneficiary} className="space-y-3">
+            <form onSubmit={handleSaveFriend} className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Name (how you will see this beneficiary)
+                  Name (how you will see this friend)
                 </label>
                 <input
                   type="text"
                   className="w-full border rounded-md px-3 py-2 text-sm"
                   placeholder="Example: Max"
                   value={modalLabel}
-                  maxLength={MAX_BENEFICIARY_LABEL_LENGTH}
+                  maxLength={MAX_FRIEND_LABEL_LENGTH}
                   onChange={(event) => setModalLabel(event.target.value)}
                 />
               </div>
@@ -600,7 +597,7 @@ export default function SendMoney() {
                   className="w-full border rounded-md px-3 py-2 text-sm"
                   placeholder="username"
                   value={modalUsername}
-                  maxLength={MAX_BENEFICIARY_USERNAME_LENGTH}
+                  maxLength={MAX_FRIEND_USERNAME_LENGTH}
                   autoCapitalize="none"
                   autoCorrect="off"
                   onChange={(event) => setModalUsername(event.target.value)}
@@ -632,7 +629,7 @@ export default function SendMoney() {
                   rows={2}
                   placeholder="Relationship, country, purpose..."
                   value={modalNotes}
-                  maxLength={MAX_BENEFICIARY_NOTES_LENGTH}
+                  maxLength={MAX_FRIEND_NOTES_LENGTH}
                   onChange={(event) => setModalNotes(event.target.value)}
                 />
               </div>
@@ -650,7 +647,7 @@ export default function SendMoney() {
                   disabled={modalSaving}
                   className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-60"
                 >
-                  {modalSaving ? "Saving..." : "Save beneficiary"}
+                  {modalSaving ? "Saving..." : "Save friend"}
                 </button>
               </div>
             </form>
@@ -660,3 +657,4 @@ export default function SendMoney() {
     </div>
   );
 }
+

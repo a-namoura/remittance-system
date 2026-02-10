@@ -7,6 +7,8 @@ import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
+import Account from "./pages/Account.jsx";
+import Friends from "./pages/Friends.jsx";
 import SendMoney from "./pages/SendMoney.jsx";
 import Transactions from "./pages/Transactions.jsx";
 import TransactionDetails from "./pages/TransactionDetails.jsx";
@@ -22,6 +24,8 @@ const PUBLIC_ROUTES = [
 
 const PROTECTED_ROUTES = [
   { path: "/dashboard", element: <Dashboard /> },
+  { path: "/account", element: <Account /> },
+  { path: "/friends", element: <Friends /> },
   { path: "/send", element: <SendMoney /> },
   { path: "/transactions", element: <Transactions /> },
   { path: "/transactions/:id", element: <TransactionDetails /> },

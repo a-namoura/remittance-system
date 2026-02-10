@@ -1,20 +1,20 @@
-import { Beneficiary } from "../models/Beneficiary.js";
+import { Friend } from "../models/Friend.js";
 
-export async function listBeneficiaries(req, res, next) {
+export async function listFriends(req, res, next) {
   try {
-    const items = await Beneficiary.find({ userId: req.user._id })
+    const items = await Friend.find({ userId: req.user._id })
       .sort({ createdAt: -1 })
       .lean();
 
     res.json({
       ok: true,
-      beneficiaries: items.map((b) => ({
-        id: b._id,
-        label: b.label,
-        username: b.username || null,
-        walletAddress: b.walletAddress || null,
-        notes: b.notes || null,
-        createdAt: b.createdAt,
+      friends: items.map((friend) => ({
+        id: friend._id,
+        label: friend.label,
+        username: friend.username || null,
+        walletAddress: friend.walletAddress || null,
+        notes: friend.notes || null,
+        createdAt: friend.createdAt,
       })),
     });
   } catch (err) {
@@ -22,7 +22,7 @@ export async function listBeneficiaries(req, res, next) {
   }
 }
 
-export async function createBeneficiary(req, res, next) {
+export async function createFriend(req, res, next) {
   try {
     const { label, username, walletAddress, notes } = req.body;
 
@@ -32,18 +32,15 @@ export async function createBeneficiary(req, res, next) {
 
     if (!rawLabel) {
       res.status(400);
-      throw new Error("Name is required for the beneficiary.");
+      throw new Error("Name is required for the friend.");
     }
 
     const hasUsername = rawUsername.length > 0;
     const hasWallet = rawWallet.length > 0;
 
-    // 🔴 Rule: at least username or wallet
     if (!hasUsername && !hasWallet) {
       res.status(400);
-      throw new Error(
-        "Please provide at least a username or a wallet address."
-      );
+      throw new Error("Please provide at least a username or a wallet address.");
     }
 
     if (hasUsername && rawUsername.length < 2) {
@@ -60,7 +57,7 @@ export async function createBeneficiary(req, res, next) {
       normalizedWallet = rawWallet.toLowerCase();
     }
 
-    const doc = await Beneficiary.create({
+    const doc = await Friend.create({
       userId: req.user._id,
       label: rawLabel,
       username: hasUsername ? rawUsername : undefined,
@@ -70,7 +67,7 @@ export async function createBeneficiary(req, res, next) {
 
     res.status(201).json({
       ok: true,
-      beneficiary: {
+      friend: {
         id: doc._id,
         label: doc.label,
         username: doc.username || null,
@@ -82,31 +79,29 @@ export async function createBeneficiary(req, res, next) {
   } catch (err) {
     if (err.code === 11000) {
       res.status(409);
-      return next(
-        new Error("You already have a beneficiary with this name (label).")
-      );
+      return next(new Error("You already have a friend with this name."));
     }
     next(err);
   }
 }
 
-export async function deleteBeneficiary(req, res, next) {
+export async function deleteFriend(req, res, next) {
   try {
     const { id } = req.params;
 
-    const doc = await Beneficiary.findOneAndDelete({
+    const doc = await Friend.findOneAndDelete({
       _id: id,
       userId: req.user._id,
     });
 
     if (!doc) {
       res.status(404);
-      throw new Error("Beneficiary not found.");
+      throw new Error("Friend not found.");
     }
 
     res.json({
       ok: true,
-      message: "Beneficiary deleted.",
+      message: "Friend deleted.",
     });
   } catch (err) {
     next(err);
