@@ -3,36 +3,52 @@ import { useNavigate } from "react-router-dom";
 import BackButton from "../components/BackButton.jsx";
 import { apiRequest } from "../services/api.js";
 import {
-  listBeneficiaries,
   createBeneficiary,
+  listBeneficiaries,
 } from "../services/beneficiaryApi.js";
+import { getCurrentUser } from "../services/authApi.js";
+import {
+  clearLegacyWalletAddress,
+  getAuthToken,
+  getLegacyWalletAddress,
+  readWalletState,
+  writeWalletState,
+} from "../services/session.js";
+import { isValidEvmAddress } from "../utils/security.js";
+
+const MAX_BENEFICIARY_LABEL_LENGTH = 80;
+const MAX_BENEFICIARY_USERNAME_LENGTH = 40;
+const MAX_BENEFICIARY_NOTES_LENGTH = 280;
+
+async function fetchWalletBalance({ token, walletAddress }) {
+  const query = new URLSearchParams({ wallet: walletAddress });
+  const result = await apiRequest(`/api/transactions/balance?${query.toString()}`, {
+    token,
+  });
+  return typeof result.balance === "number" ? result.balance : null;
+}
 
 export default function SendMoney() {
   const navigate = useNavigate();
 
-  // Sending form
   const [receiverWallet, setReceiverWallet] = useState("");
   const [amountEth, setAmountEth] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
 
-  // On-chain balance for current linked wallet (used for validation)
   const [walletAddress, setWalletAddress] = useState("");
-  const [availableBalance, setAvailableBalance] = useState(null); // number (ETH/BNB units)
+  const [availableBalance, setAvailableBalance] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
 
-  // Confirmation modal state
-  const [confirmData, setConfirmData] = useState(null); // { receiverWallet, amountEth }
+  const [confirmData, setConfirmData] = useState(null);
 
-  // Beneficiaries
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState("");
   const [beneficiaryError, setBeneficiaryError] = useState("");
   const [beneficiaryLoading, setBeneficiaryLoading] = useState(false);
 
-  // Modal state for "Add new beneficiary"
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalLabel, setModalLabel] = useState("");
   const [modalUsername, setModalUsername] = useState("");
@@ -41,85 +57,113 @@ export default function SendMoney() {
   const [modalError, setModalError] = useState("");
   const [modalSaving, setModalSaving] = useState(false);
 
-  // Load beneficiaries on mount
   useEffect(() => {
-    async function loadBeneficiaries() {
-      try {
-        const token = localStorage.getItem("token");
-        if (!token) return;
+    let isCancelled = false;
 
-        setBeneficiaryLoading(true);
-        setBeneficiaryError("");
-
-        const data = await listBeneficiaries({ token });
-        setBeneficiaries(data.beneficiaries || []);
-      } catch (err) {
-        setBeneficiaryError(err.message || "Failed to load beneficiaries.");
-      } finally {
-        setBeneficiaryLoading(false);
-      }
-    }
-
-    loadBeneficiaries();
-  }, []);
-
-  // Load on-chain balance for the currently linked wallet (if any)
-  useEffect(() => {
-    async function loadBalance() {
-      const addr = localStorage.getItem("walletAddress") || "";
-      const token = localStorage.getItem("token");
-
-      setWalletAddress(addr);
-
-      if (!addr) {
-        // No linked wallet: show gentle message, no balance
-        setAvailableBalance(null);
-        setBalanceError(
-          "You must link your wallet on the dashboard before sending."
-        );
-        return;
-      }
-
+    async function loadPageData() {
+      const token = getAuthToken();
       if (!token) {
-        setAvailableBalance(null);
-        setBalanceError("You must be logged in.");
+        if (!isCancelled) {
+          setSendError("You must be logged in.");
+        }
         return;
       }
 
       try {
+        setBeneficiaryLoading(true);
         setBalanceLoading(true);
+        setBeneficiaryError("");
         setBalanceError("");
 
-        const query = new URLSearchParams({ wallet: addr });
-        const res = await apiRequest(
-          `/api/transactions/balance?${query.toString()}`,
-          { token }
-        );
+        const [beneficiaryData, user] = await Promise.all([
+          listBeneficiaries({ token }),
+          getCurrentUser({ token }),
+        ]);
 
-        // Expected backend shape: { ok: true, wallet, balance }
-        setAvailableBalance(
-          typeof res.balance === "number" ? res.balance : null
-        );
+        if (isCancelled) return;
+
+        setBeneficiaries(beneficiaryData.beneficiaries || []);
+
+        let storedAddress = "";
+        if (user?.id) {
+          storedAddress = readWalletState(user.id).address || "";
+        }
+
+        if (!storedAddress) {
+          const legacyAddress = getLegacyWalletAddress();
+          if (legacyAddress) {
+            storedAddress = legacyAddress;
+            if (user?.id) {
+              writeWalletState(user.id, legacyAddress);
+            }
+            clearLegacyWalletAddress();
+          }
+        }
+
+        setWalletAddress(storedAddress);
+
+        if (!storedAddress) {
+          setAvailableBalance(null);
+          setBalanceError(
+            "You must link your wallet on the dashboard before sending."
+          );
+          return;
+        }
+
+        const balance = await fetchWalletBalance({
+          token,
+          walletAddress: storedAddress,
+        });
+
+        if (isCancelled) return;
+        setAvailableBalance(balance);
       } catch (err) {
-        console.error("Failed to load wallet balance", err);
-        setAvailableBalance(null);
-        setBalanceError(err.message || "Failed to load wallet balance.");
+        if (isCancelled) return;
+        const message = err.message || "Failed to load send money page data.";
+        setBeneficiaryError(message);
+        setBalanceError(message);
       } finally {
-        setBalanceLoading(false);
+        if (!isCancelled) {
+          setBeneficiaryLoading(false);
+          setBalanceLoading(false);
+        }
       }
     }
 
-    loadBalance();
+    loadPageData();
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
-  // When a beneficiary is selected, fill receiver wallet (if present)
-  function handleSelectBeneficiary(e) {
-    const id = e.target.value;
-    setSelectedBeneficiaryId(id);
+  async function refreshBalance() {
+    const token = getAuthToken();
+    if (!token || !walletAddress) return;
 
-    const b = beneficiaries.find((x) => x.id === id);
-    if (b && b.walletAddress) {
-      setReceiverWallet(b.walletAddress);
+    try {
+      setBalanceLoading(true);
+      setBalanceError("");
+
+      const balance = await fetchWalletBalance({ token, walletAddress });
+      setAvailableBalance(balance);
+    } catch (err) {
+      setBalanceError(err.message || "Failed to load wallet balance.");
+      setAvailableBalance(null);
+    } finally {
+      setBalanceLoading(false);
+    }
+  }
+
+  function handleSelectBeneficiary(event) {
+    const selectedId = event.target.value;
+    setSelectedBeneficiaryId(selectedId);
+
+    const selected = beneficiaries.find(
+      (beneficiary) => String(beneficiary.id) === String(selectedId)
+    );
+    if (selected?.walletAddress) {
+      setReceiverWallet(selected.walletAddress);
     }
   }
 
@@ -138,27 +182,31 @@ export default function SendMoney() {
     setModalError("");
   }
 
-  // Save beneficiary from modal
-  async function handleSaveBeneficiary(e) {
-    e.preventDefault();
+  async function handleSaveBeneficiary(event) {
+    event.preventDefault();
     setModalError("");
 
     const label = modalLabel.trim();
     const username = modalUsername.trim();
     const wallet = modalWallet.trim();
+    const notes = modalNotes.trim();
 
     if (!label) {
       setModalError("Name is required for the beneficiary.");
       return;
     }
 
-    // Enforce: at least username or wallet
     if (!username && !wallet) {
       setModalError("Provide at least a username or a wallet address.");
       return;
     }
 
-    const token = localStorage.getItem("token");
+    if (wallet && !isValidEvmAddress(wallet)) {
+      setModalError("Please provide a valid EVM wallet address.");
+      return;
+    }
+
+    const token = getAuthToken();
     if (!token) {
       setModalError("You must be logged in.");
       return;
@@ -167,20 +215,18 @@ export default function SendMoney() {
     try {
       setModalSaving(true);
 
-      const res = await createBeneficiary({
+      const response = await createBeneficiary({
         token,
         label,
         username: username || undefined,
         walletAddress: wallet || undefined,
-        notes: modalNotes || undefined,
+        notes: notes || undefined,
       });
 
-      const created = res.beneficiary;
-
+      const created = response.beneficiary;
       setBeneficiaries((prev) => [created, ...prev]);
-      setSelectedBeneficiaryId(created.id);
+      setSelectedBeneficiaryId(String(created.id));
 
-      // If the new beneficiary has a wallet, fill it into the send form
       if (created.walletAddress) {
         setReceiverWallet(created.walletAddress);
       }
@@ -193,18 +239,48 @@ export default function SendMoney() {
     }
   }
 
-  // First step: validate, then open confirmation modal
-  async function handleSend(e) {
-    e.preventDefault();
+  function handlePrepareSend(event) {
+    event.preventDefault();
     setSendError("");
     setSendSuccess("");
 
-    if (!receiverWallet || !amountEth) {
+    const normalizedReceiver = receiverWallet.trim();
+    if (!normalizedReceiver || !amountEth) {
       setSendError("Receiver wallet and amount are required.");
       return;
     }
 
-    const token = localStorage.getItem("token");
+    if (!isValidEvmAddress(normalizedReceiver)) {
+      setSendError("Receiver wallet must be a valid EVM address.");
+      return;
+    }
+
+    if (
+      walletAddress &&
+      normalizedReceiver.toLowerCase() === walletAddress.toLowerCase()
+    ) {
+      setSendError("Receiver wallet must be different from your linked wallet.");
+      return;
+    }
+
+    const amountNumber = Number(amountEth);
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      setSendError("Amount must be a positive number.");
+      return;
+    }
+
+    if (
+      availableBalance != null &&
+      Number.isFinite(availableBalance) &&
+      amountNumber > availableBalance
+    ) {
+      setSendError(
+        `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`
+      );
+      return;
+    }
+
+    const token = getAuthToken();
     if (!token) {
       setSendError("You must be logged in.");
       return;
@@ -217,36 +293,16 @@ export default function SendMoney() {
       return;
     }
 
-    const amountNumber = Number(amountEth);
-    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-      setSendError("Amount must be a positive number.");
-      return;
-    }
-
-    // Enforce on-chain balance limit if we know it
-    if (
-      availableBalance != null &&
-      Number.isFinite(availableBalance) &&
-      amountNumber > availableBalance
-    ) {
-      setSendError(
-        `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`
-      );
-      return;
-    }
-
-    // All good → open confirmation modal
     setConfirmData({
-      receiverWallet: receiverWallet.trim(),
+      receiverWallet: normalizedReceiver,
       amountEth: amountNumber,
     });
   }
 
-  // Second step: actually call the backend when user confirms
   async function handleConfirmSend() {
     if (!confirmData) return;
 
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
     if (!token) {
       setSendError("You must be logged in.");
       setConfirmData(null);
@@ -257,7 +313,7 @@ export default function SendMoney() {
       setSending(true);
       setSendError("");
 
-      const res = await apiRequest("/api/transactions/send", {
+      const result = await apiRequest("/api/transactions/send", {
         method: "POST",
         token,
         body: {
@@ -267,26 +323,12 @@ export default function SendMoney() {
       });
 
       setSendSuccess(
-        `Transaction created with status "${res.transaction.status}".`
+        `Transaction created with status "${result.transaction.status}".`
       );
-      setSendError("");
       setAmountEth("");
-
-      // After successful send, re-load balance (best-effort)
-      try {
-        const query = new URLSearchParams({ wallet: walletAddress });
-        const balRes = await apiRequest(
-          `/api/transactions/balance?${query.toString()}`,
-          { token }
-        );
-        setAvailableBalance(
-          typeof balRes.balance === "number" ? balRes.balance : null
-        );
-      } catch (err) {
-        console.error("Failed to refresh balance after send", err);
-      }
-
       setConfirmData(null);
+
+      await refreshBalance();
     } catch (err) {
       setSendError(err.message || "Failed to send transaction.");
     } finally {
@@ -308,7 +350,6 @@ export default function SendMoney() {
         </p>
       </div>
 
-      {/* Status messages */}
       {sendError && (
         <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
           {sendError}
@@ -322,10 +363,9 @@ export default function SendMoney() {
       )}
 
       <form
-        onSubmit={handleSend}
+        onSubmit={handlePrepareSend}
         className="rounded-2xl border bg-white p-6 space-y-6"
       >
-        {/* Beneficiary Section */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="block text-sm font-medium text-gray-700">
@@ -351,11 +391,13 @@ export default function SendMoney() {
                 ? "No beneficiaries saved yet"
                 : "Select a saved beneficiary"}
             </option>
-            {beneficiaries.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.label} {b.username ? `– ${b.username}` : ""}{" "}
-                {b.walletAddress
-                  ? `(${b.walletAddress.slice(0, 8)}…)`
+            {beneficiaries.map((beneficiary) => (
+              <option key={beneficiary.id} value={beneficiary.id}>
+                {beneficiary.label}
+                {beneficiary.username ? ` - ${beneficiary.username}` : ""}
+                {" "}
+                {beneficiary.walletAddress
+                  ? `(${beneficiary.walletAddress.slice(0, 8)}...)`
                   : "(no wallet)"}
               </option>
             ))}
@@ -366,7 +408,6 @@ export default function SendMoney() {
           )}
         </div>
 
-        {/* Actual send form */}
         <div className="space-y-4 pt-4 border-t">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -377,11 +418,14 @@ export default function SendMoney() {
               className="w-full border rounded-md px-3 py-2 text-sm font-mono"
               placeholder="0x..."
               value={receiverWallet}
-              onChange={(e) => setReceiverWallet(e.target.value)}
+              maxLength={42}
+              autoCapitalize="none"
+              autoCorrect="off"
+              onChange={(event) => setReceiverWallet(event.target.value)}
             />
             <p className="mt-1 text-xs text-gray-500">
-              This should be an EVM-compatible address (e.g., MetaMask account)
-              on the configured network.
+              This should be an EVM-compatible address on the configured
+              network.
             </p>
           </div>
 
@@ -396,12 +440,12 @@ export default function SendMoney() {
               className="w-full border rounded-md px-3 py-2 text-sm"
               placeholder="0.0000"
               value={amountEth}
-              onChange={(e) => setAmountEth(e.target.value)}
+              onChange={(event) => setAmountEth(event.target.value)}
             />
 
             {balanceLoading && (
               <p className="mt-1 text-xs text-gray-500">
-                Loading on-chain balance…
+                Loading on-chain balance...
               </p>
             )}
 
@@ -421,8 +465,8 @@ export default function SendMoney() {
 
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>
-              You must have a linked wallet with sufficient testnet balance to
-              complete this transaction.
+              You must have a linked wallet with sufficient balance to complete
+              this transaction.
             </span>
             <button
               type="button"
@@ -439,13 +483,12 @@ export default function SendMoney() {
               disabled={sending}
               className="w-full inline-flex items-center justify-center px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60"
             >
-              {sending ? "Sending…" : "Send transaction"}
+              {sending ? "Sending..." : "Send transaction"}
             </button>
           </div>
         </div>
       </form>
 
-      {/* Confirmation modal for sending transaction */}
       {confirmData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6 space-y-4">
@@ -457,8 +500,9 @@ export default function SendMoney() {
                 type="button"
                 onClick={() => setConfirmData(null)}
                 className="text-gray-400 hover:text-gray-600 text-sm"
+                aria-label="Close confirmation"
               >
-                ✕
+                X
               </button>
             </div>
 
@@ -497,14 +541,13 @@ export default function SendMoney() {
                 disabled={sending}
                 className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-60"
               >
-                {sending ? "Sending…" : "Confirm & send"}
+                {sending ? "Sending..." : "Confirm & send"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal for adding new beneficiary */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6 space-y-4">
@@ -516,8 +559,9 @@ export default function SendMoney() {
                 type="button"
                 onClick={closeModal}
                 className="text-gray-400 hover:text-gray-600 text-sm"
+                aria-label="Close beneficiary modal"
               >
-                ✕
+                X
               </button>
             </div>
 
@@ -542,7 +586,8 @@ export default function SendMoney() {
                   className="w-full border rounded-md px-3 py-2 text-sm"
                   placeholder="Example: Max"
                   value={modalLabel}
-                  onChange={(e) => setModalLabel(e.target.value)}
+                  maxLength={MAX_BENEFICIARY_LABEL_LENGTH}
+                  onChange={(event) => setModalLabel(event.target.value)}
                 />
               </div>
 
@@ -555,7 +600,10 @@ export default function SendMoney() {
                   className="w-full border rounded-md px-3 py-2 text-sm"
                   placeholder="username"
                   value={modalUsername}
-                  onChange={(e) => setModalUsername(e.target.value)}
+                  maxLength={MAX_BENEFICIARY_USERNAME_LENGTH}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  onChange={(event) => setModalUsername(event.target.value)}
                 />
               </div>
 
@@ -568,7 +616,10 @@ export default function SendMoney() {
                   className="w-full border rounded-md px-3 py-2 text-sm font-mono"
                   placeholder="0x..."
                   value={modalWallet}
-                  onChange={(e) => setModalWallet(e.target.value)}
+                  maxLength={42}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  onChange={(event) => setModalWallet(event.target.value)}
                 />
               </div>
 
@@ -579,9 +630,10 @@ export default function SendMoney() {
                 <textarea
                   className="w-full border rounded-md px-3 py-2 text-sm"
                   rows={2}
-                  placeholder="Relationship, country, purpose…"
+                  placeholder="Relationship, country, purpose..."
                   value={modalNotes}
-                  onChange={(e) => setModalNotes(e.target.value)}
+                  maxLength={MAX_BENEFICIARY_NOTES_LENGTH}
+                  onChange={(event) => setModalNotes(event.target.value)}
                 />
               </div>
 
@@ -598,7 +650,7 @@ export default function SendMoney() {
                   disabled={modalSaving}
                   className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-60"
                 >
-                  {modalSaving ? "Saving…" : "Save beneficiary"}
+                  {modalSaving ? "Saving..." : "Save beneficiary"}
                 </button>
               </div>
             </form>

@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
-import { apiRequest } from "../services/api.js";
 import { ethers } from "ethers";
+import {
+  linkWalletToUser,
+  unlinkWalletFromUser,
+} from "../services/walletApi.js";
+import { getAuthToken } from "../services/session.js";
 
 export default function ConnectWalletButton({
   connected,
@@ -11,7 +15,6 @@ export default function ConnectWalletButton({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Watch for wallet disconnect / account removal and notify parent
   useEffect(() => {
     if (!window.ethereum) return;
 
@@ -21,18 +24,23 @@ export default function ConnectWalletButton({
           onDisconnected();
         }
         setStatus("");
+        return;
+      }
+
+      if (connected) {
+        if (typeof onDisconnected === "function") {
+          onDisconnected();
+        }
+        setStatus("Wallet account changed. Please link again.");
       }
     };
 
     window.ethereum.on("accountsChanged", handleAccountsChanged);
 
     return () => {
-      window.ethereum.removeListener(
-        "accountsChanged",
-        handleAccountsChanged
-      );
+      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
     };
-  }, [onDisconnected]);
+  }, [connected, onDisconnected]);
 
   async function handleConnectAndVerify() {
     try {
@@ -40,7 +48,7 @@ export default function ConnectWalletButton({
       setStatus("");
       setLoading(true);
 
-      const token = localStorage.getItem("token");
+      const token = getAuthToken();
       if (!token) {
         throw new Error("You must be logged in to link a wallet.");
       }
@@ -49,35 +57,31 @@ export default function ConnectWalletButton({
         throw new Error("No Ethereum wallet detected. Please install MetaMask.");
       }
 
-      // 1) Request accounts
       const provider = new ethers.BrowserProvider(window.ethereum);
       const accounts = await provider.send("eth_requestAccounts", []);
       if (!accounts || accounts.length === 0) {
         throw new Error("No account returned from wallet.");
       }
 
-      const address = accounts[0];
-
-      // 2) Verify ownership by signing a message
+      const normalizedAddress = ethers.getAddress(accounts[0]);
       const signer = await provider.getSigner();
-      const message = `Link wallet to remittance account at ${new Date().toISOString()}`;
+      const message = [
+        "Remittance wallet link request",
+        `Host: ${window.location.host}`,
+        `Timestamp: ${new Date().toISOString()}`,
+      ].join("\n");
       const signature = await signer.signMessage(message);
 
-      // 3) Call backend to link + verify
-      const res = await apiRequest("/api/wallet/link", {
-        method: "POST",
+      const res = await linkWalletToUser({
         token,
-        body: {
-          address,
-          message,
-          signature,
-        },
+        address: normalizedAddress,
+        message,
+        signature,
       });
 
       setStatus(res.message || "Wallet linked and verified.");
-
       if (typeof onLinked === "function") {
-        onLinked(address);
+        onLinked(normalizedAddress);
       }
     } catch (err) {
       setError(err.message || "Failed to connect wallet.");
@@ -92,16 +96,12 @@ export default function ConnectWalletButton({
       setStatus("");
       setLoading(true);
 
-      const token = localStorage.getItem("token");
+      const token = getAuthToken();
       if (!token) {
         throw new Error("You must be logged in to unlink a wallet.");
       }
 
-      await apiRequest("/api/wallet/link", {
-        method: "DELETE",
-        token,
-      });
-
+      await unlinkWalletFromUser({ token });
       setStatus("Wallet unlinked from this account.");
 
       if (typeof onDisconnected === "function") {
@@ -115,10 +115,10 @@ export default function ConnectWalletButton({
   }
 
   const label = loading
-    ? "Connecting & Verifying..."
+    ? "Working..."
     : connected
-    ? "Connected"
-    : "Connect & Verify Wallet";
+      ? "Connected"
+      : "Connect & Verify Wallet";
 
   return (
     <div className="space-y-2">

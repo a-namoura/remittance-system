@@ -1,9 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getMyTransactions } from "../services/transactionApi.js";
 import BackButton from "../components/BackButton.jsx";
-import { getExplorerTxUrl } from "../utils/explorer.js";
+import { getMyTransactions } from "../services/transactionApi.js";
+import { getAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
+import { getExplorerTxUrl } from "../utils/explorer.js";
+import { openExternalUrl } from "../utils/security.js";
+
+const PAGE_LIMIT = 10;
 
 function statusBadgeClasses(status) {
   if (status === "success") return "bg-green-100 text-green-700";
@@ -12,65 +16,102 @@ function statusBadgeClasses(status) {
 }
 
 export default function Transactions() {
+  const navigate = useNavigate();
+
   const [transactions, setTransactions] = useState([]);
   const [status, setStatus] = useState("all");
-  const [direction, setDirection] = useState("all"); // all | sent | received
+  const [direction, setDirection] = useState("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+
+  const [appliedFilters, setAppliedFilters] = useState({
+    status: "all",
+    direction: "all",
+    from: "",
+    to: "",
+  });
+
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const navigate = useNavigate();
 
-  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(total / PAGE_LIMIT)),
+    [total]
+  );
 
   useEffect(() => {
-    async function load() {
-      try {
-        const token = localStorage.getItem("token");
-        if (!token) {
-          setError("You are not logged in.");
-          return;
-        }
+    let isCancelled = false;
 
+    async function loadTransactions() {
+      const token = getAuthToken();
+      if (!token) {
+        if (!isCancelled) {
+          setError("You are not logged in.");
+          setTransactions([]);
+          setTotal(0);
+        }
+        return;
+      }
+
+      try {
         setLoading(true);
         setError("");
 
         const data = await getMyTransactions({
           token,
-          limit,
+          limit: PAGE_LIMIT,
           page,
-          status: status === "all" ? undefined : status,
-          from: from || undefined,
-          to: to || undefined,
-          view: direction === "all" ? undefined : direction,
+          status:
+            appliedFilters.status === "all" ? undefined : appliedFilters.status,
+          view:
+            appliedFilters.direction === "all"
+              ? undefined
+              : appliedFilters.direction,
+          from: appliedFilters.from || undefined,
+          to: appliedFilters.to || undefined,
         });
 
+        if (isCancelled) return;
         setTransactions(data.transactions || []);
         setTotal(data.total || 0);
       } catch (err) {
+        if (isCancelled) return;
         setError(err.message || "Failed to load transactions.");
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    load();
-  }, [status, direction, from, to, page, limit]);
+    loadTransactions();
 
-  function applyFilters(e) {
-    e.preventDefault();
+    return () => {
+      isCancelled = true;
+    };
+  }, [appliedFilters, page]);
+
+  function applyFilters(event) {
+    event.preventDefault();
+    setError("");
+
+    if (from && to && new Date(from) > new Date(to)) {
+      setError("From date cannot be later than To date.");
+      return;
+    }
+
     setPage(1);
+    setAppliedFilters({ status, direction, from, to });
   }
 
   function handlePrev() {
-    setPage((p) => Math.max(1, p - 1));
+    setPage((current) => Math.max(1, current - 1));
   }
 
   function handleNext() {
-    setPage((p) => Math.min(totalPages, p + 1));
+    setPage((current) => Math.min(totalPages, current + 1));
   }
 
   return (
@@ -88,7 +129,6 @@ export default function Transactions() {
         </p>
       </div>
 
-      {/* Filters */}
       <form
         onSubmit={applyFilters}
         className="bg-white border rounded-xl p-4 flex flex-wrap gap-4 items-end"
@@ -100,7 +140,7 @@ export default function Transactions() {
           <select
             className="border rounded-md px-2 py-1 text-sm"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onChange={(event) => setStatus(event.target.value)}
           >
             <option value="all">All</option>
             <option value="success">Success</option>
@@ -116,7 +156,7 @@ export default function Transactions() {
           <select
             className="border rounded-md px-2 py-1 text-sm"
             value={direction}
-            onChange={(e) => setDirection(e.target.value)}
+            onChange={(event) => setDirection(event.target.value)}
           >
             <option value="all">All</option>
             <option value="sent">Sent</option>
@@ -132,7 +172,7 @@ export default function Transactions() {
             type="date"
             className="border rounded-md px-2 py-1 text-sm"
             value={from}
-            onChange={(e) => setFrom(e.target.value)}
+            onChange={(event) => setFrom(event.target.value)}
           />
         </div>
 
@@ -144,7 +184,7 @@ export default function Transactions() {
             type="date"
             className="border rounded-md px-2 py-1 text-sm"
             value={to}
-            onChange={(e) => setTo(e.target.value)}
+            onChange={(event) => setTo(event.target.value)}
           />
         </div>
 
@@ -158,13 +198,8 @@ export default function Transactions() {
         </div>
       </form>
 
-      {/* List */}
       <div className="rounded-2xl border bg-white p-6">
-        {error && (
-          <div className="mb-3 text-sm text-red-600">
-            {error}
-          </div>
-        )}
+        {error && <div className="mb-3 text-sm text-red-600">{error}</div>}
 
         {loading ? (
           <div className="text-sm text-gray-600">Loading transactions...</div>
@@ -173,49 +208,54 @@ export default function Transactions() {
         ) : (
           <div className="space-y-2">
             <div className="divide-y">
-              {transactions.map((t) => {
-                const isSent = t.direction === "sent";
-                const explorerUrl = getExplorerTxUrl(t.txHash);
+              {transactions.map((transaction) => {
+                const isSent = transaction.direction === "sent";
+                const explorerUrl = getExplorerTxUrl(transaction.txHash);
 
                 return (
                   <div
-                    key={t.id}
+                    key={transaction.id}
                     className="py-3 flex items-start justify-between gap-4 hover:bg-gray-50 cursor-pointer"
-                    onClick={() => navigate(`/transactions/${t.id}`)}
+                    onClick={() => navigate(`/transactions/${transaction.id}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        navigate(`/transactions/${transaction.id}`);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
                   >
                     <div>
                       <div className="text-sm font-medium text-gray-900">
-                        {isSent ? "Sent" : "Received"} {t.amount} ETH
-                        {typeof t.fiatAmountUsd === "number" && (
+                        {isSent ? "Sent" : "Received"} {transaction.amount} ETH
+                        {typeof transaction.fiatAmountUsd === "number" && (
                           <span className="text-xs text-gray-500 ml-1">
-                            (~ {t.fiatAmountUsd.toFixed(2)}{" "}
-                            {t.fiatCurrency || "USD"})
+                            (~ {transaction.fiatAmountUsd.toFixed(2)}{" "}
+                            {transaction.fiatCurrency || "USD"})
                           </span>
                         )}
                       </div>
 
                       <div className="text-xs text-gray-600 font-mono mt-1">
                         {isSent
-                          ? `To: ${t.receiverWallet}`
-                          : `From: ${t.senderWallet}`}
+                          ? `To: ${transaction.receiverWallet}`
+                          : `From: ${transaction.senderWallet}`}
                       </div>
 
-                      {t.txHash && (
+                      {transaction.txHash && (
                         <div className="text-xs text-gray-500 mt-1 space-y-0.5">
                           <div className="font-mono">
-                            Tx: {t.txHash.slice(0, 10)}...
-                            {t.txHash.slice(-8)}
+                            Tx: {transaction.txHash.slice(0, 10)}...
+                            {transaction.txHash.slice(-8)}
                           </div>
                           {explorerUrl && (
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.open(
-                                  explorerUrl,
-                                  "_blank",
-                                  "noreferrer"
-                                );
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                openExternalUrl(explorerUrl);
                               }}
                               className="text-[11px] text-blue-600 hover:underline"
                             >
@@ -226,26 +266,25 @@ export default function Transactions() {
                       )}
 
                       <div className="text-xs text-gray-500 mt-1">
-                        {formatDateTime(t.createdAt) || "—"}
+                        {formatDateTime(transaction.createdAt) || "-"}
                       </div>
                     </div>
 
                     <span
                       className={`text-xs px-3 py-1 rounded-full ${statusBadgeClasses(
-                        t.status
+                        transaction.status
                       )}`}
                     >
-                      {t.status}
+                      {transaction.status}
                     </span>
                   </div>
                 );
               })}
             </div>
 
-            {/* Pagination */}
             <div className="flex items-center justify-between mt-4 text-xs text-gray-600">
               <div>
-                Page {page} of {totalPages} — {total} transaction
+                Page {page} of {totalPages} - {total} transaction
                 {total === 1 ? "" : "s"}
               </div>
               <div className="space-x-2">

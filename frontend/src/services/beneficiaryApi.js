@@ -19,7 +19,12 @@ export async function createBeneficiary({
 }
 
 export async function deleteBeneficiary({ token, id }) {
-  return apiRequest(`/api/beneficiaries/${id}`, {
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) {
+    throw new Error("Beneficiary id is required");
+  }
+
+  return apiRequest(`/api/beneficiaries/${encodeURIComponent(normalizedId)}`, {
     method: "DELETE",
     token,
   });

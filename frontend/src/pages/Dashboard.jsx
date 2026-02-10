@@ -1,11 +1,19 @@
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { Link, useNavigate } from "react-router-dom";
-import { apiRequest } from "../services/api.js";
 import ConnectWalletButton from "../components/ConnectWalletButton.jsx";
+import { getCurrentUser } from "../services/authApi.js";
 import { getMyTransactions } from "../services/transactionApi.js";
-import { getExplorerTxUrl } from "../utils/explorer.js";
+import {
+  clearSessionStorage,
+  clearWalletState,
+  getAuthToken,
+  readWalletState,
+  writeWalletState,
+} from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
+import { getExplorerTxUrl } from "../utils/explorer.js";
+import { openExternalUrl } from "../utils/security.js";
 
 function badgeClass(ok) {
   return ok ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700";
@@ -33,52 +41,86 @@ export default function Dashboard() {
   const [txError, setTxError] = useState("");
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
+    let isCancelled = false;
 
-    apiRequest("/api/me", { token })
-      .then((data) => setMe(data.user))
-      .catch((err) => {
-        setError(err.message);
+    async function loadDashboardContext() {
+      const token = getAuthToken();
+      if (!token) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      try {
+        setError("");
+        const user = await getCurrentUser({ token });
+        if (isCancelled) return;
+
+        setMe(user);
+        if (!user?.id) {
+          setWalletLinked(false);
+          setWalletAddress("");
+          return;
+        }
+
+        const storedWallet = readWalletState(user.id);
+        setWalletLinked(storedWallet.linked);
+        setWalletAddress(storedWallet.address);
+      } catch (err) {
+        if (isCancelled) return;
+        setError(err.message || "Failed to load account details.");
+
         if (err.status === 401 || err.status === 403) {
-          localStorage.removeItem("token");
+          clearSessionStorage();
           navigate("/login", { replace: true });
         }
-      });
+      }
+    }
+
+    loadDashboardContext();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [navigate]);
 
   useEffect(() => {
-    if (!me) return;
+    let isCancelled = false;
 
-    const connectedKey = `walletConnected_${me.id}`;
-    const addressKey = `walletAddress_${me.id}`;
+    async function loadRecentTransactions() {
+      const token = getAuthToken();
+      if (!token) return;
 
-    const storedLinked = localStorage.getItem(connectedKey) === "1";
-    const storedAddress = localStorage.getItem(addressKey) || "";
+      try {
+        setTxError("");
+        const data = await getMyTransactions({ token, limit: 5 });
+        if (isCancelled) return;
+        setTransactions(data.transactions || []);
+      } catch (err) {
+        if (isCancelled) return;
+        setTxError(err.message || "Failed to load recent transactions.");
+      }
+    }
 
-    setWalletLinked(storedLinked);
-    setWalletAddress(storedAddress);
-  }, [me]);
+    loadRecentTransactions();
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    getMyTransactions({ token, limit: 5 })
-      .then((data) => setTransactions(data.transactions || []))
-      .catch((err) => setTxError(err.message));
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
-  // Fetch wallet balance when wallet changes
   useEffect(() => {
+    let isCancelled = false;
+
     async function fetchBalance() {
       if (!walletLinked || !walletAddress) {
+        if (isCancelled) return;
         setWalletBalance(null);
         setBalanceError("");
         return;
       }
 
       if (!window.ethereum) {
+        if (isCancelled) return;
         setBalanceError("Wallet provider not available to fetch balance.");
         setWalletBalance(null);
         return;
@@ -86,42 +128,41 @@ export default function Dashboard() {
 
       try {
         setBalanceError("");
-
         const provider = new ethers.BrowserProvider(window.ethereum);
         const balanceBigInt = await provider.getBalance(walletAddress);
-        const balanceEth = Number(ethers.formatEther(balanceBigInt));
-
-        setWalletBalance(balanceEth);
-      } catch (err) {
-        console.error("Failed to fetch balance", err);
+        if (isCancelled) return;
+        setWalletBalance(Number(ethers.formatEther(balanceBigInt)));
+      } catch {
+        if (isCancelled) return;
         setBalanceError("Failed to load wallet balance.");
         setWalletBalance(null);
       }
     }
 
     fetchBalance();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [walletLinked, walletAddress]);
 
   if (!me && !error) {
     return (
       <div className="max-w-6xl mx-auto px-6 py-10 text-gray-600">
-        Loading dashboard…
+        Loading dashboard...
       </div>
     );
   }
 
-  const connectedKey = me ? `walletConnected_${me.id}` : null;
-  const addressKey = me ? `walletAddress_${me.id}` : null;
-
   return (
     <div className="max-w-6xl mx-auto px-6 py-10 space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">
           Welcome{me ? `, ${me.username}` : ""}
         </h1>
         <p className="text-sm text-gray-600 mt-1">
-          View your account status, link your wallet, and track recent transactions.
+          View your account status, link your wallet, and track recent
+          transactions.
         </p>
       </div>
 
@@ -132,7 +173,6 @@ export default function Dashboard() {
       )}
 
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Account Status */}
         <div className="rounded-2xl border bg-white p-6">
           <div className="flex items-start justify-between">
             <div>
@@ -202,7 +242,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Wallet Setup */}
         <div className="rounded-2xl border bg-white p-6">
           <div className="flex items-start justify-between">
             <div>
@@ -210,8 +249,8 @@ export default function Dashboard() {
                 Wallet Setup
               </h2>
               <p className="text-xs text-gray-500 mt-1">
-                Connect and verify ownership (signature) to link your wallet to
-                this account.
+                Connect and verify ownership to link your wallet to this
+                account.
               </p>
             </div>
 
@@ -232,9 +271,8 @@ export default function Dashboard() {
                 setWalletAddress(address);
                 setWalletBalance(null);
 
-                if (me && connectedKey && addressKey) {
-                  localStorage.setItem(connectedKey, "1");
-                  localStorage.setItem(addressKey, address);
+                if (me?.id) {
+                  writeWalletState(me.id, address);
                 }
               }}
               onDisconnected={() => {
@@ -242,9 +280,8 @@ export default function Dashboard() {
                 setWalletAddress("");
                 setWalletBalance(null);
 
-                if (me && connectedKey && addressKey) {
-                  localStorage.removeItem(connectedKey);
-                  localStorage.removeItem(addressKey);
+                if (me?.id) {
+                  clearWalletState(me.id);
                 }
               }}
             />
@@ -252,14 +289,13 @@ export default function Dashboard() {
 
           {!walletLinked && (
             <p className="text-xs text-gray-600 mt-3">
-              Link your wallet above to unlock sending transactions and tracking
+              Link your wallet to unlock sending transactions and tracking
               balances.
             </p>
           )}
         </div>
       </div>
 
-      {/* Recent Transactions */}
       <div className="rounded-2xl border bg-white p-6">
         <div className="flex items-start justify-between mb-3">
           <div>
@@ -267,14 +303,12 @@ export default function Dashboard() {
               Recent Transactions
             </h2>
             <p className="text-xs text-gray-500 mt-1">
-              A quick view of your last transactions.
+              A quick view of your latest transactions.
             </p>
           </div>
         </div>
 
-        {txError && (
-          <div className="text-sm text-red-600 mb-3">{txError}</div>
-        )}
+        {txError && <div className="text-sm text-red-600 mb-3">{txError}</div>}
 
         {transactions.length === 0 ? (
           <p className="text-sm text-gray-600">
@@ -284,39 +318,41 @@ export default function Dashboard() {
         ) : (
           <>
             <div className="divide-y">
-              {transactions.map((t) => {
-                const explorerUrl = getExplorerTxUrl(t.txHash);
+              {transactions.map((transaction) => {
+                const explorerUrl = getExplorerTxUrl(transaction.txHash);
 
                 return (
                   <Link
-                    key={t.id}
-                    to={`/transactions/${t.id}`}
+                    key={transaction.id}
+                    to={`/transactions/${transaction.id}`}
                     className="py-3 flex items-start justify-between gap-4 hover:bg-gray-50 rounded-lg px-2 -mx-2 cursor-pointer"
                   >
                     <div>
                       <div className="text-sm font-medium text-gray-900">
-                        {t.amount} ETH
-                        {typeof t.fiatAmountUsd === "number" && (
+                        {transaction.amount} ETH
+                        {typeof transaction.fiatAmountUsd === "number" && (
                           <span className="text-xs text-gray-500 ml-1">
-                            (~ {t.fiatAmountUsd.toFixed(2)}{" "}
-                            {t.fiatCurrency || "USD"})
+                            (~ {transaction.fiatAmountUsd.toFixed(2)}{" "}
+                            {transaction.fiatCurrency || "USD"})
                           </span>
                         )}
                       </div>
                       <div className="text-xs text-gray-600 font-mono mt-1">
-                        To: {t.receiverWallet}
+                        To: {transaction.receiverWallet}
                       </div>
-                      {t.txHash && (
+                      {transaction.txHash && (
                         <div className="text-xs text-gray-500 mt-1 space-y-0.5">
                           <div className="font-mono">
-                            Tx: {t.txHash.slice(0, 10)}…{t.txHash.slice(-8)}
+                            Tx: {transaction.txHash.slice(0, 10)}...
+                            {transaction.txHash.slice(-8)}
                           </div>
                           {explorerUrl && (
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.open(explorerUrl, "_blank", "noreferrer");
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                openExternalUrl(explorerUrl);
                               }}
                               className="text-[11px] text-blue-600 hover:underline"
                             >
@@ -326,16 +362,16 @@ export default function Dashboard() {
                         </div>
                       )}
                       <div className="text-xs text-gray-500 mt-1">
-                        {formatDateTime(t.createdAt) || "—"}
+                        {formatDateTime(transaction.createdAt) || "-"}
                       </div>
                     </div>
 
                     <span
                       className={`text-xs px-3 py-1 rounded-full ${statusBadgeClasses(
-                        t.status
+                        transaction.status
                       )}`}
                     >
-                      {t.status}
+                      {transaction.status}
                     </span>
                   </Link>
                 );

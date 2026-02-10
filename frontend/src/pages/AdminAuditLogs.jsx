@@ -1,20 +1,47 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "../services/api.js";
+import { getAuthToken } from "../services/session.js";
+import { formatDateTime } from "../utils/datetime.js";
 
 export default function AdminAuditLogs() {
   const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setError("You must be logged in as an admin to view this page.");
-      return;
+    let isCancelled = false;
+
+    async function loadAuditLogs() {
+      const token = getAuthToken();
+      if (!token) {
+        if (!isCancelled) {
+          setError("You must be logged in as an admin to view this page.");
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError("");
+        const data = await apiRequest("/api/admin/audit-logs?limit=50", { token });
+        if (isCancelled) return;
+        setLogs(data.logs || []);
+      } catch (err) {
+        if (isCancelled) return;
+        setError(err.message || "Failed to load audit logs.");
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
     }
 
-    apiRequest("/api/admin/audit-logs?limit=50", { token })
-      .then((d) => setLogs(d.logs || []))
-      .catch((e) => setError(e.message));
+    loadAuditLogs();
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   return (
@@ -28,32 +55,32 @@ export default function AdminAuditLogs() {
       </div>
 
       {error && (
-        <div className="p-3 rounded bg-red-100 text-red-700 text-sm">
-          {error}
-        </div>
+        <div className="p-3 rounded bg-red-100 text-red-700 text-sm">{error}</div>
       )}
 
       <div className="bg-white border rounded-xl divide-y">
-        {logs.length === 0 && !error && (
-          <div className="p-3 text-sm text-gray-600">
-            No audit logs found.
-          </div>
+        {loading && !error && (
+          <div className="p-3 text-sm text-gray-600">Loading audit logs...</div>
         )}
 
-        {logs.map((l) => (
-          <div key={l.id} className="p-3 text-sm">
+        {!loading && logs.length === 0 && !error && (
+          <div className="p-3 text-sm text-gray-600">No audit logs found.</div>
+        )}
+
+        {logs.map((log) => (
+          <div key={log.id} className="p-3 text-sm">
             <div className="font-medium">
-              {l.action} — {l.userEmail}{" "}
-              {l.role && (
-                <span className="text-xs text-gray-500">({l.role})</span>
+              {log.action} - {log.userEmail || "Unknown user"}{" "}
+              {log.userRole && (
+                <span className="text-xs text-gray-500">({log.userRole})</span>
               )}
             </div>
             <div className="text-xs text-gray-500">
-              {new Date(l.createdAt).toLocaleString()} | IP: {l.ip || "N/A"}
+              {formatDateTime(log.createdAt) || "-"} | IP: {log.ip || "N/A"}
             </div>
-            {l.metadata && Object.keys(l.metadata).length > 0 && (
+            {log.metadata && Object.keys(log.metadata).length > 0 && (
               <pre className="text-xs bg-gray-50 p-2 mt-1 rounded overflow-x-auto">
-                {JSON.stringify(l.metadata, null, 2)}
+                {JSON.stringify(log.metadata, null, 2)}
               </pre>
             )}
           </div>

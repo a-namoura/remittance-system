@@ -7,3 +7,10 @@ export async function linkWalletToUser({ token, address, signature, message }) {
     body: { address, signature, message },
   });
 }
+
+export async function unlinkWalletFromUser({ token }) {
+  return apiRequest("/api/wallet/link", {
+    method: "DELETE",
+    token,
+  });
+}

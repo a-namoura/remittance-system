@@ -7,12 +7,19 @@ export async function getMyTransactions({
   status,
   from,
   to,
-  view, // "all" | "sent" | "received"
+  view,
 }) {
   const params = new URLSearchParams();
 
-  if (limit) params.set("limit", String(limit));
-  if (page) params.set("page", String(page));
+  const numericLimit = Number(limit);
+  const numericPage = Number(page);
+
+  if (Number.isFinite(numericLimit) && numericLimit > 0) {
+    params.set("limit", String(Math.floor(numericLimit)));
+  }
+  if (Number.isFinite(numericPage) && numericPage > 0) {
+    params.set("page", String(Math.floor(numericPage)));
+  }
   if (status) params.set("status", status);
   if (from) params.set("from", from);
   if (to) params.set("to", to);
@@ -25,10 +32,11 @@ export async function getMyTransactions({
 }
 
 export async function getTransactionById({ token, id }) {
-  if (!id) {
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) {
     throw new Error("Transaction id is required");
   }
 
-  const path = `/api/transactions/${id}`;
+  const path = `/api/transactions/${encodeURIComponent(normalizedId)}`;
   return apiRequest(path, { token });
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { apiRequest } from "../services/api.js";
+import { getCurrentUser, logoutCurrentUser } from "../services/authApi.js";
+import { clearSessionStorage, getAuthToken } from "../services/session.js";
 
 export default function Navbar() {
   const [me, setMe] = useState(null);
@@ -10,37 +11,52 @@ export default function Navbar() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setMe(null);
-      setLoadingMe(false);
-      return;
+    let isCancelled = false;
+
+    async function loadCurrentUser() {
+      const token = getAuthToken();
+      if (!token) {
+        if (isCancelled) return;
+        setMe(null);
+        setLoadingMe(false);
+        return;
+      }
+
+      try {
+        setLoadingMe(true);
+        const user = await getCurrentUser({ token });
+        if (isCancelled) return;
+        setMe(user);
+      } catch {
+        if (isCancelled) return;
+        setMe(null);
+      } finally {
+        if (!isCancelled) {
+          setLoadingMe(false);
+        }
+      }
     }
 
-    setLoadingMe(true);
-    apiRequest("/api/me", { token })
-      .then((data) => setMe(data.user))
-      .catch(() => setMe(null))
-      .finally(() => setLoadingMe(false));
+    loadCurrentUser();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [location.pathname]);
 
   async function handleLogout() {
-    const token = localStorage.getItem("token");
+    const token = getAuthToken();
 
     try {
       if (token) {
-        await apiRequest("/api/auth/logout", {
-          method: "POST",
-          token,
-        });
+        await logoutCurrentUser({ token });
       }
-    } catch (err) {
-      // Don’t block logout if audit/log call fails
-      console.error("Logout error:", err.message);
+    } catch {
+      // ignore logout call errors and still clear local session
     } finally {
-      localStorage.removeItem("token");
+      clearSessionStorage();
       setMe(null);
-      navigate("/");
+      navigate("/", { replace: true });
     }
   }
 
@@ -60,7 +76,6 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Right side */}
         <nav className="flex items-center gap-3 text-sm">
           {!loadingMe && !me && !isAuthPage && (
             <>
@@ -78,8 +93,6 @@ export default function Navbar() {
               </Link>
             </>
           )}
-
-          {!loadingMe && !me && isAuthPage && null}
 
           {!loadingMe && me && (
             <>
