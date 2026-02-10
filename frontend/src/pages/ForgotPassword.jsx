@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiRequest } from "../services/api.js";
 import AuthCard from "../components/AuthCard.jsx";
-import { clearAuthToken, setAuthToken } from "../services/session.js";
+import PasswordStrengthIndicator from "../components/PasswordStrengthIndicator.jsx";
+import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
+import { apiRequest } from "../services/api.js";
+import { getPasswordPolicyError } from "../utils/passwordPolicy.js";
 
 const STEPS = {
-  CREDENTIALS: "credentials",
+  IDENTIFIER: "identifier",
   CHANNEL: "channel",
   CODE: "code",
+  PASSWORD: "password",
 };
 
 const CHANNELS = {
@@ -29,58 +32,54 @@ function normalizeDigits(value) {
 }
 
 function getStepSubtitle(step) {
-  if (step === STEPS.CREDENTIALS) {
-    return "Sign in with your username or email and password.";
+  if (step === STEPS.IDENTIFIER) {
+    return "Enter your username, email, or phone number to recover access.";
   }
   if (step === STEPS.CHANNEL) {
     return "Choose where to receive your verification code.";
   }
-  return "Enter the one-time code to complete sign in.";
+  if (step === STEPS.CODE) {
+    return "Enter the one-time code sent to you.";
+  }
+  return "Set a new password for your account.";
 }
 
-export default function Login() {
+export default function ForgotPassword() {
   const navigate = useNavigate();
 
-  const [step, setStep] = useState(STEPS.CREDENTIALS);
+  const [step, setStep] = useState(STEPS.IDENTIFIER);
+  const [identifier, setIdentifier] = useState("");
   const [verificationChannel, setVerificationChannel] = useState(
-    CHANNELS.PHONE
+    CHANNELS.EMAIL
   );
   const [availableChannels, setAvailableChannels] = useState({
     email: true,
     phone: true,
   });
 
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
-
   const [pendingToken, setPendingToken] = useState("");
+  const [resetToken, setResetToken] = useState("");
   const [deliveryHint, setDeliveryHint] = useState("");
+
+  const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
-  const [loading, setLoading] = useState(false);
 
   const subtitle = useMemo(() => getStepSubtitle(step), [step]);
   const phoneDisabled = !availableChannels.phone;
 
   useEffect(() => {
-    clearAuthToken();
-  }, []);
-
-  useEffect(() => {
     if (cooldown <= 0) return;
-    const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    const timer = setTimeout(() => setCooldown((value) => value - 1), 1000);
     return () => clearTimeout(timer);
   }, [cooldown]);
-
-  function resetVerificationState() {
-    setCode("");
-    setPendingToken("");
-    setDeliveryHint("");
-    setCooldown(0);
-  }
 
   function resetMessages() {
     setError("");
@@ -90,50 +89,45 @@ export default function Login() {
   function handleBack() {
     resetMessages();
 
-    if (step === STEPS.CREDENTIALS) {
-      navigate("/");
+    if (step === STEPS.IDENTIFIER) {
+      navigate("/login");
       return;
     }
 
     if (step === STEPS.CHANNEL) {
-      resetVerificationState();
-      setAvailableChannels({ email: true, phone: true });
-      setStep(STEPS.CREDENTIALS);
+      setStep(STEPS.IDENTIFIER);
       return;
     }
 
-    setStep(STEPS.CHANNEL);
+    if (step === STEPS.CODE) {
+      setStep(STEPS.CHANNEL);
+      return;
+    }
+
+    setStep(STEPS.CODE);
   }
 
-  async function submitCredentials(e) {
-    e.preventDefault();
+  async function submitIdentifier(event) {
+    event.preventDefault();
     resetMessages();
 
     const normalizedIdentifier = identifier.trim();
     if (!normalizedIdentifier) {
-      setError("Email or username is required.");
-      return;
-    }
-
-    if (!password) {
-      setError("Password is required.");
+      setError("Username, email, or phone number is required.");
       return;
     }
 
     try {
       setLoading(true);
-      const res = await apiRequest("/api/auth/login/options", {
+
+      const response = await apiRequest("/api/auth/forgot-password/options", {
         method: "POST",
-        body: {
-          identifier: normalizedIdentifier,
-          password,
-          authMethod: "identifier",
-        },
+        body: { identifier: normalizedIdentifier },
       });
 
       const channels = {
-        email: res?.channels?.email !== false,
-        phone: res?.channels?.phone === true,
+        email: response?.channels?.email !== false,
+        phone: response?.channels?.phone === true,
       };
 
       setAvailableChannels(channels);
@@ -141,74 +135,73 @@ export default function Login() {
         setVerificationChannel(CHANNELS.EMAIL);
       }
 
-      resetVerificationState();
+      setPendingToken("");
+      setResetToken("");
+      setDeliveryHint("");
+      setCode("");
+      setCooldown(0);
       setStep(STEPS.CHANNEL);
     } catch (err) {
-      setError(err.message || "Login failed.");
+      setError(err.message || "Could not find the account.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function submitVerificationChannel(e) {
-    e.preventDefault();
+  async function submitChannel(event) {
+    event.preventDefault();
     resetMessages();
 
     const normalizedIdentifier = identifier.trim();
-    if (!normalizedIdentifier || !password) {
-      setError("Email or username and password are required.");
-      setStep(STEPS.CREDENTIALS);
+    if (!normalizedIdentifier) {
+      setError("Username, email, or phone number is required.");
+      setStep(STEPS.IDENTIFIER);
       return;
     }
 
-    if (
-      verificationChannel === CHANNELS.PHONE &&
-      !availableChannels.phone
-    ) {
+    if (verificationChannel === CHANNELS.PHONE && phoneDisabled) {
       setError("No phone number found for this account.");
       return;
     }
 
     try {
       setLoading(true);
-      const res = await apiRequest("/api/auth/login", {
+
+      const response = await apiRequest("/api/auth/forgot-password/start", {
         method: "POST",
         body: {
           identifier: normalizedIdentifier,
-          password,
-          authMethod: "identifier",
           verificationChannel,
         },
       });
 
-      setPendingToken(res.token || "");
-      setDeliveryHint(res.destination || "");
+      setPendingToken(response.token || "");
+      setDeliveryHint(response.destination || "");
+      if (response.verificationChannel) {
+        setVerificationChannel(response.verificationChannel);
+      }
       setCode("");
       setCooldown(RESEND_DELAY);
       setStep(STEPS.CODE);
     } catch (err) {
-      const message = err.message || "Login failed.";
+      const message = err.message || "Failed to send verification code.";
       if (message.toLowerCase().includes("no phone number")) {
-        setAvailableChannels((prev) => ({ ...prev, phone: false }));
+        setAvailableChannels((previous) => ({ ...previous, phone: false }));
         setVerificationChannel(CHANNELS.EMAIL);
-        setInfo(message);
-        return;
       }
-
       setError(message);
-      setStep(STEPS.CREDENTIALS);
     } finally {
       setLoading(false);
     }
   }
 
-  async function submitCode(e) {
-    e.preventDefault();
+  async function submitCode(event) {
+    event.preventDefault();
     resetMessages();
 
     if (!pendingToken) {
-      setError("Session expired. Please sign in again.");
-      setStep(STEPS.CREDENTIALS);
+      setError("Session expired. Start recovery again.");
+      setStep(STEPS.IDENTIFIER);
       return;
     }
 
@@ -220,14 +213,20 @@ export default function Login() {
 
     try {
       setLoading(true);
-      await apiRequest("/api/auth/verify-code", {
+
+      const response = await apiRequest("/api/auth/forgot-password/verify", {
         method: "POST",
-        token: pendingToken,
-        body: { code: trimmedCode },
+        body: {
+          token: pendingToken,
+          code: trimmedCode,
+        },
       });
 
-      setAuthToken(pendingToken);
-      navigate("/dashboard", { replace: true });
+      setResetToken(response.resetToken || "");
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
+      setCooldown(0);
+      setStep(STEPS.PASSWORD);
     } catch (err) {
       setError(err.message || "Code verification failed.");
     } finally {
@@ -241,12 +240,16 @@ export default function Login() {
 
     try {
       setLoading(true);
-      const res = await apiRequest("/api/auth/resend-code", {
+
+      const response = await apiRequest("/api/auth/forgot-password/resend", {
         method: "POST",
-        token: pendingToken,
-        body: { verificationChannel },
+        body: {
+          token: pendingToken,
+          verificationChannel,
+        },
       });
-      setDeliveryHint(res.destination || deliveryHint);
+
+      setDeliveryHint(response.destination || deliveryHint);
       setCooldown(RESEND_DELAY);
     } catch (err) {
       setError(err.message || "Failed to resend code.");
@@ -255,13 +258,53 @@ export default function Login() {
     }
   }
 
-  function handleForgotPassword() {
+  async function submitNewPassword(event) {
+    event.preventDefault();
     resetMessages();
-    navigate("/forgot-password");
+
+    if (!resetToken) {
+      setError("Verification session expired. Start recovery again.");
+      setStep(STEPS.IDENTIFIER);
+      return;
+    }
+
+    const passwordError = getPasswordPolicyError(newPassword);
+    if (passwordError) {
+      setError(passwordError);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const response = await apiRequest("/api/auth/forgot-password/reset", {
+        method: "POST",
+        body: {
+          resetToken,
+          newPassword,
+        },
+      });
+
+      setInfo(
+        response.message ||
+          "Password updated successfully. Redirecting to login..."
+      );
+
+      setTimeout(() => navigate("/login", { replace: true }), 1200);
+    } catch (err) {
+      setError(err.message || "Failed to reset password.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <AuthCard title="Login" subtitle={subtitle} onBack={handleBack}>
+    <AuthCard title="Forgot Password" subtitle={subtitle} onBack={handleBack}>
       {loading && (
         <div className="mb-3 flex items-center gap-2 text-xs text-gray-500">
           <span className="inline-block h-3 w-3 rounded-full border-2 border-purple-500 border-t-transparent animate-spin" />
@@ -276,51 +319,27 @@ export default function Login() {
       )}
 
       {info && (
-        <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+        <div className="mb-3 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
           {info}
         </div>
       )}
 
-      {step === STEPS.CREDENTIALS && (
-        <form onSubmit={submitCredentials} className="space-y-4">
+      {step === STEPS.IDENTIFIER && (
+        <form onSubmit={submitIdentifier} className="space-y-4">
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">
-              Email or username
+              Username, email, or phone number
             </label>
             <input
               type="text"
               className={inputBaseClass}
-              placeholder="you@example.com or username"
+              placeholder="username / you@example.com / +123..."
               value={identifier}
               maxLength={120}
               autoCapitalize="none"
               autoCorrect="off"
-              autoComplete="username"
-              onChange={(e) => setIdentifier(e.target.value)}
+              onChange={(event) => setIdentifier(event.target.value)}
             />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">
-              Password
-            </label>
-            <input
-              className={inputBaseClass}
-              placeholder="********"
-              type="password"
-              value={password}
-              autoComplete="current-password"
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <div className="mt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={handleForgotPassword}
-                className={mutedButtonClass}
-              >
-                Forgot password?
-              </button>
-            </div>
           </div>
 
           <button
@@ -334,7 +353,7 @@ export default function Login() {
       )}
 
       {step === STEPS.CHANNEL && (
-        <form onSubmit={submitVerificationChannel} className="space-y-4">
+        <form onSubmit={submitChannel} className="space-y-4">
           <div>
             <p className="mb-2 text-xs font-medium text-gray-600">
               Verification code destination
@@ -395,8 +414,8 @@ export default function Login() {
               value={code}
               maxLength={6}
               autoComplete="one-time-code"
-              onChange={(e) =>
-                setCode(normalizeDigits(e.target.value).slice(0, 6))
+              onChange={(event) =>
+                setCode(normalizeDigits(event.target.value).slice(0, 6))
               }
               className="w-full rounded-xl border border-gray-200 px-3 py-2 text-center font-mono text-sm tracking-[0.3em] focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
@@ -417,7 +436,7 @@ export default function Login() {
             disabled={loading}
             className={primaryButtonClass}
           >
-            Verify and sign in
+            Verify code
           </button>
 
           <div className="text-center">
@@ -433,14 +452,71 @@ export default function Login() {
         </form>
       )}
 
+      {step === STEPS.PASSWORD && (
+        <form onSubmit={submitNewPassword} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">
+              New password
+            </label>
+            <div className="relative">
+              <input
+                type={showNewPassword ? "text" : "password"}
+                className={`${inputBaseClass} pr-10`}
+                placeholder="********"
+                value={newPassword}
+                autoComplete="new-password"
+                onChange={(event) => setNewPassword(event.target.value)}
+              />
+              <div className="absolute inset-y-0 right-2 flex items-center">
+                <PasswordVisibilityToggle
+                  shown={showNewPassword}
+                  onToggle={() => setShowNewPassword((value) => !value)}
+                />
+              </div>
+            </div>
+            <PasswordStrengthIndicator password={newPassword} />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">
+              Confirm new password
+            </label>
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                className={`${inputBaseClass} pr-10`}
+                placeholder="********"
+                value={confirmPassword}
+                autoComplete="new-password"
+                onChange={(event) => setConfirmPassword(event.target.value)}
+              />
+              <div className="absolute inset-y-0 right-2 flex items-center">
+                <PasswordVisibilityToggle
+                  shown={showConfirmPassword}
+                  onToggle={() => setShowConfirmPassword((value) => !value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className={primaryButtonClass}
+          >
+            Update password
+          </button>
+        </form>
+      )}
+
       <p className="mt-6 text-center text-xs text-gray-600">
-        Don't have an account?{" "}
+        Remembered your password?{" "}
         <button
           type="button"
-          onClick={() => navigate("/register")}
+          onClick={() => navigate("/login")}
           className="font-medium text-purple-600 hover:underline"
         >
-          Register
+          Log in
         </button>
       </p>
     </AuthCard>

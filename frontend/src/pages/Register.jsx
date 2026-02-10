@@ -1,18 +1,27 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AuthCard from "../components/AuthCard.jsx";
+import PasswordStrengthIndicator from "../components/PasswordStrengthIndicator.jsx";
+import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
 import { apiRequest } from "../services/api.js";
+import { clearAuthToken, setAuthToken } from "../services/session.js";
+import {
+  getPasswordPolicyError,
+  isPasswordPolicySatisfied,
+} from "../utils/passwordPolicy.js";
 
 const STEPS = {
   ACCOUNT: "account",
+  PASSWORD: "password",
   PHONE: "phone",
   PHONE_CODE: "phoneCode",
   PROFILE: "profile",
   KYC: "kyc",
-  DONE: "done",
 };
 
 const RESEND_DELAY = 30;
+const CODE_TTL_SECONDS = Number(import.meta.env.VITE_REGISTER_CODE_TTL_SECONDS) || 30;
+const CODE_TTL_MS = CODE_TTL_SECONDS * 1000;
 const MAX_LOCAL_PHONE_DIGITS = 12;
 
 const COUNTRIES_API = import.meta.env.VITE_COUNTRIES_API;
@@ -32,6 +41,7 @@ const DEFAULT_SUBTITLE =
 
 const STEP_SUBTITLES = {
   [STEPS.ACCOUNT]: "Use your email to create your account.",
+  [STEPS.PASSWORD]: "Create a strong password to secure your account.",
   [STEPS.PHONE]: "Add your mobile number and verify it.",
   [STEPS.PHONE_CODE]: "Enter the SMS code we sent to your phone.",
   [STEPS.PROFILE]:
@@ -74,13 +84,20 @@ function isUnder17(dobStr) {
 }
 
 const DOB_MAX = getDobMaxValue();
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
+const CODE_TTL_LABEL =
+  CODE_TTL_SECONDS >= 60 && CODE_TTL_SECONDS % 60 === 0
+    ? `${CODE_TTL_SECONDS / 60} minute${
+        CODE_TTL_SECONDS === 60 ? "" : "s"
+      }`
+    : `${CODE_TTL_SECONDS} seconds`;
 
 function getStepIndex(step) {
   if (step === STEPS.ACCOUNT) return 0;
-  if (step === STEPS.PHONE || step === STEPS.PHONE_CODE) return 1;
-  if (step === STEPS.PROFILE) return 2;
-  if (step === STEPS.KYC) return 3;
+  if (step === STEPS.PASSWORD) return 1;
+  if (step === STEPS.PHONE || step === STEPS.PHONE_CODE) return 2;
+  if (step === STEPS.PROFILE) return 3;
+  if (step === STEPS.KYC) return 4;
   return 0;
 }
 
@@ -92,7 +109,9 @@ export default function Register() {
   const [emailCode, setEmailCode] = useState("");
   const [emailCodeSent, setEmailCodeSent] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
+  const [emailCodeExpiresAt, setEmailCodeExpiresAt] = useState(null);
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const [country, setCountry] = useState(DEFAULT_COUNTRY);
   const [countries, setCountries] = useState([]);
@@ -101,6 +120,8 @@ export default function Register() {
   const [phone, setPhone] = useState("");
   const [phoneCode, setPhoneCode] = useState("");
   const [expectedPhoneCode, setExpectedPhoneCode] = useState("");
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [phoneCodeExpiresAt, setPhoneCodeExpiresAt] = useState(null);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -115,12 +136,13 @@ export default function Register() {
   const [agreeAccuracy, setAgreeAccuracy] = useState(false);
 
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
 
   const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
-    localStorage.removeItem("token");
+    clearAuthToken();
   }, []);
 
   useEffect(() => {
@@ -130,16 +152,18 @@ export default function Register() {
   }, [cooldown]);
 
   useEffect(() => {
+    let isCancelled = false;
+    const controller = new AbortController();
+
     async function loadCountries() {
       if (!COUNTRIES_API) {
-        console.error("VITE_COUNTRIES_API is not set in .env");
         return;
       }
 
       try {
         setCountryLoading(true);
 
-        const res = await fetch(COUNTRIES_API);
+        const res = await fetch(COUNTRIES_API, { signal: controller.signal });
         if (!res.ok) throw new Error(`Countries API error ${res.status}`);
         const data = await res.json();
 
@@ -192,33 +216,76 @@ export default function Register() {
           list = [opt, ...rest];
         }
 
-        setCountries(list);
+        if (!isCancelled) {
+          setCountries(list);
+        }
       } catch (err) {
-        console.error("Failed to load countries:", err);
+        if (err?.name !== "AbortError") {
+          if (!isCancelled) {
+            setCountries([]);
+          }
+        }
       } finally {
-        setCountryLoading(false);
+        if (!isCancelled) {
+          setCountryLoading(false);
+        }
       }
     }
 
     loadCountries();
+
+    return () => {
+      isCancelled = true;
+      controller.abort();
+    };
   }, []);
+
+  function resetEmailVerification() {
+    setEmailVerified(false);
+    setEmailCodeSent(false);
+    setEmailCode("");
+    setEmailCodeExpiresAt(null);
+    setInfo("");
+  }
+
+  function resetPhoneVerification({ clearPhone = false } = {}) {
+    if (clearPhone) setPhone("");
+    setExpectedPhoneCode("");
+    setPhoneVerified(false);
+    setPhoneCode("");
+    setPhoneCodeExpiresAt(null);
+  }
+
+  function buildFullPhone(localPhone, { allowRawFallback = false } = {}) {
+    const digits = normalizeDigits(localPhone || "");
+    if (country?.dialCode) return `${country.dialCode}${digits}`;
+    return allowRawFallback ? localPhone || "" : digits;
+  }
+
+  function isValidEmail(value) {
+    return value.includes("@") && value.includes(".");
+  }
 
   function handleBack() {
     setError("");
+    setInfo("");
 
     switch (step) {
       case STEPS.ACCOUNT:
         navigate("/");
         break;
-      case STEPS.PHONE:
+      case STEPS.PASSWORD:
         setStep(STEPS.ACCOUNT);
+        break;
+      case STEPS.PHONE:
+        setStep(STEPS.PASSWORD);
         break;
       case STEPS.PHONE_CODE:
         setStep(STEPS.PHONE);
         setPhoneCode("");
         break;
       case STEPS.PROFILE:
-        if (expectedPhoneCode) {
+        if (phoneVerified || expectedPhoneCode) {
           setStep(STEPS.PHONE_CODE);
         } else {
           setStep(STEPS.PHONE);
@@ -226,9 +293,6 @@ export default function Register() {
         break;
       case STEPS.KYC:
         setStep(STEPS.PROFILE);
-        break;
-      case STEPS.DONE:
-        navigate("/login");
         break;
       default:
         navigate("/");
@@ -240,13 +304,14 @@ export default function Register() {
 
   async function handleSendRegisterCode() {
     setError("");
+    setInfo("");
 
     const trimmed = email.trim();
     if (!trimmed) {
       setError("Email address is required.");
       return;
     }
-    if (!trimmed.includes("@") || !trimmed.includes(".")) {
+    if (!isValidEmail(trimmed)) {
       setError("Please enter a valid email address.");
       return;
     }
@@ -261,6 +326,8 @@ export default function Register() {
       setEmailCode("");
       setEmailCodeSent(true);
       setEmailVerified(false);
+      setEmailCodeExpiresAt(Date.now() + CODE_TTL_MS);
+      setShowPassword(false);
       setCooldown(RESEND_DELAY);
     } catch (err) {
       setError(err.message || "Failed to send code.");
@@ -271,10 +338,17 @@ export default function Register() {
 
   async function handleVerifyRegisterCode() {
     setError("");
+    setInfo("");
 
     const trimmed = emailCode.trim();
     if (!trimmed) {
       setError("Please enter the verification code.");
+      return;
+    }
+
+    if (!emailCodeExpiresAt || Date.now() > emailCodeExpiresAt) {
+      resetEmailVerification();
+      setError("This email verification code has expired. Please request a new one.");
       return;
     }
 
@@ -286,6 +360,8 @@ export default function Register() {
       });
       setEmailVerified(true);
       setCooldown(0);
+      setInfo("Email verified successfully. Now create your password.");
+      setStep(STEPS.PASSWORD);
     } catch (err) {
       setError(err.message || "Verification failed.");
     } finally {
@@ -293,30 +369,49 @@ export default function Register() {
     }
   }
 
-  async function handleAccountContinueSubmit(e) {
-    e.preventDefault();
-    setError("");
-
+  async function handleAccountContinue() {
     if (!emailVerified) {
       setError("Please verify your email before continuing.");
       return;
     }
 
-    if (!password || password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    setInfo("Email verified successfully. Now create your password.");
+    setStep(STEPS.PASSWORD);
+  }
+
+  async function handleAccountSubmit(e) {
+    e.preventDefault();
+    setError("");
+
+    if (!emailCodeSent) {
+      await handleSendRegisterCode();
       return;
     }
 
-    setStep(STEPS.PHONE);
+    if (!emailVerified) {
+      await handleVerifyRegisterCode();
+      return;
+    }
+
+    await handleAccountContinue();
   }
 
   async function handleResendRegisterCode() {
     if (cooldown > 0 || emailVerified) return;
-    try {
-      await handleSendRegisterCode();
-    } catch {
-      // error already handled in handleSendRegisterCode
+    await handleSendRegisterCode();
+  }
+
+  function handlePasswordSubmit(e) {
+    e.preventDefault();
+    setError("");
+
+    const passwordError = getPasswordPolicyError(password);
+    if (passwordError) {
+      setError(passwordError);
+      return;
     }
+
+    setStep(STEPS.PHONE);
   }
 
   async function handlePhoneSubmit(e) {
@@ -329,22 +424,22 @@ export default function Register() {
       return;
     }
 
-    const fullPhone = (country?.dialCode || "") + normalizeDigits(trimmed);
+    const fullPhone = buildFullPhone(trimmed);
 
     const code = generateLocalCode();
     setExpectedPhoneCode(code);
     setPhone(trimmed);
+    setPhoneVerified(false);
+    setPhoneCodeExpiresAt(Date.now() + CODE_TTL_MS);
     setStep(STEPS.PHONE_CODE);
-
-    console.log("Registration phone code for", fullPhone, ":", code);
 
     try {
       await apiRequest("/api/auth/register/log-phone-code", {
         method: "POST",
         body: { phoneNumber: fullPhone, code },
       });
-    } catch (err) {
-      console.error("Failed to log phone code on backend:", err);
+    } catch {
+      // ignore logging failures for local phone code flow
     }
   }
 
@@ -357,11 +452,19 @@ export default function Register() {
       setError("Please enter the verification code.");
       return;
     }
+
+    if (!phoneCodeExpiresAt || Date.now() > phoneCodeExpiresAt) {
+      resetPhoneVerification();
+      setError("This SMS verification code has expired. Please request a new one.");
+      return;
+    }
+
     if (expectedPhoneCode && trimmed !== expectedPhoneCode) {
       setError("Incorrect verification code.");
       return;
     }
 
+    setPhoneVerified(true);
     setStep(STEPS.PROFILE);
   }
 
@@ -425,10 +528,9 @@ export default function Register() {
     try {
       setLoading(true);
 
-      const fullPhone =
-        phone && country?.dialCode
-          ? `${country.dialCode}${normalizeDigits(phone)}`
-          : phone;
+      const fullPhone = phone
+        ? buildFullPhone(phone, { allowRawFallback: true })
+        : phone;
 
       const res = await apiRequest("/api/auth/register", {
         method: "POST",
@@ -448,7 +550,7 @@ export default function Register() {
       });
 
       if (res?.token) {
-        localStorage.setItem("token", res.token);
+        setAuthToken(res.token);
       }
 
       navigate("/dashboard", { replace: true });
@@ -458,9 +560,18 @@ export default function Register() {
       setLoading(false);
     }
   }
+
+  const canSubmitKyc =
+    !!employmentStatus &&
+    !!sourceOfFunds &&
+    !!monthlyVolume &&
+    agreeGuidelines &&
+    agreeAccuracy &&
+    !loading;
+  const canContinueFromPassword = isPasswordPolicySatisfied(password) && !loading;
+
   return (
     <AuthCard title="Create your account" subtitle={subtitle} onBack={handleBack}>
-      {/* progress dots */}
       <div className="flex justify-center mb-4">
         {Array.from({ length: TOTAL_STEPS }).map((_, idx) => (
           <span
@@ -472,11 +583,10 @@ export default function Register() {
         ))}
       </div>
 
-      {/* global loading indicator */}
       {loading && (
         <div className="mb-3 flex items-center gap-2 text-xs text-gray-500">
           <span className="inline-block h-3 w-3 rounded-full border-2 border-purple-500 border-t-transparent animate-spin" />
-          <span>Processing…</span>
+          <span>Processing...</span>
         </div>
       )}
 
@@ -486,10 +596,14 @@ export default function Register() {
         </div>
       )}
 
-      {/* STEP 1: ACCOUNT (email + code + password) */}
+      {info && step === STEPS.PASSWORD && (
+        <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          {info}
+        </div>
+      )}
+
       {step === STEPS.ACCOUNT && (
-        <form onSubmit={handleAccountContinueSubmit} className="space-y-4">
-          {/* email */}
+        <form onSubmit={handleAccountSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Email address
@@ -499,20 +613,20 @@ export default function Register() {
               className={inputBaseClass}
               placeholder="you@example.com"
               value={email}
+              maxLength={120}
+              autoComplete="email"
+              disabled={emailCodeSent || emailVerified}
               onChange={(e) => {
+                if (emailCodeSent || emailVerified) return;
                 setEmail(e.target.value);
-                setEmailVerified(false);
-                setEmailCodeSent(false);
-                setEmailCode("");
+                resetEmailVerification();
               }}
             />
           </div>
 
-          {/* send code button (first time) */}
           {!emailCodeSent && (
             <button
-              type="button"
-              onClick={handleSendRegisterCode}
+              type="submit"
               disabled={loading}
               className={primaryButtonDisabledClass}
             >
@@ -520,7 +634,6 @@ export default function Register() {
             </button>
           )}
 
-          {/* verification code area */}
           {emailCodeSent && (
             <>
               <div>
@@ -531,42 +644,46 @@ export default function Register() {
                   type="text"
                   inputMode="numeric"
                   className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-center tracking-[0.3em] font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  placeholder="••••••"
+                  placeholder="******"
                   maxLength={6}
                   value={emailCode}
+                  disabled={emailVerified}
                   onChange={(e) =>
+                    !emailVerified &&
                     setEmailCode(normalizeDigits(e.target.value).slice(0, 6))
                   }
                 />
 
-                {/* Verify button centered */}
                 {!emailVerified && (
                   <div className="mt-3 flex justify-center">
                     <button
                       type="button"
                       onClick={handleVerifyRegisterCode}
                       disabled={loading}
-                      className="px-6 py-2 rounded-full bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-60"
+                      className="px-6 py-2 rounded-full bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-60"
                     >
                       Verify
                     </button>
                   </div>
                 )}
 
-                {/* status text */}
                 {!emailVerified && (
-                  <p className="mt-2 text-xs text-gray-500 text-center">
-                    We sent a one-time code to{" "}
-                    <span className="font-medium">{email}</span>.
-                  </p>
+                  <>
+                    <p className="mt-2 text-xs text-gray-500 text-center">
+                      We sent a one-time code to{" "}
+                      <span className="font-medium">{email}</span>.
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 text-center">
+                      Code is valid for {CODE_TTL_LABEL}.
+                    </p>
+                  </>
                 )}
                 {emailVerified && (
                   <p className="mt-2 text-xs text-green-600 text-center">
-                    Email verified. Set your password to continue.
+                    Email verified. Continue to create your password.
                   </p>
                 )}
 
-                {/* resend / countdown (only if not verified) */}
                 {!emailVerified && (
                   <div className="mt-2 text-xs text-gray-500 text-center">
                     {cooldown > 0 ? (
@@ -586,25 +703,6 @@ export default function Register() {
             </>
           )}
 
-          {/* password (only after email verified) */}
-          {emailVerified && (
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Create a password
-              </label>
-              <input
-                type="password"
-                className={inputBaseClass}
-                placeholder="********"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <p className="mt-2 text-xs text-gray-500">
-                Must be at least 8 characters.
-              </p>
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={loading || !emailVerified}
@@ -615,7 +713,45 @@ export default function Register() {
         </form>
       )}
 
-      {/* STEP 2a: PHONE NUMBER */}
+      {step === STEPS.PASSWORD && (
+        <form onSubmit={handlePasswordSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Create a password
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                className={`${inputBaseClass} pr-10`}
+                placeholder="********"
+                value={password}
+                autoComplete="new-password"
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <div className="absolute inset-y-0 right-2 flex items-center">
+                <PasswordVisibilityToggle
+                  shown={showPassword}
+                  onToggle={() => setShowPassword((value) => !value)}
+                />
+              </div>
+            </div>
+            <PasswordStrengthIndicator password={password} />
+          </div>
+
+          <button
+            type="submit"
+            disabled={!canContinueFromPassword}
+            className={
+              canContinueFromPassword
+                ? primaryButtonClass
+                : "w-full rounded-full bg-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-500 cursor-not-allowed"
+            }
+          >
+            Continue
+          </button>
+        </form>
+      )}
+
       {step === STEPS.PHONE && (
         <form onSubmit={handlePhoneSubmit} className="space-y-4">
           <div className="space-y-3">
@@ -657,7 +793,7 @@ export default function Register() {
                 </div>
 
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">
-                  ▾
+                  v
                 </div>
               </div>
 
@@ -682,6 +818,7 @@ export default function Register() {
                   className="flex-1 border-0 px-3 py-2 text-sm focus:outline-none"
                   placeholder="XX XXX XXXX"
                   value={phone}
+                  autoComplete="tel-national"
                   onChange={(e) =>
                     setPhone(
                       normalizeDigits(e.target.value).slice(
@@ -702,8 +839,7 @@ export default function Register() {
           <button
             type="button"
             onClick={() => {
-              setPhone("");
-              setExpectedPhoneCode("");
+              resetPhoneVerification({ clearPhone: true });
               setStep(STEPS.PROFILE);
             }}
             className="w-full mt-2 text-xs text-gray-500 hover:underline"
@@ -713,7 +849,6 @@ export default function Register() {
         </form>
       )}
 
-      {/* STEP 2b: PHONE CODE */}
       {step === STEPS.PHONE_CODE && (
         <form onSubmit={handlePhoneCodeSubmit} className="space-y-4">
           <div>
@@ -724,10 +859,12 @@ export default function Register() {
               type="text"
               inputMode="numeric"
               className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-center tracking-[0.3em] font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-              placeholder="••••••"
+              placeholder="******"
               maxLength={6}
               value={phoneCode}
+              disabled={phoneVerified}
               onChange={(e) =>
+                !phoneVerified &&
                 setPhoneCode(normalizeDigits(e.target.value).slice(0, 6))
               }
             />
@@ -738,17 +875,28 @@ export default function Register() {
               </span>
               .
             </p>
+            {!phoneVerified && (
+              <p className="mt-1 text-xs text-gray-500">
+                Code is valid for {CODE_TTL_LABEL}.
+              </p>
+            )}
+            {phoneVerified && (
+              <p className="mt-1 text-xs text-green-600">
+                Phone number verified.
+              </p>
+            )}
           </div>
 
-          <button type="submit" className={primaryButtonClass}>
-            Verify number
-          </button>
+          {!phoneVerified && (
+            <button type="submit" className={primaryButtonClass}>
+              Verify number
+            </button>
+          )}
 
           <button
             type="button"
             onClick={() => {
-              setPhone("");
-              setExpectedPhoneCode("");
+              resetPhoneVerification({ clearPhone: true });
               setStep(STEPS.PROFILE);
             }}
             className="w-full mt-2 text-xs text-gray-500 hover:underline"
@@ -758,7 +906,6 @@ export default function Register() {
         </form>
       )}
 
-      {/* STEP 3: PROFILE (name + username + dob) */}
       {step === STEPS.PROFILE && (
         <form onSubmit={handleProfileSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -770,6 +917,8 @@ export default function Register() {
                 type="text"
                 className={inputBaseClass}
                 value={firstName}
+                maxLength={60}
+                autoComplete="given-name"
                 onChange={(e) => setFirstName(e.target.value)}
               />
             </div>
@@ -781,6 +930,8 @@ export default function Register() {
                 type="text"
                 className={inputBaseClass}
                 value={lastName}
+                maxLength={60}
+                autoComplete="family-name"
                 onChange={(e) => setLastName(e.target.value)}
               />
             </div>
@@ -795,6 +946,10 @@ export default function Register() {
               className={inputBaseClass}
               placeholder="yourname"
               value={username}
+              maxLength={40}
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoComplete="username"
               onChange={(e) => setUsername(e.target.value)}
             />
           </div>
@@ -821,7 +976,6 @@ export default function Register() {
         </form>
       )}
 
-      {/* STEP 4: KYC (employment + funds) */}
       {step === STEPS.KYC && (
         <form onSubmit={handleKycSubmit} className="space-y-4">
           <div>
@@ -874,9 +1028,9 @@ export default function Register() {
               onChange={(e) => setMonthlyVolume(e.target.value)}
             >
               <option value="">Select one</option>
-              <option value="0_500">0 – 500 USD</option>
-              <option value="500_1000">500 – 1,000 USD</option>
-              <option value="1000_5000">1,000 – 5,000 USD</option>
+              <option value="0_500">0 - 500 USD</option>
+              <option value="500_1000">500 - 1,000 USD</option>
+              <option value="1000_5000">1,000 - 5,000 USD</option>
               <option value="5000_plus">Above 5,000 USD</option>
             </select>
           </div>
@@ -911,7 +1065,7 @@ export default function Register() {
 
           <button
             type="submit"
-            disabled={loading || !agreeGuidelines || !agreeAccuracy}
+            disabled={!canSubmitKyc}
             className={primaryButtonDisabledClass}
           >
             {loading ? "Creating account..." : "Create account"}
@@ -919,7 +1073,6 @@ export default function Register() {
         </form>
       )}
 
-      {/* footer */}
       <p className="mt-6 text-xs text-gray-600 text-center">
         Already have an account?{" "}
         <button
@@ -927,7 +1080,7 @@ export default function Register() {
           onClick={() => navigate("/login")}
           className="text-purple-600 font-medium hover:underline"
         >
-          Sign in
+          Log in
         </button>
       </p>
     </AuthCard>
