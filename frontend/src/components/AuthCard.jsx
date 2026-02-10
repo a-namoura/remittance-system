@@ -9,8 +9,9 @@ export default function AuthCard({ title, subtitle, children, onBack }) {
                 type="button"
                 onClick={onBack}
                 className="h-8 w-8 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50 text-lg leading-none"
+                aria-label="Go back"
               >
-                ←
+                {"<"}
               </button>
             )}
             <div className="text-[11px] tracking-[0.2em] text-gray-400 uppercase">
