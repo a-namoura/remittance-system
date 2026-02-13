@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { createFriend, deleteFriend, listFriends } from "../services/friendApi.js";
 import { getAuthToken } from "../services/session.js";
+import { searchUsers } from "../services/userApi.js";
 import { formatDateOnly } from "../utils/datetime.js";
 import { isValidEvmAddress } from "../utils/security.js";
 
@@ -22,6 +23,10 @@ export default function Friends() {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState("");
+  const [accountQuery, setAccountQuery] = useState("");
+  const [accountResults, setAccountResults] = useState([]);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountError, setAccountError] = useState("");
 
   useEffect(() => {
     let isCancelled = false;
@@ -83,6 +88,10 @@ export default function Friends() {
     setWalletAddress("");
     setNotes("");
     setModalError("");
+    setAccountQuery("");
+    setAccountResults([]);
+    setAccountLoading(false);
+    setAccountError("");
     setIsModalOpen(true);
   }
 
@@ -90,6 +99,23 @@ export default function Friends() {
     setIsModalOpen(false);
     setSaving(false);
     setModalError("");
+    setAccountError("");
+  }
+
+  function applyAccountResult(account) {
+    const accountUsername = String(account.username || "").trim();
+    const accountDisplayName = String(
+      account.displayName || account.username || ""
+    ).trim();
+    const accountWallet = String(account.walletAddress || "").trim();
+
+    setName((current) =>
+      String(current || "").trim() ? current : accountDisplayName
+    );
+    setUsername(accountUsername);
+    setWalletAddress(accountWallet);
+    setAccountQuery(accountUsername);
+    setAccountError("");
   }
 
   async function handleCreateFriend(event) {
@@ -161,6 +187,46 @@ export default function Friends() {
       return source.includes(normalizedSearch);
     });
   }, [friends, search]);
+
+  useEffect(() => {
+    if (!isModalOpen) return undefined;
+
+    let isCancelled = false;
+    const token = getAuthToken();
+
+    if (!token) {
+      setAccountResults([]);
+      setAccountError("You must be logged in.");
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setAccountLoading(true);
+        setAccountError("");
+        const data = await searchUsers({
+          token,
+          query: accountQuery,
+          limit: 8,
+        });
+        if (isCancelled) return;
+        setAccountResults(data.users || []);
+      } catch (err) {
+        if (isCancelled) return;
+        setAccountResults([]);
+        setAccountError(err.message || "Failed to search app accounts.");
+      } finally {
+        if (!isCancelled) {
+          setAccountLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      isCancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [isModalOpen, accountQuery]);
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
@@ -260,7 +326,7 @@ export default function Friends() {
 
               <div className="pt-1">
                 <Link
-                  to="/send"
+                  to={`/send?friend=${encodeURIComponent(String(friend.id))}`}
                   className="inline-flex text-xs font-medium text-purple-600 hover:underline"
                 >
                   Send money to this friend
@@ -293,6 +359,52 @@ export default function Friends() {
             )}
 
             <form onSubmit={handleCreateFriend} className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">
+                  Find app account
+                </label>
+                <input
+                  type="text"
+                  value={accountQuery}
+                  onChange={(event) => setAccountQuery(event.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="Search by name"
+                />
+
+                <div className="mt-2 max-h-32 space-y-1 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-2">
+                  {accountLoading && (
+                    <p className="px-1 py-1 text-xs text-gray-500">Searching...</p>
+                  )}
+
+                  {!accountLoading && accountResults.length === 0 && (
+                    <p className="px-1 py-1 text-xs text-gray-500">
+                      No app accounts found.
+                    </p>
+                  )}
+
+                  {!accountLoading &&
+                    accountResults.map((account) => (
+                      <button
+                        key={String(account.id)}
+                        type="button"
+                        onClick={() => applyAccountResult(account)}
+                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-left text-xs hover:border-purple-300"
+                      >
+                        <div className="font-medium text-gray-900">
+                          {account.displayName || account.username}
+                        </div>
+                        <div className="text-[11px] text-gray-500">
+                          @{account.username}
+                        </div>
+                      </button>
+                    ))}
+                </div>
+
+                {accountError && (
+                  <p className="mt-1 text-xs text-red-600">{accountError}</p>
+                )}
+              </div>
+
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">
                   Friend name

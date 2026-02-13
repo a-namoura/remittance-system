@@ -6,9 +6,12 @@ import Landing from "./pages/Landing.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
+import ClaimTransfer from "./pages/ClaimTransfer.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Account from "./pages/Account.jsx";
 import Friends from "./pages/Friends.jsx";
+import RequestMoney from "./pages/RequestMoney.jsx";
+import Chat from "./pages/Chat.jsx";
 import SendMoney from "./pages/SendMoney.jsx";
 import Transactions from "./pages/Transactions.jsx";
 import TransactionDetails from "./pages/TransactionDetails.jsx";
@@ -20,13 +23,18 @@ const PUBLIC_ROUTES = [
   { path: "/login", element: <Login /> },
   { path: "/register", element: <Register /> },
   { path: "/forgot-password", element: <ForgotPassword /> },
+  { path: "/claim-transfer", element: <ClaimTransfer /> },
 ];
 
 const PROTECTED_ROUTES = [
   { path: "/dashboard", element: <Dashboard /> },
   { path: "/account", element: <Account /> },
   { path: "/friends", element: <Friends /> },
+  { path: "/request", element: <RequestMoney /> },
+  { path: "/request-money", element: <Navigate to="/request" replace /> },
+  { path: "/chat", element: <Chat /> },
   { path: "/send", element: <SendMoney /> },
+  { path: "/send-money", element: <Navigate to="/send" replace /> },
   { path: "/transactions", element: <Transactions /> },
   { path: "/transactions/:id", element: <TransactionDetails /> },
 ];

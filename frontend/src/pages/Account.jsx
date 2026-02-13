@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { ethers } from "ethers";
 import ConnectWalletButton from "../components/ConnectWalletButton.jsx";
 import { getCurrentUser } from "../services/authApi.js";
+import { getWalletBalance } from "../services/transactionApi.js";
 import {
   clearWalletState,
   getAuthToken,
@@ -21,7 +21,10 @@ export default function Account() {
 
   const [accountLinked, setAccountLinked] = useState(false);
   const [accountAddress, setAccountAddress] = useState("");
-  const [accountBalance, setAccountBalance] = useState(null);
+  const [accountBalances, setAccountBalances] = useState({});
+  const [availableCurrencies, setAvailableCurrencies] = useState([]);
+  const [selectedCurrency, setSelectedCurrency] = useState("");
+  const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
 
   useEffect(() => {
@@ -48,12 +51,28 @@ export default function Account() {
         if (!user?.id) {
           setAccountLinked(false);
           setAccountAddress("");
+          setAccountBalances({});
+          setAvailableCurrencies([]);
+          setSelectedCurrency("");
+          return;
+        }
+
+        if (user?.wallet?.linked && user?.wallet?.address) {
+          setAccountLinked(true);
+          setAccountAddress(user.wallet.address);
+          writeWalletState(user.id, user.wallet.address);
           return;
         }
 
         const stored = readWalletState(user.id);
         setAccountLinked(stored.linked);
         setAccountAddress(stored.address);
+        if (!stored.linked || !stored.address) {
+          clearWalletState(user.id);
+          setAccountBalances({});
+          setAvailableCurrencies([]);
+          setSelectedCurrency("");
+        }
       } catch (err) {
         if (isCancelled) return;
         setError(err.message || "Failed to load account.");
@@ -77,29 +96,72 @@ export default function Account() {
     async function fetchBalance() {
       if (!accountLinked || !accountAddress) {
         if (!isCancelled) {
-          setAccountBalance(null);
+          setBalanceLoading(false);
+          setAccountBalances({});
+          setAvailableCurrencies([]);
+          setSelectedCurrency("");
           setBalanceError("");
         }
         return;
       }
 
-      if (!window.ethereum) {
-        if (!isCancelled) {
-          setBalanceError("Wallet provider not available to fetch balance.");
-        }
-        return;
-      }
-
       try {
+        const token = getAuthToken();
+        if (!token) return;
+
+        setBalanceLoading(true);
         setBalanceError("");
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const balanceBigInt = await provider.getBalance(accountAddress);
+        const result = await getWalletBalance({
+          token,
+          wallet: accountAddress,
+        });
+
         if (isCancelled) return;
-        setAccountBalance(Number(ethers.formatEther(balanceBigInt)));
-      } catch {
-        if (!isCancelled) {
+
+        const balances =
+          result?.balances && typeof result.balances === "object"
+            ? result.balances
+            : {};
+
+        const currencies = Array.isArray(result?.availableCurrencies)
+          ? result.availableCurrencies
+              .map((value) => String(value || "").trim().toUpperCase())
+              .filter(Boolean)
+          : Object.keys(balances);
+
+        const fallbackCurrency =
+          String(result?.currency || result?.nativeCurrency || currencies[0] || "ETH")
+            .trim()
+            .toUpperCase();
+
+        const nextCurrencies = currencies.length > 0 ? currencies : [fallbackCurrency];
+        const nextSelectedCurrency = nextCurrencies.includes(selectedCurrency)
+          ? selectedCurrency
+          : fallbackCurrency;
+
+        const nextBalance = Number(balances[nextSelectedCurrency]);
+
+        if (!Number.isFinite(nextBalance)) {
+          setAccountBalances({});
+          setAvailableCurrencies(nextCurrencies);
+          setSelectedCurrency(nextSelectedCurrency);
           setBalanceError("Failed to load account balance.");
-          setAccountBalance(null);
+          return;
+        }
+
+        setAccountBalances(balances);
+        setAvailableCurrencies(nextCurrencies);
+        setSelectedCurrency(nextSelectedCurrency);
+      } catch (err) {
+        if (!isCancelled) {
+          setBalanceError(err.message || "Failed to load account balance.");
+          setAccountBalances({});
+          setAvailableCurrencies([]);
+          setSelectedCurrency("");
+        }
+      } finally {
+        if (!isCancelled) {
+          setBalanceLoading(false);
         }
       }
     }
@@ -132,12 +194,15 @@ export default function Account() {
     );
   }
 
+  const balanceValue = Number(accountBalances[selectedCurrency]);
+  const hasBalanceValue = Number.isFinite(balanceValue);
+
   return (
     <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Account</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Manage your linked account, view balance, and add money.
+          Manage your linked account and view balance.
         </p>
       </div>
 
@@ -160,7 +225,7 @@ export default function Account() {
               Account Status
             </h2>
             <p className="mt-1 text-xs text-gray-500">
-              Your blockchain wallet is used as your remittance account.
+              Your blockchain wallet is used as your account.
             </p>
           </div>
           <span
@@ -175,11 +240,29 @@ export default function Account() {
         {accountLinked && accountAddress ? (
           <div className="space-y-1 text-xs text-gray-600">
             <div className="font-mono break-all">Address: {accountAddress}</div>
+            <div className="flex items-center gap-2">
+              <span>Currency:</span>
+              <select
+                value={selectedCurrency}
+                onChange={(event) =>
+                  setSelectedCurrency(String(event.target.value || "").toUpperCase())
+                }
+                className="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-500"
+              >
+                {availableCurrencies.map((currency) => (
+                  <option key={currency} value={currency}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div>
               Balance:{" "}
-              {accountBalance == null
+              {balanceLoading
                 ? "Loading..."
-                : `${accountBalance.toFixed(4)} ETH`}
+                : hasBalanceValue
+                  ? `${balanceValue.toFixed(4)} ${selectedCurrency}`
+                  : "-"}
             </div>
             {balanceError && <div className="text-red-600">{balanceError}</div>}
           </div>
@@ -194,7 +277,9 @@ export default function Account() {
           onLinked={(address) => {
             setAccountLinked(true);
             setAccountAddress(address);
-            setAccountBalance(null);
+            setAccountBalances({});
+            setAvailableCurrencies([]);
+            setSelectedCurrency("");
             if (me?.id) {
               writeWalletState(me.id, address);
             }
@@ -202,7 +287,9 @@ export default function Account() {
           onDisconnected={() => {
             setAccountLinked(false);
             setAccountAddress("");
-            setAccountBalance(null);
+            setAccountBalances({});
+            setAvailableCurrencies([]);
+            setSelectedCurrency("");
             if (me?.id) {
               clearWalletState(me.id);
             }

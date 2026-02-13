@@ -1,22 +1,60 @@
 import { useEffect, useState } from "react";
-import { ethers } from "ethers";
 import { Link, useNavigate } from "react-router-dom";
 import { getCurrentUser } from "../services/authApi.js";
 import { listFriends } from "../services/friendApi.js";
-import { getMyTransactions } from "../services/transactionApi.js";
+import { getMyTransactions, getWalletBalance } from "../services/transactionApi.js";
 import {
   clearSessionStorage,
   getAuthToken,
   readWalletState,
+  writeWalletState,
 } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
 
+const QUICK_PLUS_ACTIONS = [
+  {
+    id: "buy",
+    label: "Buy",
+    description: "Purchase assets directly into your linked account.",
+  },
+  {
+    id: "sell",
+    label: "Sell",
+    description: "Sell assets and move value back to your account balance.",
+  },
+  {
+    id: "convert",
+    label: "Convert",
+    description: "Switch between supported assets and currencies.",
+  },
+  {
+    id: "deposit",
+    label: "Deposit",
+    description: "Top up your account from an external wallet or bank.",
+  },
+  {
+    id: "withdraw",
+    label: "Withdraw",
+    description: "Move funds out of your account to a destination wallet.",
+  },
+  {
+    id: "transferBetweenAccounts",
+    label: "Transfer between accounts",
+    description: "Shift funds between your own linked accounts.",
+  },
+];
+
 function statusBadgeClasses(status) {
   if (status === "success") return "bg-green-100 text-green-700";
   if (status === "failed") return "bg-red-100 text-red-700";
   return "bg-yellow-100 text-yellow-800";
+}
+
+function directionBadgeClasses(direction) {
+  if (direction === "received") return "bg-blue-100 text-blue-700";
+  return "bg-purple-100 text-purple-700";
 }
 
 function linkedBadgeClass(linked) {
@@ -31,7 +69,10 @@ export default function Dashboard() {
 
   const [accountLinked, setAccountLinked] = useState(false);
   const [accountAddress, setAccountAddress] = useState("");
-  const [accountBalance, setAccountBalance] = useState(null);
+  const [accountBalances, setAccountBalances] = useState({});
+  const [availableCurrencies, setAvailableCurrencies] = useState([]);
+  const [selectedCurrency, setSelectedCurrency] = useState("");
+  const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
 
   const [friends, setFriends] = useState([]);
@@ -39,6 +80,10 @@ export default function Dashboard() {
 
   const [transactions, setTransactions] = useState([]);
   const [txError, setTxError] = useState("");
+
+  const [isPlusModalOpen, setIsPlusModalOpen] = useState(false);
+  const [plusMessage, setPlusMessage] = useState("");
+  const [plusTargetPath, setPlusTargetPath] = useState("");
 
   useEffect(() => {
     let isCancelled = false;
@@ -59,6 +104,17 @@ export default function Dashboard() {
         if (!user?.id) {
           setAccountLinked(false);
           setAccountAddress("");
+          setAccountBalances({});
+          setAvailableCurrencies([]);
+          setSelectedCurrency("");
+          return;
+        }
+
+        const serverWalletAddress = String(user?.wallet?.address || "").trim();
+        if (user?.wallet?.linked && serverWalletAddress) {
+          setAccountLinked(true);
+          setAccountAddress(serverWalletAddress);
+          writeWalletState(user.id, serverWalletAddress);
           return;
         }
 
@@ -139,29 +195,72 @@ export default function Dashboard() {
     async function fetchAccountBalance() {
       if (!accountLinked || !accountAddress) {
         if (!isCancelled) {
-          setAccountBalance(null);
+          setBalanceLoading(false);
+          setAccountBalances({});
+          setAvailableCurrencies([]);
+          setSelectedCurrency("");
           setBalanceError("");
         }
         return;
       }
 
-      if (!window.ethereum) {
-        if (!isCancelled) {
-          setBalanceError("Wallet provider not available to fetch balance.");
-        }
-        return;
-      }
-
       try {
+        const token = getAuthToken();
+        if (!token) return;
+
+        setBalanceLoading(true);
         setBalanceError("");
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const balanceBigInt = await provider.getBalance(accountAddress);
+        const result = await getWalletBalance({
+          token,
+          wallet: accountAddress,
+        });
+
         if (isCancelled) return;
-        setAccountBalance(Number(ethers.formatEther(balanceBigInt)));
-      } catch {
-        if (!isCancelled) {
+
+        const balances =
+          result?.balances && typeof result.balances === "object"
+            ? result.balances
+            : {};
+
+        const currencies = Array.isArray(result?.availableCurrencies)
+          ? result.availableCurrencies
+              .map((value) => String(value || "").trim().toUpperCase())
+              .filter(Boolean)
+          : Object.keys(balances);
+
+        const fallbackCurrency =
+          String(result?.currency || result?.nativeCurrency || currencies[0] || "ETH")
+            .trim()
+            .toUpperCase();
+
+        const nextCurrencies = currencies.length > 0 ? currencies : [fallbackCurrency];
+        const nextSelectedCurrency = nextCurrencies.includes(selectedCurrency)
+          ? selectedCurrency
+          : fallbackCurrency;
+
+        const nextBalance = Number(balances[nextSelectedCurrency]);
+
+        if (!Number.isFinite(nextBalance)) {
+          setAccountBalances({});
+          setAvailableCurrencies(nextCurrencies);
+          setSelectedCurrency(nextSelectedCurrency);
           setBalanceError("Failed to load account balance.");
-          setAccountBalance(null);
+          return;
+        }
+
+        setAccountBalances(balances);
+        setAvailableCurrencies(nextCurrencies);
+        setSelectedCurrency(nextSelectedCurrency);
+      } catch (err) {
+        if (!isCancelled) {
+          setBalanceError(err.message || "Failed to load account balance.");
+          setAccountBalances({});
+          setAvailableCurrencies([]);
+          setSelectedCurrency("");
+        }
+      } finally {
+        if (!isCancelled) {
+          setBalanceLoading(false);
         }
       }
     }
@@ -173,6 +272,25 @@ export default function Dashboard() {
     };
   }, [accountLinked, accountAddress]);
 
+  function closePlusModal() {
+    setIsPlusModalOpen(false);
+    setPlusMessage("");
+    setPlusTargetPath("");
+  }
+
+  function openPlusModal() {
+    setIsPlusModalOpen(true);
+    setPlusMessage("");
+    setPlusTargetPath("");
+  }
+
+  function handlePlusActionSelect(action) {
+    setPlusMessage(
+      `${action.label} selected. Continue in Account to complete this flow.`
+    );
+    setPlusTargetPath(`/account?action=${encodeURIComponent(action.id)}`);
+  }
+
   if (!me && !error) {
     return (
       <div className="max-w-6xl mx-auto px-6 py-10 text-gray-600">
@@ -181,8 +299,11 @@ export default function Dashboard() {
     );
   }
 
+  const displayBalance = Number(accountBalances[selectedCurrency]);
+  const hasDisplayBalance = Number.isFinite(displayBalance);
+
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+    <div className="max-w-6xl mx-auto px-6 py-8 pb-32 space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">
           Welcome{me ? `, ${me.username}` : ""}
@@ -198,7 +319,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <section className="grid gap-4 md:grid-cols-2">
+      <section className="grid gap-4 md:grid-cols-3">
         <Link
           to="/account"
           className="rounded-3xl border bg-white p-6 hover:border-purple-300 hover:shadow-sm transition"
@@ -207,7 +328,7 @@ export default function Dashboard() {
             <div>
               <h2 className="text-xl font-semibold text-gray-900">Account</h2>
               <p className="mt-1 text-sm text-gray-600">
-                Linked wallet used as your remittance account.
+                Linked wallet used as your account.
               </p>
             </div>
             <span
@@ -222,12 +343,16 @@ export default function Dashboard() {
           <div className="mt-4 space-y-1 text-sm text-gray-700">
             {accountLinked && accountAddress ? (
               <>
-                <div className="font-mono text-xs break-all">{accountAddress}</div>
+                <div className="text-xs">
+                  Currency: {selectedCurrency || availableCurrencies[0] || "-"}
+                </div>
                 <div>
                   Balance:{" "}
-                  {accountBalance == null
+                  {balanceLoading
                     ? "Loading..."
-                    : `${accountBalance.toFixed(4)} ETH`}
+                    : hasDisplayBalance
+                      ? `${displayBalance.toFixed(4)} ${selectedCurrency}`
+                      : "-"}
                 </div>
                 {balanceError && (
                   <div className="text-xs text-red-600">{balanceError}</div>
@@ -239,9 +364,34 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+        </Link>
 
-          <div className="mt-4 inline-flex rounded-full bg-rose-500 px-4 py-2 text-sm font-semibold text-white">
-            Add money
+        <Link
+          to="/chat"
+          className="rounded-3xl border bg-white p-6 hover:border-purple-300 hover:shadow-sm transition"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Chat</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Open your conversations and messages.
+              </p>
+            </div>
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-purple-100 text-purple-700">
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H9l-4.3 3.2A.5.5 0 0 1 4 18.8V6.5Z" />
+                <path d="M8 8.5h8M8 11.5h5" />
+              </svg>
+            </span>
           </div>
         </Link>
 
@@ -284,10 +434,6 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-
-          <div className="mt-4 inline-flex rounded-full bg-purple-600 px-4 py-2 text-sm font-semibold text-white">
-            Open friends
-          </div>
         </Link>
       </section>
 
@@ -301,7 +447,7 @@ export default function Dashboard() {
           </div>
           <Link
             to="/transactions"
-            className="text-xs font-medium text-purple-600 hover:underline"
+            className="inline-flex rounded-full bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700"
           >
             View all
           </Link>
@@ -315,17 +461,24 @@ export default function Dashboard() {
             <p className="mt-1 text-sm text-gray-600">
               Funding and payments will be shown here.
             </p>
-            <Link
-              to="/account"
-              className="mt-4 inline-flex rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800"
-            >
-              Add money
-            </Link>
           </div>
         ) : (
           <div className="mt-4 divide-y">
             {transactions.map((transaction) => {
               const explorerUrl = getExplorerTxUrl(transaction.txHash);
+              const direction =
+                String(transaction.direction || "").toLowerCase() === "received"
+                  ? "received"
+                  : "sent";
+              const amountSymbol = String(transaction.assetSymbol || "ETH")
+                .trim()
+                .toUpperCase();
+              const counterpartyLabel = direction === "received" ? "From" : "To";
+              const counterpartyWallet =
+                direction === "received"
+                  ? transaction.senderWallet
+                  : transaction.receiverWallet;
+
               return (
                 <Link
                   key={transaction.id}
@@ -334,7 +487,8 @@ export default function Dashboard() {
                 >
                   <div>
                     <div className="text-sm font-medium text-gray-900">
-                      {transaction.amount} ETH
+                      {direction === "received" ? "Received" : "Sent"}{" "}
+                      {transaction.amount} {amountSymbol}
                       {typeof transaction.fiatAmountUsd === "number" && (
                         <span className="ml-1 text-xs text-gray-500">
                           (~ {transaction.fiatAmountUsd.toFixed(2)}{" "}
@@ -343,7 +497,7 @@ export default function Dashboard() {
                       )}
                     </div>
                     <div className="mt-1 text-xs text-gray-600 font-mono">
-                      To: {transaction.receiverWallet}
+                      {counterpartyLabel}: {counterpartyWallet || "-"}
                     </div>
                     <div className="mt-1 text-xs text-gray-500">
                       {formatDateTime(transaction.createdAt) || "-"}
@@ -363,19 +517,124 @@ export default function Dashboard() {
                     )}
                   </div>
 
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${statusBadgeClasses(
-                      transaction.status
-                    )}`}
-                  >
-                    {transaction.status}
-                  </span>
+                  <div className="flex flex-col items-end gap-2">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${directionBadgeClasses(
+                        direction
+                      )}`}
+                    >
+                      {direction === "received" ? "Received" : "Sent"}
+                    </span>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${statusBadgeClasses(
+                        transaction.status
+                      )}`}
+                    >
+                      {transaction.status}
+                    </span>
+                  </div>
                 </Link>
               );
             })}
           </div>
         )}
       </section>
+
+      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 px-4">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-xl items-center rounded-full bg-white/95 p-2 shadow-2xl ring-1 ring-purple-200 backdrop-blur">
+          <button
+            type="button"
+            onClick={() => navigate("/request")}
+            className="flex-1 rounded-full bg-purple-100 px-4 py-3 text-sm font-semibold text-purple-700 transition hover:bg-purple-200"
+          >
+            Request
+          </button>
+
+          <button
+            type="button"
+            onClick={openPlusModal}
+            className={`mx-2 inline-flex h-11 w-11 items-center justify-center rounded-full text-2xl leading-none transition ${
+              isPlusModalOpen
+                ? "bg-indigo-600 text-white"
+                : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+            }`}
+            aria-label="Open quick account actions"
+          >
+            +
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/send")}
+            className="flex-1 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:from-purple-700 hover:to-indigo-700"
+          >
+            Send
+          </button>
+        </div>
+      </div>
+
+      {isPlusModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4"
+          onClick={closePlusModal}
+        >
+          <div
+            className="w-full max-w-xl rounded-3xl bg-gray-900 p-6 text-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Quick account actions</h2>
+              <button
+                type="button"
+                onClick={closePlusModal}
+                className="text-sm text-gray-400 hover:text-gray-200"
+                aria-label="Close quick actions modal"
+              >
+                X
+              </button>
+            </div>
+
+            <p className="mt-1 text-sm text-gray-300">
+              Buy, sell, convert, deposit, withdraw, and transfer between
+              accounts.
+            </p>
+
+            <div className="mt-4 space-y-2">
+              {QUICK_PLUS_ACTIONS.map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  onClick={() => handlePlusActionSelect(action)}
+                  className="w-full rounded-2xl border border-gray-700 bg-gray-800 px-4 py-3 text-left transition hover:border-gray-500 hover:bg-gray-700"
+                >
+                  <div className="text-lg font-medium">{action.label}</div>
+                  <div className="mt-0.5 text-xs text-gray-300">
+                    {action.description}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {plusMessage && (
+              <div className="mt-4 rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm text-gray-200">
+                <p>{plusMessage}</p>
+                {plusTargetPath && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closePlusModal();
+                      navigate(plusTargetPath);
+                    }}
+                    className="mt-2 inline-flex rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-gray-900 hover:bg-gray-100"
+                  >
+                    Open account
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

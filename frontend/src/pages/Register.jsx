@@ -37,7 +37,7 @@ const DEFAULT_COUNTRY = {
 };
 
 const DEFAULT_SUBTITLE =
-  "Register to send, receive, and track cross-border remittances securely.";
+  "Register to send, receive, and track cross-border payments securely.";
 
 const STEP_SUBTITLES = {
   [STEPS.ACCOUNT]: "Use your email to create your account.",
@@ -1013,7 +1013,7 @@ export default function Register() {
               </option>
               <option value="savings_investments">Savings / investments</option>
               <option value="family_support_remittances">
-                Family support / remittances
+                Family support / transfers
               </option>
             </select>
           </div>

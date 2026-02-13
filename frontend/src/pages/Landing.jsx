@@ -17,7 +17,7 @@ export default function Landing() {
         <div className="w-full md:w-1/2 space-y-6">
           <div>
             <p className="text-xs tracking-[0.2em] uppercase text-gray-400 mb-2">
-              Remittance System
+              Flowboard
             </p>
             <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 leading-tight">
               Send Money

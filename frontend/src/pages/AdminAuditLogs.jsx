@@ -49,7 +49,7 @@ export default function AdminAuditLogs() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Audit Logs</h1>
         <p className="text-sm text-gray-600 mt-1">
-          Trace key actions such as login, logout, remittance sends, and admin
+          Trace key actions such as login, logout, payment sends, and admin
           access.
         </p>
       </div>
