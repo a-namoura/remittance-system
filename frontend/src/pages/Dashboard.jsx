@@ -39,11 +39,6 @@ const QUICK_PLUS_ACTIONS = [
     label: "Withdraw",
     description: "Move funds out of your account to a destination wallet.",
   },
-  {
-    id: "transferBetweenAccounts",
-    label: "Transfer between accounts",
-    description: "Shift funds between your own linked accounts.",
-  },
 ];
 
 function statusBadgeClasses(status) {
@@ -59,6 +54,59 @@ function directionBadgeClasses(direction) {
 
 function linkedBadgeClass(linked) {
   return linked ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700";
+}
+
+function quickActionIconClasses(actionId) {
+  if (actionId === "buy") return "bg-emerald-100 text-emerald-700";
+  if (actionId === "sell") return "bg-rose-100 text-rose-700";
+  if (actionId === "convert") return "bg-violet-100 text-violet-700";
+  if (actionId === "deposit") return "bg-sky-100 text-sky-700";
+  if (actionId === "withdraw") return "bg-amber-100 text-amber-700";
+  return "bg-indigo-100 text-indigo-700";
+}
+
+function quickActionIcon(actionId) {
+  if (actionId === "buy") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor">
+        <circle cx="12" cy="12" r="8" strokeWidth="1.8" />
+        <path d="M12 8v8M8 12h8" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (actionId === "sell") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor">
+        <circle cx="12" cy="12" r="8" strokeWidth="1.8" />
+        <path d="M8 12h8" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (actionId === "convert") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor">
+        <path d="M6 8h10l-2.5-2.5M18 16H8l2.5 2.5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+
+  if (actionId === "deposit") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor">
+        <path d="M12 5v10M8.5 8.5 12 5l3.5 3.5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M5 19h14" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor">
+      <path d="M12 19V9M8.5 15.5 12 19l3.5-3.5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 5h14" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 export default function Dashboard() {
@@ -582,8 +630,7 @@ export default function Dashboard() {
             </div>
 
             <p className="mt-1 text-sm text-gray-600">
-              Buy, sell, convert, deposit, withdraw, and transfer between
-              accounts.
+              Buy, sell, convert, deposit, and withdraw.
             </p>
             <p className="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">
               Coming soon
@@ -595,7 +642,16 @@ export default function Dashboard() {
                   key={action.id}
                   className="w-full cursor-not-allowed rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-left opacity-80"
                 >
-                  <div className="text-lg font-medium">{action.label}</div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${quickActionIconClasses(
+                        action.id
+                      )}`}
+                    >
+                      {quickActionIcon(action.id)}
+                    </span>
+                    <div className="text-lg font-medium">{action.label}</div>
+                  </div>
                   <div className="mt-0.5 text-xs text-gray-500">
                     {action.description}
                   </div>
