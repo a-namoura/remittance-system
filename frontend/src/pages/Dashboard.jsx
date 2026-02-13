@@ -82,8 +82,6 @@ export default function Dashboard() {
   const [txError, setTxError] = useState("");
 
   const [isPlusModalOpen, setIsPlusModalOpen] = useState(false);
-  const [plusMessage, setPlusMessage] = useState("");
-  const [plusTargetPath, setPlusTargetPath] = useState("");
 
   useEffect(() => {
     let isCancelled = false;
@@ -274,21 +272,10 @@ export default function Dashboard() {
 
   function closePlusModal() {
     setIsPlusModalOpen(false);
-    setPlusMessage("");
-    setPlusTargetPath("");
   }
 
   function openPlusModal() {
     setIsPlusModalOpen(true);
-    setPlusMessage("");
-    setPlusTargetPath("");
-  }
-
-  function handlePlusActionSelect(action) {
-    setPlusMessage(
-      `${action.label} selected. Continue in Account to complete this flow.`
-    );
-    setPlusTargetPath(`/account?action=${encodeURIComponent(action.id)}`);
   }
 
   if (!me && !error) {
@@ -575,11 +562,11 @@ export default function Dashboard() {
 
       {isPlusModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4"
           onClick={closePlusModal}
         >
           <div
-            className="w-full max-w-xl rounded-3xl bg-gray-900 p-6 text-white shadow-xl"
+            className="w-full max-w-xl rounded-3xl border border-purple-100 bg-white p-6 text-gray-900 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -587,51 +574,34 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={closePlusModal}
-                className="text-sm text-gray-400 hover:text-gray-200"
+                className="text-sm text-gray-500 hover:text-gray-800"
                 aria-label="Close quick actions modal"
               >
                 X
               </button>
             </div>
 
-            <p className="mt-1 text-sm text-gray-300">
+            <p className="mt-1 text-sm text-gray-600">
               Buy, sell, convert, deposit, withdraw, and transfer between
               accounts.
+            </p>
+            <p className="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">
+              Coming soon
             </p>
 
             <div className="mt-4 space-y-2">
               {QUICK_PLUS_ACTIONS.map((action) => (
-                <button
+                <div
                   key={action.id}
-                  type="button"
-                  onClick={() => handlePlusActionSelect(action)}
-                  className="w-full rounded-2xl border border-gray-700 bg-gray-800 px-4 py-3 text-left transition hover:border-gray-500 hover:bg-gray-700"
+                  className="w-full cursor-not-allowed rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-left opacity-80"
                 >
                   <div className="text-lg font-medium">{action.label}</div>
-                  <div className="mt-0.5 text-xs text-gray-300">
+                  <div className="mt-0.5 text-xs text-gray-500">
                     {action.description}
                   </div>
-                </button>
+                </div>
               ))}
             </div>
-
-            {plusMessage && (
-              <div className="mt-4 rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm text-gray-200">
-                <p>{plusMessage}</p>
-                {plusTargetPath && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      closePlusModal();
-                      navigate(plusTargetPath);
-                    }}
-                    className="mt-2 inline-flex rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-gray-900 hover:bg-gray-100"
-                  >
-                    Open account
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         </div>
       )}
