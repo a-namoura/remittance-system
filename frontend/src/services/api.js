@@ -1,5 +1,6 @@
 
 import { clearAuthToken, getAuthToken } from "./session.js";
+import { emitRequestEvent } from "./requestEvents.js";
 
 const API_URL =
   import.meta.env.VITE_API_BASE_URL ||
@@ -7,6 +8,7 @@ const API_URL =
   "http://localhost:5000";
 
 const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS) || 15000;
+let requestSequence = 0;
 
 function normalizePath(path) {
   const value = String(path || "");
@@ -55,6 +57,7 @@ export async function apiRequest(
   path,
   { method = "GET", body, token, signal } = {}
 ) {
+  const requestId = ++requestSequence;
   const finalToken = token ?? getAuthToken();
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(
@@ -72,6 +75,13 @@ export async function apiRequest(
   }
 
   try {
+    emitRequestEvent({
+      type: "start",
+      requestId,
+      path: normalizePath(path),
+      method: String(method || "GET").toUpperCase(),
+    });
+
     const response = await fetch(`${getBaseUrl()}${normalizePath(path)}`, {
       method,
       headers: buildHeaders({ body, token: finalToken }),
@@ -90,16 +100,52 @@ export async function apiRequest(
       const error = new Error(message);
       error.status = response.status;
       error.data = data;
+      error.alreadyReported = true;
+      emitRequestEvent({
+        type: "error",
+        requestId,
+        path: normalizePath(path),
+        method: String(method || "GET").toUpperCase(),
+        message,
+        status: response.status,
+      });
       throw error;
     }
 
     return data;
   } catch (error) {
     if (error?.name === "AbortError") {
-      throw new Error("Request timed out. Please try again.");
+      const timeoutError = new Error("Request timed out. Please try again.");
+      emitRequestEvent({
+        type: "error",
+        requestId,
+        path: normalizePath(path),
+        method: String(method || "GET").toUpperCase(),
+        message: timeoutError.message,
+      });
+      throw timeoutError;
     }
+
+    if (!error?.alreadyReported) {
+      emitRequestEvent({
+        type: "error",
+        requestId,
+        path: normalizePath(path),
+        method: String(method || "GET").toUpperCase(),
+        message: error?.message || "Network request failed.",
+        status: error?.status,
+      });
+    }
+
     throw error;
   } finally {
+    emitRequestEvent({
+      type: "end",
+      requestId,
+      path: normalizePath(path),
+      method: String(method || "GET").toUpperCase(),
+    });
+
     globalThis.clearTimeout(timeout);
     if (signal) {
       signal.removeEventListener("abort", abortFromSignal);

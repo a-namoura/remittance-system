@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Navbar from "./components/Navbar.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
+import GlobalRequestFeedback from "./components/GlobalRequestFeedback.jsx";
 import Landing from "./pages/Landing.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
@@ -59,48 +60,52 @@ function AuthenticatedLayout({ children }) {
 
 export default function App() {
   return (
-    <Routes>
-      {PUBLIC_ROUTES.map(({ path, element }) => (
-        <Route
-          key={path}
-          path={path}
-          element={
-            <PublicLayout>
-              {element}
-            </PublicLayout>
-          }
-        />
-      ))}
+    <>
+      <GlobalRequestFeedback />
 
-      {PROTECTED_ROUTES.map(({ path, element }) => (
-        <Route
-          key={path}
-          path={path}
-          element={
-            <ProtectedRoute>
-              <AuthenticatedLayout>
+      <Routes>
+        {PUBLIC_ROUTES.map(({ path, element }) => (
+          <Route
+            key={path}
+            path={path}
+            element={
+              <PublicLayout>
                 {element}
-              </AuthenticatedLayout>
-            </ProtectedRoute>
-          }
-        />
-      ))}
+              </PublicLayout>
+            }
+          />
+        ))}
 
-      {ADMIN_ROUTES.map(({ path, element }) => (
-        <Route
-          key={path}
-          path={path}
-          element={
-            <AdminRoute>
-              <AuthenticatedLayout>
-                {element}
-              </AuthenticatedLayout>
-            </AdminRoute>
-          }
-        />
-      ))}
+        {PROTECTED_ROUTES.map(({ path, element }) => (
+          <Route
+            key={path}
+            path={path}
+            element={
+              <ProtectedRoute>
+                <AuthenticatedLayout>
+                  {element}
+                </AuthenticatedLayout>
+              </ProtectedRoute>
+            }
+          />
+        ))}
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {ADMIN_ROUTES.map(({ path, element }) => (
+          <Route
+            key={path}
+            path={path}
+            element={
+              <AdminRoute>
+                <AuthenticatedLayout>
+                  {element}
+                </AuthenticatedLayout>
+              </AdminRoute>
+            }
+          />
+        ))}
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }
