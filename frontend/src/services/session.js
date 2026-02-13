@@ -113,26 +113,4 @@ export function clearLegacyWalletAddress() {
 export function clearSessionStorage() {
   clearAuthToken();
   clearLegacyWalletAddress();
-
-  const storage = getStorage();
-  if (!storage) return;
-
-  try {
-    const keysToDelete = [];
-    for (let i = 0; i < storage.length; i += 1) {
-      const key = storage.key(i);
-      if (!key) continue;
-
-      if (
-        key.startsWith(WALLET_CONNECTED_PREFIX) ||
-        key.startsWith(WALLET_ADDRESS_PREFIX)
-      ) {
-        keysToDelete.push(key);
-      }
-    }
-
-    keysToDelete.forEach((key) => storage.removeItem(key));
-  } catch {
-    // ignore storage clear failures
-  }
 }
