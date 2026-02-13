@@ -24,51 +24,117 @@ const PAYMENT_OPTIONS = [
 function methodGlyph(id) {
   if (id === "bank") {
     return (
-      <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor">
-        <path d="M4 9h16L12 4 4 9Z" strokeWidth="1.8" />
-        <path d="M6 10v7M10 10v7M14 10v7M18 10v7M4 18h16" strokeWidth="1.8" />
+      <svg
+        viewBox="0 0 24 24"
+        className="h-8 w-8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M4 10h16" />
+        <path d="M4 10 12 5l8 5" />
+        <path d="M6 10v7M10 10v7M14 10v7M18 10v7" />
+        <path d="M4 17h16M3 20h18" />
       </svg>
     );
   }
 
   if (id === "card") {
     return (
-      <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor">
-        <rect x="3.5" y="6" width="17" height="12" rx="2" strokeWidth="1.8" />
-        <path d="M3.5 10.5h17" strokeWidth="1.8" />
+      <svg
+        viewBox="0 0 24 24"
+        className="h-8 w-8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="3" y="6" width="18" height="12" rx="2.5" />
+        <path d="M3 10h18" />
+        <path d="M7 14h4M13 14h4" />
       </svg>
     );
   }
 
   if (id === "link") {
     return (
-      <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor">
-        <path d="M10.5 13.5 13.5 10.5" strokeWidth="1.8" />
-        <path d="M8.5 16.5H7a3 3 0 0 1 0-6h1.5" strokeWidth="1.8" />
-        <path d="M15.5 7.5H17a3 3 0 1 1 0 6h-1.5" strokeWidth="1.8" />
+      <svg
+        viewBox="0 0 24 24"
+        className="h-8 w-8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M10 14 8.6 15.4a3 3 0 0 1-4.2-4.2L6 9.8" />
+        <path d="M14 10 15.4 8.6a3 3 0 1 1 4.2 4.2L18 14.2" />
+        <path d="M8.5 12h7" />
       </svg>
     );
   }
 
   if (id === "address") {
     return (
-      <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor">
-        <path d="M12 3.8 5 7.2v9.6l7 3.4 7-3.4V7.2l-7-3.4Z" strokeWidth="1.8" />
-        <path d="M12 12V7.2M12 12l4.1-2M12 12 7.9 10" strokeWidth="1.6" />
+      <svg
+        viewBox="0 0 24 24"
+        className="h-8 w-8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h11A2.5 2.5 0 0 1 19 8.5V10h1.5A1.5 1.5 0 0 1 22 11.5v3a1.5 1.5 0 0 1-1.5 1.5H19v1.5A2.5 2.5 0 0 1 16.5 20h-11A2.5 2.5 0 0 1 3 17.5v-9Z" />
+        <circle cx="19.5" cy="13" r="0.8" />
+        <path d="M7 13h5M7 16h3" />
       </svg>
     );
   }
 
   return (
-    <svg viewBox="0 0 24 24" className="h-7 w-7" fill="currentColor">
-      <rect x="3" y="3" width="6" height="6" rx="1" />
-      <rect x="15" y="3" width="6" height="6" rx="1" />
-      <rect x="3" y="15" width="6" height="6" rx="1" />
-      <rect x="16" y="16" width="2.5" height="2.5" rx="0.5" />
-      <rect x="19.5" y="16" width="1.5" height="5" rx="0.5" />
-      <rect x="16" y="19.5" width="5" height="1.5" rx="0.5" />
+    <svg
+      viewBox="0 0 24 24"
+      className="h-8 w-8"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.2" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.2" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.2" />
+      <rect x="14.5" y="14.5" width="1.8" height="1.8" rx="0.3" fill="currentColor" stroke="none" />
+      <rect x="17.7" y="14.5" width="1.8" height="1.8" rx="0.3" fill="currentColor" stroke="none" />
+      <rect x="14.5" y="17.7" width="1.8" height="1.8" rx="0.3" fill="currentColor" stroke="none" />
+      <rect x="17.7" y="17.7" width="1.8" height="1.8" rx="0.3" fill="currentColor" stroke="none" />
     </svg>
   );
+}
+
+function methodIconClasses(id, active) {
+  if (active) {
+    if (id === "bank") return "border-emerald-300 bg-emerald-100 text-emerald-800 ring-2 ring-emerald-200";
+    if (id === "card") return "border-sky-300 bg-sky-100 text-sky-800 ring-2 ring-sky-200";
+    if (id === "address") return "border-indigo-300 bg-indigo-100 text-indigo-800 ring-2 ring-indigo-200";
+    if (id === "link") return "border-amber-300 bg-amber-100 text-amber-800 ring-2 ring-amber-200";
+    return "border-fuchsia-300 bg-fuchsia-100 text-fuchsia-800 ring-2 ring-fuchsia-200";
+  }
+
+  if (id === "bank") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (id === "card") return "border-sky-200 bg-sky-50 text-sky-700";
+  if (id === "address") return "border-indigo-200 bg-indigo-50 text-indigo-700";
+  if (id === "link") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700";
 }
 
 function friendSearchSource(friend) {
@@ -109,7 +175,7 @@ function displayRecipient(recipient) {
 function methodTitle(method) {
   if (method === "bank") return "Bank transfer";
   if (method === "card") return "Card transfer";
-  if (method === "address") return "Transfer to address";
+  if (method === "address") return "Transfer to wallet address";
   if (method === "link") return "Create payment link";
   return "Create payment QR";
 }
@@ -891,11 +957,10 @@ export default function SendMoney() {
                 className="text-center"
               >
                 <div
-                  className={`mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl border transition ${
+                  className={`mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl border transition ${methodIconClasses(
+                    option.id,
                     active
-                      ? "border-purple-300 bg-purple-50 text-purple-700"
-                      : "border-transparent bg-gray-100 text-gray-700"
-                  }`}
+                  )}`}
                 >
                   {methodGlyph(option.id)}
                 </div>
@@ -926,35 +991,6 @@ export default function SendMoney() {
             )}
           </div>
         )}
-
-        <div className="mt-6 rounded-2xl border border-gray-200 bg-white/90 px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                Selected recipient
-              </p>
-              <p className="text-sm font-semibold text-gray-900">
-                {displayRecipient(selectedRecipient)}
-              </p>
-              <p className="text-xs text-gray-600">
-                {selectedRecipient
-                  ? shortWallet(selectedWallet) || "No linked wallet"
-                  : "Use search to choose a recipient."}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setIsSearchOpen(true);
-                searchInputRef.current?.focus();
-              }}
-              className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Change
-            </button>
-          </div>
-        </div>
 
         <section className="mt-5 rounded-2xl border border-gray-200 bg-white/85 p-4">
           <div className="flex items-center justify-between">
