@@ -15,7 +15,7 @@ export default function AuthCard({ title, subtitle, children, onBack }) {
               </button>
             )}
             <div className="text-[11px] tracking-[0.2em] text-gray-400 uppercase">
-              Remittance System
+              Flowboard
             </div>
           </div>
 

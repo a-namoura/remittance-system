@@ -66,7 +66,7 @@ export default function ConnectWalletButton({
       const normalizedAddress = ethers.getAddress(accounts[0]);
       const signer = await provider.getSigner();
       const message = [
-        "Remittance wallet link request",
+        "Wallet link request",
         `Host: ${window.location.host}`,
         `Timestamp: ${new Date().toISOString()}`,
       ].join("\n");
