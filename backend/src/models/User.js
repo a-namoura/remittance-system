@@ -39,6 +39,19 @@ const userSchema = new mongoose.Schema(
     loginCodeExpiresAt: {
       type: Date,
     },
+    paymentCode: {
+      type: String,
+      select: false,
+    },
+    paymentCodeExpiresAt: {
+      type: Date,
+      select: false,
+    },
+    paymentCodeChannel: {
+      type: String,
+      enum: ["email", "phone"],
+      select: false,
+    },
     firstName: {
       type: String,
       trim: true,
