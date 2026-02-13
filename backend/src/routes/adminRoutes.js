@@ -121,6 +121,7 @@ adminRouter.get("/transactions", async (req, res, next) => {
         senderWallet: t.senderWallet,
         receiverWallet: t.receiverWallet,
         amount: t.amount,
+        assetSymbol: t.assetSymbol || null,
         status: t.status,
         txHash: t.txHash || null,
         createdAt: t.createdAt,
