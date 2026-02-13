@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import BackButton from "../components/BackButton.jsx";
+import { useParams } from "react-router-dom";
 import { getTransactionById } from "../services/transactionApi.js";
 import { getAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
@@ -13,9 +12,10 @@ function statusBadgeClasses(status) {
   return "bg-yellow-100 text-yellow-800";
 }
 
-function formatEth(value) {
+function formatAssetAmount(value, assetSymbol) {
   if (typeof value !== "number") return "-";
-  return `${value} ETH`;
+  const symbol = String(assetSymbol || "ETH").trim().toUpperCase() || "ETH";
+  return `${value} ${symbol}`;
 }
 
 function formatUsd(value, currency) {
@@ -25,7 +25,6 @@ function formatUsd(value, currency) {
 
 export default function TransactionDetails() {
   const { id } = useParams();
-  const navigate = useNavigate();
 
   const [transaction, setTransaction] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -82,15 +81,11 @@ export default function TransactionDetails() {
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
-      <div className="mb-2">
-        <BackButton fallback="/transactions" />
-      </div>
-
       <h1 className="text-2xl font-bold text-gray-900 mb-1">
         Transaction Details
       </h1>
       <p className="text-sm text-gray-600">
-        View the full record for a single remittance transaction.
+        View the full record for a single transaction.
       </p>
 
       {loading && <p className="text-sm text-gray-500 mt-4">Loading transaction...</p>}
@@ -113,7 +108,7 @@ export default function TransactionDetails() {
                 Amount
               </div>
               <div className="text-2xl font-semibold text-gray-900">
-                {formatEth(transaction.amount)}
+                {formatAssetAmount(transaction.amount, transaction.assetSymbol)}
               </div>
               {typeof transaction.fiatAmountUsd === "number" && (
                 <div className="text-xs text-gray-500 mt-1">
@@ -130,9 +125,12 @@ export default function TransactionDetails() {
               >
                 {transaction.status}
               </span>
-              {transaction.type && (
+              {(transaction.direction || transaction.type) && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-gray-100 text-gray-700">
-                  {transaction.type === "sent" ? "Sent" : "Received"}
+                  {String(transaction.direction || transaction.type).toLowerCase() ===
+                  "received"
+                    ? "Received"
+                    : "Sent"}
                 </span>
               )}
             </div>
@@ -189,16 +187,6 @@ export default function TransactionDetails() {
                 {formatDateTime(transaction.updatedAt) || "-"}
               </div>
             </div>
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => navigate("/transactions")}
-              className="text-sm text-blue-600 hover:underline"
-            >
-              Back to history
-            </button>
           </div>
         </div>
       )}

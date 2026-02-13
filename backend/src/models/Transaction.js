@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
 
+const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
+  .trim()
+  .toUpperCase();
+
 const transactionSchema = new mongoose.Schema(
   {
     senderUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -9,6 +13,13 @@ const transactionSchema = new mongoose.Schema(
     receiverWallet: { type: String, required: true, lowercase: true, trim: true },
 
     amount: { type: Number, required: true, min: 0 },
+    assetSymbol: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: DEFAULT_ASSET_SYMBOL || "ETH",
+      maxlength: 10,
+    },
     status: {
       type: String,
       enum: ["pending", "success", "failed"],

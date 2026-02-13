@@ -1,277 +1,635 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import BackButton from "../components/BackButton.jsx";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { apiRequest } from "../services/api.js";
-import { createFriend, listFriends } from "../services/friendApi.js";
 import { getCurrentUser } from "../services/authApi.js";
+import { createFriend, listFriends } from "../services/friendApi.js";
 import {
-  clearLegacyWalletAddress,
-  getAuthToken,
-  getLegacyWalletAddress,
-  readWalletState,
-  writeWalletState,
-} from "../services/session.js";
+  createTransferLink,
+  sendPaymentVerificationCode,
+  sendTransaction,
+} from "../services/transactionApi.js";
+import { getAuthToken, readWalletState, writeWalletState } from "../services/session.js";
+import { searchUsers } from "../services/userApi.js";
 import { isValidEvmAddress } from "../utils/security.js";
+import { copyText, getQrImageUrl, shortWallet } from "../utils/paylink.js";
 
-const MAX_FRIEND_LABEL_LENGTH = 80;
-const MAX_FRIEND_USERNAME_LENGTH = 40;
-const MAX_FRIEND_NOTES_LENGTH = 280;
+const PAYMENT_OPTIONS = [
+  { id: "bank", label: "Bank" },
+  { id: "card", label: "Card" },
+  { id: "address", label: "Address" },
+  { id: "link", label: "Link" },
+  { id: "qr", label: "QR" },
+];
 
-async function fetchWalletBalance({ token, walletAddress }) {
-  const query = new URLSearchParams({ wallet: walletAddress });
-  const result = await apiRequest(`/api/transactions/balance?${query.toString()}`, {
-    token,
-  });
-  return typeof result.balance === "number" ? result.balance : null;
+function methodGlyph(id) {
+  if (id === "bank") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor">
+        <path d="M4 9h16L12 4 4 9Z" strokeWidth="1.8" />
+        <path d="M6 10v7M10 10v7M14 10v7M18 10v7M4 18h16" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+
+  if (id === "card") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor">
+        <rect x="3.5" y="6" width="17" height="12" rx="2" strokeWidth="1.8" />
+        <path d="M3.5 10.5h17" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+
+  if (id === "link") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor">
+        <path d="M10.5 13.5 13.5 10.5" strokeWidth="1.8" />
+        <path d="M8.5 16.5H7a3 3 0 0 1 0-6h1.5" strokeWidth="1.8" />
+        <path d="M15.5 7.5H17a3 3 0 1 1 0 6h-1.5" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+
+  if (id === "address") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor">
+        <path d="M12 3.8 5 7.2v9.6l7 3.4 7-3.4V7.2l-7-3.4Z" strokeWidth="1.8" />
+        <path d="M12 12V7.2M12 12l4.1-2M12 12 7.9 10" strokeWidth="1.6" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" className="h-7 w-7" fill="currentColor">
+      <rect x="3" y="3" width="6" height="6" rx="1" />
+      <rect x="15" y="3" width="6" height="6" rx="1" />
+      <rect x="3" y="15" width="6" height="6" rx="1" />
+      <rect x="16" y="16" width="2.5" height="2.5" rx="0.5" />
+      <rect x="19.5" y="16" width="1.5" height="5" rx="0.5" />
+      <rect x="16" y="19.5" width="5" height="1.5" rx="0.5" />
+    </svg>
+  );
+}
+
+function friendSearchSource(friend) {
+  return [friend.label, friend.username, friend.walletAddress, friend.notes]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function friendRecipient(friend) {
+  return {
+    key: `friend-${friend.id}`,
+    source: "friend",
+    id: String(friend.id),
+    label: friend.label,
+    username: friend.username || "",
+    walletAddress: friend.walletAddress || "",
+  };
+}
+
+function accountRecipient(account) {
+  return {
+    key: `account-${account.id}`,
+    source: "account",
+    id: String(account.id),
+    label: account.displayName || account.username || "User",
+    username: account.username || "",
+    walletAddress: account.walletAddress || "",
+  };
+}
+
+function displayRecipient(recipient) {
+  if (!recipient) return "None selected";
+  if (recipient.username) return `${recipient.label} (@${recipient.username})`;
+  return recipient.label;
+}
+
+function methodTitle(method) {
+  if (method === "bank") return "Bank transfer";
+  if (method === "card") return "Card transfer";
+  if (method === "address") return "Transfer to address";
+  if (method === "link") return "Create payment link";
+  return "Create payment QR";
+}
+
+function avatarSeed(seed) {
+  const text = String(seed || "u");
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash << 5) - hash + text.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash) % 360;
+}
+
+function initialsFromLabel(label) {
+  const words = String(label || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (!words.length) return "?";
+  return words.map((word) => word[0]).join("").toUpperCase();
 }
 
 export default function SendMoney() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [me, setMe] = useState(null);
 
-  const [receiverWallet, setReceiverWallet] = useState("");
+  const [friends, setFriends] = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [loadingFriends, setLoadingFriends] = useState(true);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+
+  const [search, setSearch] = useState("");
+  const [pageError, setPageError] = useState("");
+  const [accountError, setAccountError] = useState("");
+
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchContainerRef = useRef(null);
+  const searchInputRef = useRef(null);
+
+  const [selectedRecipient, setSelectedRecipient] = useState(null);
+  const [addingFriendId, setAddingFriendId] = useState("");
+
+  const [activeMethod, setActiveMethod] = useState("");
+
+  const [manualAddress, setManualAddress] = useState("");
   const [amountEth, setAmountEth] = useState("");
   const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState("");
-  const [sendSuccess, setSendSuccess] = useState("");
-
-  const [walletAddress, setWalletAddress] = useState("");
+  const [methodError, setMethodError] = useState("");
+  const [methodSuccess, setMethodSuccess] = useState("");
   const [availableBalance, setAvailableBalance] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
 
-  const [confirmData, setConfirmData] = useState(null);
+  const [linkNote, setLinkNote] = useState("");
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [generatedLink, setGeneratedLink] = useState("");
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [requestPrefillDone, setRequestPrefillDone] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verificationChannel, setVerificationChannel] = useState("email");
+  const [verificationDestination, setVerificationDestination] = useState("");
+  const [codeSending, setCodeSending] = useState(false);
 
-  const [friends, setFriends] = useState([]);
-  const [selectedFriendId, setSelectedFriendId] = useState("");
-  const [friendError, setFriendError] = useState("");
-  const [friendLoading, setFriendLoading] = useState(false);
-
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalLabel, setModalLabel] = useState("");
-  const [modalUsername, setModalUsername] = useState("");
-  const [modalWallet, setModalWallet] = useState("");
-  const [modalNotes, setModalNotes] = useState("");
-  const [modalError, setModalError] = useState("");
-  const [modalSaving, setModalSaving] = useState(false);
+  const friendParam = searchParams.get("friend");
+  const requestToParam = String(searchParams.get("to") || "").trim();
+  const requestAmountParam = String(searchParams.get("amount") || "").trim();
+  const requestFromParam = String(searchParams.get("from") || "").trim();
 
   useEffect(() => {
     let isCancelled = false;
 
-    async function loadPageData() {
+    async function loadFriends() {
       const token = getAuthToken();
       if (!token) {
         if (!isCancelled) {
-          setSendError("You must be logged in.");
+          setPageError("You must be logged in.");
+          setLoadingFriends(false);
         }
         return;
       }
 
       try {
-        setFriendLoading(true);
-        setBalanceLoading(true);
-        setFriendError("");
-        setBalanceError("");
+        setPageError("");
+        setLoadingFriends(true);
 
-        const [friendData, user] = await Promise.all([
-          listFriends({ token }),
-          getCurrentUser({ token }),
-        ]);
-
+        const response = await listFriends({ token });
         if (isCancelled) return;
-
-        setFriends(friendData.friends || []);
-
-        let storedAddress = "";
-        if (user?.id) {
-          storedAddress = readWalletState(user.id).address || "";
-        }
-
-        if (!storedAddress) {
-          const legacyAddress = getLegacyWalletAddress();
-          if (legacyAddress) {
-            storedAddress = legacyAddress;
-            if (user?.id) {
-              writeWalletState(user.id, legacyAddress);
-            }
-            clearLegacyWalletAddress();
-          }
-        }
-
-        setWalletAddress(storedAddress);
-
-        if (!storedAddress) {
-          setAvailableBalance(null);
-          setBalanceError(
-            "You must link your account on the dashboard before sending."
-          );
-          return;
-        }
-
-        const balance = await fetchWalletBalance({
-          token,
-          walletAddress: storedAddress,
-        });
-
-        if (isCancelled) return;
-        setAvailableBalance(balance);
+        setFriends(response.friends || []);
       } catch (err) {
         if (isCancelled) return;
-        const message = err.message || "Failed to load send money page data.";
-        setFriendError(message);
-        setBalanceError(message);
+        setPageError(err.message || "Failed to load friends.");
       } finally {
         if (!isCancelled) {
-          setFriendLoading(false);
-          setBalanceLoading(false);
+          setLoadingFriends(false);
         }
       }
     }
 
-    loadPageData();
+    loadFriends();
 
     return () => {
       isCancelled = true;
     };
   }, []);
 
-  async function refreshBalance() {
-    const token = getAuthToken();
-    if (!token || !walletAddress) return;
+  useEffect(() => {
+    let isCancelled = false;
 
-    try {
-      setBalanceLoading(true);
-      setBalanceError("");
+    async function loadMyBalance() {
+      const token = getAuthToken();
+      if (!token) return;
 
-      const balance = await fetchWalletBalance({ token, walletAddress });
-      setAvailableBalance(balance);
-    } catch (err) {
-      setBalanceError(err.message || "Failed to load wallet balance.");
-      setAvailableBalance(null);
-    } finally {
-      setBalanceLoading(false);
+      try {
+        setBalanceLoading(true);
+        setBalanceError("");
+
+        const me = await getCurrentUser({ token });
+        if (isCancelled) return;
+        setMe(me || null);
+
+        const walletState =
+          me?.wallet?.linked && me?.wallet?.address
+            ? { linked: true, address: me.wallet.address }
+            : readWalletState(me?.id);
+        const walletAddress = String(walletState?.address || "").trim();
+
+        if (me?.id && walletState?.linked && walletAddress) {
+          writeWalletState(me.id, walletAddress);
+        }
+
+        if (!walletState?.linked || !walletAddress) {
+          setAvailableBalance(null);
+          setBalanceError(
+            "Link and verify your wallet to generate payment links or QR transfers."
+          );
+          return;
+        }
+
+        const params = new URLSearchParams({ wallet: walletAddress });
+        const result = await apiRequest(
+          `/api/transactions/balance?${params.toString()}`,
+          { token }
+        );
+
+        if (isCancelled) return;
+
+        const balance =
+          typeof result?.balance === "number" ? result.balance : null;
+        setAvailableBalance(balance);
+      } catch (err) {
+        if (isCancelled) return;
+        setAvailableBalance(null);
+        setBalanceError(err.message || "Failed to load wallet balance.");
+      } finally {
+        if (!isCancelled) {
+          setBalanceLoading(false);
+        }
+      }
     }
-  }
 
-  function handleSelectFriend(event) {
-    const selectedId = event.target.value;
-    setSelectedFriendId(selectedId);
+    loadMyBalance();
 
-    const selected = friends.find(
-      (friend) => String(friend.id) === String(selectedId)
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!friendParam || !friends.length || selectedRecipient) return;
+    const matched = friends.find((friend) => String(friend.id) === String(friendParam));
+    if (matched) {
+      const recipient = friendRecipient(matched);
+      setSelectedRecipient(recipient);
+      setSearch(recipient.label);
+    }
+  }, [friendParam, friends, selectedRecipient]);
+
+  useEffect(() => {
+    if (requestPrefillDone) return;
+    if (!requestToParam || !isValidEvmAddress(requestToParam)) return;
+
+    setRequestPrefillDone(true);
+    setActiveMethod("address");
+    setManualAddress(requestToParam);
+
+    const parsedRequestedAmount = Number(requestAmountParam);
+    if (Number.isFinite(parsedRequestedAmount) && parsedRequestedAmount > 0) {
+      setAmountEth(String(parsedRequestedAmount));
+    }
+
+    const requestedBy = requestFromParam ? ` from @${requestFromParam}` : "";
+    setMethodSuccess(
+      `Request link loaded${requestedBy}. Confirm method details and send when ready.`
     );
-    if (selected?.walletAddress) {
-      setReceiverWallet(selected.walletAddress);
-    }
-  }
+    setMethodError("");
+  }, [requestPrefillDone, requestToParam, requestAmountParam, requestFromParam]);
 
-  function openModal() {
-    setModalLabel("");
-    setModalUsername("");
-    setModalWallet("");
-    setModalNotes("");
-    setModalError("");
-    setIsModalOpen(true);
-  }
-
-  function closeModal() {
-    setIsModalOpen(false);
-    setModalSaving(false);
-    setModalError("");
-  }
-
-  async function handleSaveFriend(event) {
-    event.preventDefault();
-    setModalError("");
-
-    const label = modalLabel.trim();
-    const username = modalUsername.trim();
-    const wallet = modalWallet.trim();
-    const notes = modalNotes.trim();
-
-    if (!label) {
-      setModalError("Name is required for the friend.");
-      return;
-    }
-
-    if (!username && !wallet) {
-      setModalError("Provide at least a username or a wallet address.");
-      return;
-    }
-
-    if (wallet && !isValidEvmAddress(wallet)) {
-      setModalError("Please provide a valid EVM wallet address.");
-      return;
-    }
+  useEffect(() => {
+    let isCancelled = false;
 
     const token = getAuthToken();
     if (!token) {
-      setModalError("You must be logged in.");
+      setAccounts([]);
+      setAccountError("You must be logged in.");
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setLoadingAccounts(true);
+        setAccountError("");
+
+        const response = await searchUsers({ token, query: search, limit: 10 });
+        if (isCancelled) return;
+        setAccounts(response.users || []);
+      } catch (err) {
+        if (isCancelled) return;
+        setAccounts([]);
+        setAccountError(err.message || "Failed to load search results.");
+      } finally {
+        if (!isCancelled) {
+          setLoadingAccounts(false);
+        }
+      }
+    }, 220);
+
+    return () => {
+      isCancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [search]);
+
+  useEffect(() => {
+    function handleOutsideClick(event) {
+      if (!searchContainerRef.current) return;
+      if (!searchContainerRef.current.contains(event.target)) {
+        setIsSearchOpen(false);
+      }
+    }
+
+    window.addEventListener("mousedown", handleOutsideClick);
+    return () => window.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  function existingFriendForAccount(account) {
+    const username = String(account.username || "").trim().toLowerCase();
+    const wallet = String(account.walletAddress || "").trim().toLowerCase();
+
+    return (
+      friends.find((friend) => {
+        const friendUsername = String(friend.username || "").trim().toLowerCase();
+        const friendWallet = String(friend.walletAddress || "").trim().toLowerCase();
+
+        if (username && friendUsername === username) return true;
+        if (wallet && friendWallet === wallet) return true;
+        return false;
+      }) || null
+    );
+  }
+
+  async function handleAddFriendFromAccount(account) {
+    const token = getAuthToken();
+    if (!token) {
+      setPageError("You must be logged in.");
+      return;
+    }
+
+    const existing = existingFriendForAccount(account);
+    if (existing) {
+      const recipient = friendRecipient(existing);
+      setSelectedRecipient(recipient);
+      setSearch(recipient.label);
+      setMethodSuccess(`${existing.label} is already in your friends list.`);
+      setIsSearchOpen(false);
       return;
     }
 
     try {
-      setModalSaving(true);
+      setAddingFriendId(String(account.id));
+      setPageError("");
+      setMethodError("");
+
+      const username = String(account.username || "").trim();
+      const walletAddress = String(account.walletAddress || "").trim();
+      const label = String(account.displayName || "").trim() || username || "Friend";
 
       const response = await createFriend({
         token,
         label,
         username: username || undefined,
-        walletAddress: wallet || undefined,
-        notes: notes || undefined,
+        walletAddress: walletAddress || undefined,
       });
 
-      const created = response.friend;
-      setFriends((prev) => [created, ...prev]);
-      setSelectedFriendId(String(created.id));
-
-      if (created.walletAddress) {
-        setReceiverWallet(created.walletAddress);
+      if (!response.friend) {
+        throw new Error("Failed to add friend.");
       }
 
-      closeModal();
+      const recipient = friendRecipient(response.friend);
+      setFriends((prev) => [response.friend, ...prev]);
+      setSelectedRecipient(recipient);
+      setSearch(recipient.label);
+      setMethodSuccess(`${response.friend.label} added to friends.`);
+      setIsSearchOpen(false);
     } catch (err) {
-      setModalError(err.message || "Failed to save friend.");
+      setMethodError(err.message || "Failed to add friend.");
     } finally {
-      setModalSaving(false);
+      setAddingFriendId("");
     }
   }
 
-  function handlePrepareSend(event) {
+  function selectSearchResult(result) {
+    if (result.kind === "friend") {
+      const recipient = friendRecipient(result.friend);
+      setSelectedRecipient(recipient);
+      setSearch(recipient.label);
+    } else {
+      const recipient = accountRecipient(result.account);
+      setSelectedRecipient(recipient);
+      setSearch(recipient.label);
+    }
+
+    setMethodError("");
+    setMethodSuccess("");
+    setIsSearchOpen(false);
+  }
+
+  function resetMethodState() {
+    setManualAddress("");
+    setAmountEth("");
+    setLinkNote("");
+    setGeneratedLink("");
+    setLinkCopied(false);
+    setVerificationCode("");
+    setVerificationDestination("");
+    setVerificationChannel("email");
+    setMethodError("");
+    setMethodSuccess("");
+  }
+
+  function openMethod(method) {
+    setActiveMethod(method);
+    resetMethodState();
+  }
+
+  function closeMethod() {
+    setActiveMethod("");
+    resetMethodState();
+  }
+
+  async function handleSendDirect(event) {
     event.preventDefault();
-    setSendError("");
-    setSendSuccess("");
+    setMethodError("");
+    setMethodSuccess("");
 
-    const normalizedReceiver = receiverWallet.trim();
-    if (!normalizedReceiver || !amountEth) {
-      setSendError("Receiver wallet and amount are required.");
+    if (!selectedRecipient) {
+      setMethodError("Select a recipient first.");
       return;
     }
 
-    if (!isValidEvmAddress(normalizedReceiver)) {
-      setSendError("Receiver wallet must be a valid EVM address.");
+    const wallet = String(selectedRecipient.walletAddress || "").trim();
+    if (!wallet) {
+      setMethodError("Selected recipient does not have a linked wallet.");
       return;
     }
 
-    if (
-      walletAddress &&
-      normalizedReceiver.toLowerCase() === walletAddress.toLowerCase()
-    ) {
-      setSendError("Receiver wallet must be different from your linked wallet.");
+    if (!isValidEvmAddress(wallet)) {
+      setMethodError("Selected recipient has an invalid wallet address.");
       return;
     }
 
-    const amountNumber = Number(amountEth);
-    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-      setSendError("Amount must be a positive number.");
+    const amount = Number(String(amountEth).trim());
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setMethodError("Amount must be a positive number.");
       return;
     }
 
-    if (
-      availableBalance != null &&
-      Number.isFinite(availableBalance) &&
-      amountNumber > availableBalance
-    ) {
-      setSendError(
+    if (balanceLoading) {
+      setMethodError("Checking your balance. Please wait and try again.");
+      return;
+    }
+
+    if (!Number.isFinite(availableBalance)) {
+      setMethodError("Unable to verify your balance right now.");
+      return;
+    }
+
+    if (amount > availableBalance) {
+      setMethodError(
+        `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`
+      );
+      return;
+    }
+
+    const normalizedCode = String(verificationCode || "").trim();
+    if (normalizedCode.length < 6) {
+      setMethodError("Enter the 6-digit verification code before sending.");
+      return;
+    }
+
+    const token = getAuthToken();
+    if (!token) {
+      setMethodError("You must be logged in.");
+      return;
+    }
+
+    try {
+      setSending(true);
+      const result = await sendTransaction({
+        token,
+        receiverWallet: wallet,
+        amountEth: amount,
+        verificationCode: normalizedCode,
+      });
+
+      const status = result?.transaction?.status || "pending";
+      setMethodSuccess(`Transfer created with status "${status}".`);
+      setVerificationCode("");
+      setVerificationDestination("");
+    } catch (err) {
+      setMethodError(err.message || "Failed to send transaction.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function handleSendByAddress(event) {
+    event.preventDefault();
+    setMethodError("");
+    setMethodSuccess("");
+
+    const destination = String(manualAddress || "").trim();
+    if (!isValidEvmAddress(destination)) {
+      setMethodError("Enter a valid destination wallet address.");
+      return;
+    }
+
+    const amount = Number(String(amountEth).trim());
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setMethodError("Amount must be a positive number.");
+      return;
+    }
+
+    if (balanceLoading) {
+      setMethodError("Checking your balance. Please wait and try again.");
+      return;
+    }
+
+    if (!Number.isFinite(availableBalance)) {
+      setMethodError("Unable to verify your balance right now.");
+      return;
+    }
+
+    if (amount > availableBalance) {
+      setMethodError(
+        `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`
+      );
+      return;
+    }
+
+    const normalizedCode = String(verificationCode || "").trim();
+    if (normalizedCode.length < 6) {
+      setMethodError("Enter the 6-digit verification code before sending.");
+      return;
+    }
+
+    const token = getAuthToken();
+    if (!token) {
+      setMethodError("You must be logged in.");
+      return;
+    }
+
+    try {
+      setSending(true);
+      const result = await sendTransaction({
+        token,
+        receiverWallet: destination,
+        amountEth: amount,
+        verificationCode: normalizedCode,
+      });
+
+      const status = result?.transaction?.status || "pending";
+      setMethodSuccess(`Transfer created with status "${status}".`);
+      setVerificationCode("");
+      setVerificationDestination("");
+    } catch (err) {
+      setMethodError(err.message || "Failed to send transaction.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function handleGenerateClaimLink(event) {
+    event.preventDefault();
+    setMethodError("");
+    setMethodSuccess("");
+    setGeneratedLink("");
+    setLinkCopied(false);
+
+    const amount = Number(String(amountEth).trim());
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setMethodError("Amount must be a positive number.");
+      return;
+    }
+
+    if (balanceLoading) {
+      setMethodError("Checking your balance. Please wait and try again.");
+      return;
+    }
+
+    if (!Number.isFinite(availableBalance)) {
+      setMethodError("Unable to verify your balance right now.");
+      return;
+    }
+
+    if (amount > availableBalance) {
+      setMethodError(
         `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`
       );
       return;
@@ -279,382 +637,697 @@ export default function SendMoney() {
 
     const token = getAuthToken();
     if (!token) {
-      setSendError("You must be logged in.");
-      return;
-    }
-
-    if (!walletAddress) {
-      setSendError(
-        "You must link your account on the dashboard before sending a transaction."
-      );
-      return;
-    }
-
-    setConfirmData({
-      receiverWallet: normalizedReceiver,
-      amountEth: amountNumber,
-    });
-  }
-
-  async function handleConfirmSend() {
-    if (!confirmData) return;
-
-    const token = getAuthToken();
-    if (!token) {
-      setSendError("You must be logged in.");
-      setConfirmData(null);
+      setMethodError("You must be logged in.");
       return;
     }
 
     try {
-      setSending(true);
-      setSendError("");
-
-      const result = await apiRequest("/api/transactions/send", {
-        method: "POST",
+      setLinkLoading(true);
+      const response = await createTransferLink({
         token,
-        body: {
-          receiverWallet: confirmData.receiverWallet,
-          amountEth: confirmData.amountEth,
-        },
+        amountEth: amount,
+        note: String(linkNote || "").trim() || undefined,
       });
 
-      setSendSuccess(
-        `Transaction created with status "${result.transaction.status}".`
-      );
-      setAmountEth("");
-      setConfirmData(null);
+      const claimToken = String(response.linkToken || "").trim();
+      if (!claimToken) {
+        throw new Error("Could not create transfer link.");
+      }
 
-      await refreshBalance();
+      const origin =
+        typeof window !== "undefined" && window.location?.origin
+          ? window.location.origin
+          : "";
+      const url = `${origin}/claim-transfer?token=${encodeURIComponent(claimToken)}`;
+      setGeneratedLink(url);
+      setMethodSuccess("Link created. Share it with the receiver to claim funds.");
     } catch (err) {
-      setSendError(err.message || "Failed to send transaction.");
+      setMethodError(err.message || "Failed to generate link.");
     } finally {
-      setSending(false);
+      setLinkLoading(false);
     }
   }
 
+  async function handleCopyLink() {
+    if (!generatedLink) return;
+
+    const didCopy = await copyText(generatedLink);
+    if (didCopy) {
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 1400);
+      return;
+    }
+
+    window.prompt("Copy this link:", generatedLink);
+  }
+
+  async function handleShareLink() {
+    if (!generatedLink) return;
+
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: "Claim transfer",
+          text: "Open this link to claim your transfer.",
+          url: generatedLink,
+        });
+        return;
+      } catch {
+        // fallback to copy
+      }
+    }
+
+    await handleCopyLink();
+  }
+
+  async function handleSendCode() {
+    const token = getAuthToken();
+    if (!token) {
+      setMethodError("You must be logged in.");
+      return;
+    }
+
+    try {
+      setCodeSending(true);
+      setMethodError("");
+      const response = await sendPaymentVerificationCode({
+        token,
+        verificationChannel,
+      });
+      setVerificationDestination(String(response?.destination || "").trim());
+      setMethodSuccess(
+        `Verification code sent via ${response?.verificationChannel || verificationChannel}.`
+      );
+    } catch (err) {
+      setMethodError(err.message || "Failed to send verification code.");
+    } finally {
+      setCodeSending(false);
+    }
+  }
+
+  const filteredFriends = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return friends.slice(0, 6);
+    return friends.filter((friend) => friendSearchSource(friend).includes(query)).slice(0, 8);
+  }, [friends, search]);
+
+  const quickFriends = useMemo(() => friends.slice(0, 12), [friends]);
+
+  const searchResults = useMemo(() => {
+    const friendItems = filteredFriends.map((friend) => ({
+      kind: "friend",
+      key: `friend-${friend.id}`,
+      friend,
+    }));
+
+    const accountItems = accounts.map((account) => ({
+      kind: "account",
+      key: `account-${account.id}`,
+      account,
+    }));
+
+    return [...friendItems, ...accountItems].slice(0, 12);
+  }, [filteredFriends, accounts]);
+
+  const selectedWallet = String(selectedRecipient?.walletAddress || "").trim();
+  const parsedAmount = Number(String(amountEth).trim());
+  const hasPositiveAmount = Number.isFinite(parsedAmount) && parsedAmount > 0;
+  const exceedsBalance =
+    hasPositiveAmount &&
+    Number.isFinite(availableBalance) &&
+    parsedAmount > availableBalance;
+  const canProceedWithBalance =
+    !balanceLoading && Number.isFinite(availableBalance) && !exceedsBalance;
+  const hasValidManualAddress = isValidEvmAddress(String(manualAddress || "").trim());
+  const canUsePhoneVerification = Boolean(String(me?.phoneNumber || "").trim());
+
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
-      <div className="mb-4">
-        <BackButton fallback="/dashboard" />
-      </div>
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+      <section className="rounded-[2.2rem] border border-gray-200 bg-white p-5 shadow-sm sm:p-8">
+        <h1 className="text-4xl font-semibold tracking-tight text-gray-900">
+          New payment
+        </h1>
 
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Send Money</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          Send a transaction to a receiver wallet using your linked on-chain
-          balance. You can choose a saved friend or add a new one.
-        </p>
-      </div>
-
-      {sendError && (
-        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
-          {sendError}
-        </div>
-      )}
-
-      {sendSuccess && (
-        <div className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">
-          {sendSuccess}
-        </div>
-      )}
-
-      <form
-        onSubmit={handlePrepareSend}
-        className="rounded-2xl border bg-white p-6 space-y-6"
-      >
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="block text-sm font-medium text-gray-700">
-              Saved friend
-            </label>
-            <button
-              type="button"
-              onClick={openModal}
-              className="text-xs text-blue-600 hover:underline"
+        <div className="mt-5" ref={searchContainerRef}>
+          <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 focus-within:border-purple-300 focus-within:ring-2 focus-within:ring-purple-200">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-5 w-5 text-purple-500"
+              fill="none"
+              stroke="currentColor"
             >
-              Add new friend
-            </button>
+              <circle cx="11" cy="11" r="6.8" strokeWidth="1.8" />
+              <path d="m16 16 4 4" strokeWidth="1.8" />
+            </svg>
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={search}
+              onFocus={() => setIsSearchOpen(true)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setIsSearchOpen(true);
+              }}
+              placeholder="Search recipient"
+              className="min-w-0 flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none"
+            />
           </div>
 
-          <select
-            className="w-full border rounded-md px-3 py-2 text-sm"
-            value={selectedFriendId}
-            onChange={handleSelectFriend}
-            disabled={friendLoading || friends.length === 0}
-          >
-            <option value="">
-              {friends.length === 0
-                ? "No friends saved yet"
-                : "Select a saved friend"}
-            </option>
-            {friends.map((friend) => (
-              <option key={friend.id} value={friend.id}>
-                {friend.label}
-                {friend.username ? ` - ${friend.username}` : ""}
-                {" "}
-                {friend.walletAddress
-                  ? `(${friend.walletAddress.slice(0, 8)}...)`
-                  : "(no wallet)"}
-              </option>
-            ))}
-          </select>
+          {isSearchOpen && (
+            <div className="relative z-30 mt-2 max-h-80 overflow-y-auto rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
+              {(loadingFriends || loadingAccounts) && (
+                <div className="rounded-xl px-3 py-2 text-xs text-gray-500">Searching...</div>
+              )}
 
-          {friendError && (
-            <div className="mt-1 text-xs text-red-600">{friendError}</div>
+              {!(loadingFriends || loadingAccounts) && searchResults.length === 0 && (
+                <div className="rounded-xl px-3 py-2 text-xs text-gray-500">No results found.</div>
+              )}
+
+              {searchResults.map((result) => {
+                const isFriend = result.kind === "friend";
+                const data = isFriend ? result.friend : result.account;
+                const recipient = isFriend ? friendRecipient(data) : accountRecipient(data);
+                const isSelected = selectedRecipient?.key === recipient.key;
+                const existing = isFriend ? null : existingFriendForAccount(data);
+                const isAdding = addingFriendId === String(data.id);
+
+                return (
+                  <button
+                    key={result.key}
+                    type="button"
+                    onClick={() => selectSearchResult(result)}
+                    className={`mb-1 flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left transition last:mb-0 ${
+                      isSelected
+                        ? "border-purple-300 bg-purple-50"
+                        : "border-transparent hover:border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
+                        style={{ backgroundColor: `hsl(${avatarSeed(recipient.key)} 72% 44%)` }}
+                      >
+                        {initialsFromLabel(recipient.label)}
+                      </span>
+
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">
+                          {isFriend ? data.label : data.displayName || data.username || "User"}
+                        </p>
+                        <p className="truncate text-xs text-gray-500">
+                          {data.username ? `@${data.username}` : shortWallet(data.walletAddress)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="ml-2 shrink-0 text-right">
+                      {isFriend ? (
+                        <span
+                          className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                            data.walletAddress
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-gray-200 text-gray-600"
+                          }`}
+                        >
+                          {data.walletAddress ? "Friend" : "No wallet"}
+                        </span>
+                      ) : existing ? (
+                        <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+                          In friends
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleAddFriendFromAccount(data);
+                          }}
+                          disabled={isAdding}
+                          className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                        >
+                          {isAdding ? "Adding..." : "Add"}
+                        </button>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+
+              {accountError && (
+                <p className="px-2 pt-1 text-xs text-red-600">{accountError}</p>
+              )}
+            </div>
           )}
         </div>
 
-        <div className="space-y-4 pt-4 border-t">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Receiver wallet address
-            </label>
-            <input
-              type="text"
-              className="w-full border rounded-md px-3 py-2 text-sm font-mono"
-              placeholder="0x..."
-              value={receiverWallet}
-              maxLength={42}
-              autoCapitalize="none"
-              autoCorrect="off"
-              onChange={(event) => setReceiverWallet(event.target.value)}
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              This should be an EVM-compatible address on the configured
-              network.
-            </p>
-          </div>
+        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-5">
+          {PAYMENT_OPTIONS.map((option) => {
+            const active = activeMethod === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => openMethod(option.id)}
+                className="text-center"
+              >
+                <div
+                  className={`mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl border transition ${
+                    active
+                      ? "border-purple-300 bg-purple-50 text-purple-700"
+                      : "border-transparent bg-gray-100 text-gray-700"
+                  }`}
+                >
+                  {methodGlyph(option.id)}
+                </div>
+                <div className="mt-2 text-base font-medium text-gray-800">{option.label}</div>
+              </button>
+            );
+          })}
+        </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Amount (ETH)
-            </label>
-            <input
-              type="number"
-              step="0.0001"
-              min="0"
-              className="w-full border rounded-md px-3 py-2 text-sm"
-              placeholder="0.0000"
-              value={amountEth}
-              onChange={(event) => setAmountEth(event.target.value)}
-            />
-
-            {balanceLoading && (
-              <p className="mt-1 text-xs text-gray-500">
-                Loading on-chain balance...
-              </p>
+        {(pageError || (!activeMethod && (methodError || methodSuccess))) && (
+          <div className="mt-6 space-y-2">
+            {pageError && (
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {pageError}
+              </div>
             )}
 
-            {!balanceLoading && availableBalance != null && (
-              <p className="mt-1 text-xs text-gray-600">
-                Available:{" "}
-                <span className="font-mono">
-                  {availableBalance.toFixed(4)} ETH
-                </span>
-              </p>
+            {methodError && (
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {methodError}
+              </div>
             )}
 
-            {balanceError && (
-              <p className="mt-1 text-xs text-red-600">{balanceError}</p>
+            {methodSuccess && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {methodSuccess}
+              </div>
             )}
           </div>
+        )}
 
-          <div className="flex items-center justify-between text-xs text-gray-500">
-            <span>
-              You must have a linked account with sufficient balance to complete
-              this transaction.
-            </span>
+        <div className="mt-6 rounded-2xl border border-gray-200 bg-white/90 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Selected recipient
+              </p>
+              <p className="text-sm font-semibold text-gray-900">
+                {displayRecipient(selectedRecipient)}
+              </p>
+              <p className="text-xs text-gray-600">
+                {selectedRecipient
+                  ? shortWallet(selectedWallet) || "No linked wallet"
+                  : "Use search to choose a recipient."}
+              </p>
+            </div>
+
             <button
               type="button"
-              className="text-blue-600 hover:underline"
-              onClick={() => navigate("/dashboard")}
+              onClick={() => {
+                setIsSearchOpen(true);
+                searchInputRef.current?.focus();
+              }}
+              className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
             >
-              Check balance on dashboard
-            </button>
-          </div>
-
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={sending}
-              className="w-full inline-flex items-center justify-center px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-60"
-            >
-              {sending ? "Sending..." : "Send transaction"}
+              Change
             </button>
           </div>
         </div>
-      </form>
 
-      {confirmData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6 space-y-4">
+        <section className="mt-5 rounded-2xl border border-gray-200 bg-white/85 p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-800">
+              Saved friends ({friends.length})
+            </h2>
+            <button
+              type="button"
+              onClick={() => navigate("/friends")}
+              className="text-xs font-medium text-purple-700 hover:underline"
+            >
+              Manage
+            </button>
+          </div>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {loadingFriends && (
+              <div className="rounded-xl bg-white px-3 py-2 text-xs text-gray-500">
+                Loading friends...
+              </div>
+            )}
+
+            {!loadingFriends && quickFriends.length === 0 && (
+              <div className="rounded-xl bg-white px-3 py-2 text-xs text-gray-500">
+                No saved friends yet.
+              </div>
+            )}
+
+            {!loadingFriends &&
+              quickFriends.map((friend) => {
+                const recipient = friendRecipient(friend);
+                const isSelected = selectedRecipient?.key === recipient.key;
+
+                return (
+                  <button
+                    key={friend.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedRecipient(recipient);
+                      setMethodError("");
+                      setMethodSuccess("");
+                    }}
+                    className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left transition ${
+                      isSelected
+                        ? "border-purple-300 bg-purple-50"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-gray-900">
+                        {friend.label}
+                      </p>
+                      <p className="truncate text-xs text-gray-500">
+                        {friend.username
+                          ? `@${friend.username}`
+                          : shortWallet(friend.walletAddress) || "No username"}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`ml-2 rounded-full px-2 py-1 text-[11px] font-semibold ${
+                        friend.walletAddress
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-gray-200 text-gray-600"
+                      }`}
+                    >
+                      {friend.walletAddress ? "Select" : "No wallet"}
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
+        </section>
+      </section>
+
+      {activeMethod && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-purple-100 bg-white p-6 shadow-xl">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">
-                Confirm transaction
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-900">{methodTitle(activeMethod)}</h2>
               <button
                 type="button"
-                onClick={() => setConfirmData(null)}
-                className="text-gray-400 hover:text-gray-600 text-sm"
-                aria-label="Close confirmation"
+                onClick={closeMethod}
+                className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100"
+                aria-label="Close payment method page"
               >
-                X
+                Close
               </button>
             </div>
 
-            <p className="text-sm text-gray-700">
-              You are about to send{" "}
-              <span className="font-mono font-semibold">
-                {confirmData.amountEth} ETH
-              </span>{" "}
-              to:
-            </p>
+            {methodError && (
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {methodError}
+              </div>
+            )}
 
-            <p className="text-xs font-mono break-all bg-gray-50 border rounded px-3 py-2">
-              {confirmData.receiverWallet}
-            </p>
+            {methodSuccess && (
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                {methodSuccess}
+              </div>
+            )}
 
-            {availableBalance != null && (
-              <p className="text-xs text-gray-600">
-                Available balance:{" "}
-                <span className="font-mono">
-                  {availableBalance.toFixed(4)} ETH
-                </span>
+            <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+              {activeMethod === "address" ? (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Destination
+                  </p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    Manual wallet address
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    Enter a destination address below.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Recipient
+                  </p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {displayRecipient(selectedRecipient)}
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    {selectedRecipient
+                      ? shortWallet(selectedWallet) || "No linked wallet"
+                      : "No recipient selected"}
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+              {balanceLoading ? (
+                <p className="text-xs text-gray-500">Checking balance...</p>
+              ) : Number.isFinite(availableBalance) ? (
+                <p className="text-xs text-gray-600">
+                  Available balance:{" "}
+                  <span className="font-mono font-semibold text-gray-900">
+                    {availableBalance.toFixed(4)} ETH
+                  </span>
+                </p>
+              ) : (
+                <p className="text-xs text-red-600">
+                  {balanceError || "Balance unavailable."}
+                </p>
+              )}
+            </div>
+
+            {exceedsBalance && (
+              <p className="mt-2 text-xs font-medium text-red-600">
+                Amount exceeds your available balance.
               </p>
             )}
 
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setConfirmData(null)}
-                className="px-3 py-1.5 rounded-md border text-xs text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmSend}
-                disabled={sending}
-                className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-60"
-              >
-                {sending ? "Sending..." : "Confirm & send"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">
-                Add new friend
-              </h2>
-              <button
-                type="button"
-                onClick={closeModal}
-                className="text-gray-400 hover:text-gray-600 text-sm"
-                aria-label="Close friend modal"
-              >
-                X
-              </button>
-            </div>
-
-            <p className="text-xs text-gray-500">
-              Give this friend a name, and optionally store their username
-              and wallet. At least a username or a wallet is required.
-            </p>
-
-            {modalError && (
-              <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
-                {modalError}
-              </div>
-            )}
-
-            <form onSubmit={handleSaveFriend} className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Name (how you will see this friend)
-                </label>
+            {activeMethod === "address" && (
+              <form onSubmit={handleSendByAddress} className="mt-4 space-y-3">
                 <input
                   type="text"
-                  className="w-full border rounded-md px-3 py-2 text-sm"
-                  placeholder="Example: Max"
-                  value={modalLabel}
-                  maxLength={MAX_FRIEND_LABEL_LENGTH}
-                  onChange={(event) => setModalLabel(event.target.value)}
+                  value={manualAddress}
+                  onChange={(event) => setManualAddress(event.target.value)}
+                  placeholder="Destination wallet address (0x...)"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-mono text-gray-900 focus:border-gray-400 focus:outline-none"
                 />
-              </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Username
-                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={amountEth}
+                  onChange={(event) => setAmountEth(event.target.value)}
+                  placeholder="Amount (ETH)"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
+                />
+
+                <div className="grid gap-2 sm:grid-cols-[1fr,auto]">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                    <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                      Verification channel
+                    </label>
+                    <select
+                      value={verificationChannel}
+                      onChange={(event) => setVerificationChannel(event.target.value)}
+                      className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 focus:border-gray-400 focus:outline-none"
+                    >
+                      <option value="email">Email</option>
+                      {canUsePhoneVerification ? <option value="phone">Phone</option> : null}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSendCode}
+                    disabled={codeSending}
+                    className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {codeSending ? "Sending code..." : "Send code"}
+                  </button>
+                </div>
+
+                {verificationDestination ? (
+                  <p className="text-xs text-gray-600">
+                    Code sent to <span className="font-semibold">{verificationDestination}</span>
+                  </p>
+                ) : null}
+
                 <input
                   type="text"
-                  className="w-full border rounded-md px-3 py-2 text-sm"
-                  placeholder="username"
-                  value={modalUsername}
-                  maxLength={MAX_FRIEND_USERNAME_LENGTH}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  onChange={(event) => setModalUsername(event.target.value)}
+                  value={verificationCode}
+                  onChange={(event) =>
+                    setVerificationCode(String(event.target.value || "").replace(/\D/g, ""))
+                  }
+                  maxLength={6}
+                  placeholder="6-digit verification code"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm tracking-[0.2em] text-gray-900 focus:border-gray-400 focus:outline-none"
                 />
-              </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Wallet address
-                </label>
-                <input
-                  type="text"
-                  className="w-full border rounded-md px-3 py-2 text-sm font-mono"
-                  placeholder="0x..."
-                  value={modalWallet}
-                  maxLength={42}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  onChange={(event) => setModalWallet(event.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Notes (optional)
-                </label>
-                <textarea
-                  className="w-full border rounded-md px-3 py-2 text-sm"
-                  rows={2}
-                  placeholder="Relationship, country, purpose..."
-                  value={modalNotes}
-                  maxLength={MAX_FRIEND_NOTES_LENGTH}
-                  onChange={(event) => setModalNotes(event.target.value)}
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="px-3 py-1.5 rounded-md border text-xs text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
                 <button
                   type="submit"
-                  disabled={modalSaving}
-                  className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-60"
+                  disabled={
+                    sending ||
+                    !hasValidManualAddress ||
+                    !canProceedWithBalance ||
+                    !hasPositiveAmount ||
+                    String(verificationCode || "").trim().length < 6
+                  }
+                  className="w-full rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
                 >
-                  {modalSaving ? "Saving..." : "Save friend"}
+                  {sending ? "Sending..." : "Send now"}
                 </button>
-              </div>
-            </form>
+              </form>
+            )}
+
+            {(activeMethod === "bank" || activeMethod === "card") && (
+              <form onSubmit={handleSendDirect} className="mt-4 space-y-3">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={amountEth}
+                  onChange={(event) => setAmountEth(event.target.value)}
+                  placeholder="Amount (ETH)"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
+                />
+
+                <div className="grid gap-2 sm:grid-cols-[1fr,auto]">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                    <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                      Verification channel
+                    </label>
+                    <select
+                      value={verificationChannel}
+                      onChange={(event) => setVerificationChannel(event.target.value)}
+                      className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 focus:border-gray-400 focus:outline-none"
+                    >
+                      <option value="email">Email</option>
+                      {canUsePhoneVerification ? <option value="phone">Phone</option> : null}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSendCode}
+                    disabled={codeSending}
+                    className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {codeSending ? "Sending code..." : "Send code"}
+                  </button>
+                </div>
+
+                {verificationDestination ? (
+                  <p className="text-xs text-gray-600">
+                    Code sent to <span className="font-semibold">{verificationDestination}</span>
+                  </p>
+                ) : null}
+
+                <input
+                  type="text"
+                  value={verificationCode}
+                  onChange={(event) =>
+                    setVerificationCode(String(event.target.value || "").replace(/\D/g, ""))
+                  }
+                  maxLength={6}
+                  placeholder="6-digit verification code"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm tracking-[0.2em] text-gray-900 focus:border-gray-400 focus:outline-none"
+                />
+
+                <button
+                  type="submit"
+                  disabled={
+                    sending ||
+                    !selectedRecipient ||
+                    !selectedWallet ||
+                    !canProceedWithBalance ||
+                    !hasPositiveAmount ||
+                    String(verificationCode || "").trim().length < 6
+                  }
+                  className="w-full rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                >
+                  {sending ? "Sending..." : "Send now"}
+                </button>
+              </form>
+            )}
+
+            {(activeMethod === "link" || activeMethod === "qr") && (
+              <form onSubmit={handleGenerateClaimLink} className="mt-4 space-y-3">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={amountEth}
+                  onChange={(event) => setAmountEth(event.target.value)}
+                  placeholder="Amount (ETH)"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
+                />
+
+                <input
+                  type="text"
+                  value={linkNote}
+                  onChange={(event) => setLinkNote(event.target.value)}
+                  placeholder="Note (optional)"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
+                />
+
+                <button
+                  type="submit"
+                  disabled={linkLoading || !canProceedWithBalance || !hasPositiveAmount}
+                  className="w-full rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                >
+                  {linkLoading ? "Generating..." : "Generate"}
+                </button>
+
+                {generatedLink && (
+                  <div className="space-y-3 rounded-xl border border-gray-200 p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input
+                        type="text"
+                        readOnly
+                        value={generatedLink}
+                        className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCopyLink}
+                        className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        {linkCopied ? "Copied" : "Copy"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleShareLink}
+                        className="rounded-xl bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700"
+                      >
+                        Share
+                      </button>
+                    </div>
+
+                    {activeMethod === "qr" && (
+                      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                        <div className="mx-auto w-fit rounded-xl border border-white bg-white p-2 shadow-sm">
+                          <img
+                            src={getQrImageUrl(generatedLink)}
+                            alt="QR code for claim link"
+                            className="h-40 w-40"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </form>
+            )}
           </div>
         </div>
       )}
     </div>
   );
 }
-

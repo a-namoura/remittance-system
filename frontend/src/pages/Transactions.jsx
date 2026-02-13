@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import BackButton from "../components/BackButton.jsx";
 import { getMyTransactions } from "../services/transactionApi.js";
 import { getAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
@@ -116,16 +115,12 @@ export default function Transactions() {
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-10 space-y-6">
-      <div className="mb-4">
-        <BackButton fallback="/dashboard" />
-      </div>
-
       <div>
         <h1 className="text-2xl font-bold text-gray-900">
           Transaction History
         </h1>
         <p className="text-sm text-gray-600 mt-1">
-          View and filter your remittance transactions, both sent and received.
+          View and filter your transactions, both sent and received.
         </p>
       </div>
 
@@ -211,6 +206,9 @@ export default function Transactions() {
               {transactions.map((transaction) => {
                 const isSent = transaction.direction === "sent";
                 const explorerUrl = getExplorerTxUrl(transaction.txHash);
+                const assetSymbol = String(transaction.assetSymbol || "ETH")
+                  .trim()
+                  .toUpperCase();
 
                 return (
                   <div
@@ -228,7 +226,8 @@ export default function Transactions() {
                   >
                     <div>
                       <div className="text-sm font-medium text-gray-900">
-                        {isSent ? "Sent" : "Received"} {transaction.amount} ETH
+                        {isSent ? "Sent" : "Received"} {transaction.amount}{" "}
+                        {assetSymbol}
                         {typeof transaction.fiatAmountUsd === "number" && (
                           <span className="text-xs text-gray-500 ml-1">
                             (~ {transaction.fiatAmountUsd.toFixed(2)}{" "}

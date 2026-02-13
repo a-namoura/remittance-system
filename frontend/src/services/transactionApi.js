@@ -1,5 +1,101 @@
 import { apiRequest } from "./api.js";
 
+export async function createTransferLink({
+  token,
+  amountEth,
+  note,
+  assetSymbol,
+} = {}) {
+  return apiRequest("/api/transactions/link", {
+    method: "POST",
+    token,
+    body: { amountEth, note, assetSymbol },
+  });
+}
+
+export async function resolveTransferLink({ token } = {}) {
+  const normalizedToken = String(token || "").trim();
+  if (!normalizedToken) {
+    throw new Error("token is required");
+  }
+
+  const params = new URLSearchParams({ token: normalizedToken });
+  return apiRequest(`/api/transactions/link/resolve?${params.toString()}`);
+}
+
+export async function claimTransferLink({ token, authToken } = {}) {
+  const normalizedToken = String(token || "").trim();
+  if (!normalizedToken) {
+    throw new Error("token is required");
+  }
+
+  return apiRequest("/api/transactions/link/claim", {
+    method: "POST",
+    token: authToken,
+    body: { token: normalizedToken },
+  });
+}
+
+export async function sendPaymentVerificationCode({
+  token,
+  verificationChannel,
+} = {}) {
+  return apiRequest("/api/transactions/send-code", {
+    method: "POST",
+    token,
+    body: { verificationChannel },
+  });
+}
+
+export async function sendTransaction({
+  token,
+  receiverWallet,
+  amountEth,
+  verificationCode,
+  assetSymbol,
+} = {}) {
+  return apiRequest("/api/transactions/send", {
+    method: "POST",
+    token,
+    body: {
+      receiverWallet,
+      amountEth,
+      verificationCode,
+      assetSymbol,
+    },
+  });
+}
+
+export async function getWalletBalance({
+  token,
+  wallet,
+  currency,
+  currencies,
+} = {}) {
+  const normalizedWallet = String(wallet || "").trim();
+  if (!normalizedWallet) {
+    throw new Error("wallet is required");
+  }
+
+  const params = new URLSearchParams({ wallet: normalizedWallet });
+
+  const normalizedCurrency = String(currency || "").trim().toUpperCase();
+  if (normalizedCurrency) {
+    params.set("currency", normalizedCurrency);
+  }
+
+  if (Array.isArray(currencies) && currencies.length > 0) {
+    const normalizedCurrencies = currencies
+      .map((value) => String(value || "").trim().toUpperCase())
+      .filter(Boolean);
+    if (normalizedCurrencies.length > 0) {
+      params.set("currencies", normalizedCurrencies.join(","));
+    }
+  }
+
+  return apiRequest(`/api/transactions/balance?${params.toString()}`, { token });
+}
+
 export async function getMyTransactions({
   token,
   limit = 10,
