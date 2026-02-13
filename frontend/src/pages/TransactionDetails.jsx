@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { getTransactionById } from "../services/transactionApi.js";
 import { getAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
@@ -24,6 +24,7 @@ function formatUsd(value, currency) {
 }
 
 export default function TransactionDetails() {
+  const navigate = useNavigate();
   const { id } = useParams();
 
   const [transaction, setTransaction] = useState(null);
@@ -81,6 +82,26 @@ export default function TransactionDetails() {
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
+      <button
+        type="button"
+        onClick={() => navigate("/transactions")}
+        className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M15 18 9 12l6-6" />
+        </svg>
+        Back to Activity
+      </button>
+
       <h1 className="text-2xl font-bold text-gray-900 mb-1">
         Transaction Details
       </h1>
