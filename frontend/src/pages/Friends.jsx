@@ -10,6 +10,29 @@ const MAX_FRIEND_NAME = 80;
 const MAX_FRIEND_USERNAME = 40;
 const MAX_FRIEND_NOTES = 280;
 
+function buildChatSendLink(friend) {
+  const params = new URLSearchParams();
+  params.set("compose", "send");
+
+  const friendId = String(friend?.id || "").trim();
+  const username = String(friend?.username || "").trim();
+  const walletAddress = String(friend?.walletAddress || "").trim();
+
+  if (friendId) {
+    params.set("friendId", friendId);
+  }
+
+  if (username) {
+    params.set("friendUsername", username);
+  }
+
+  if (walletAddress) {
+    params.set("friendWallet", walletAddress);
+  }
+
+  return `/chat?${params.toString()}`;
+}
+
 export default function Friends() {
   const [friends, setFriends] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -326,7 +349,7 @@ export default function Friends() {
 
               <div className="pt-1">
                 <Link
-                  to={`/send?friend=${encodeURIComponent(String(friend.id))}`}
+                  to={buildChatSendLink(friend)}
                   className="inline-flex text-xs font-medium text-purple-600 hover:underline"
                 >
                   Send money to this friend
