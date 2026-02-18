@@ -1,7 +1,7 @@
 import { apiRequest } from "./api.js";
 
-export async function listChatFriends({ token } = {}) {
-  return apiRequest("/api/chats/friends", { token });
+export async function listChatFriends({ token, trackRequest = true } = {}) {
+  return apiRequest("/api/chats/friends", { token, trackRequest });
 }
 
 export async function upsertChatPublicKey({ token, publicKeyJwk } = {}) {
@@ -41,6 +41,7 @@ export async function getChatHistory({
   threadId,
   limit = 120,
   trackRequest = true,
+  cacheBust = true,
 } = {}) {
   const normalizedThreadId = String(threadId || "").trim();
   if (!normalizedThreadId) {
@@ -51,6 +52,9 @@ export async function getChatHistory({
   const numericLimit = Number(limit);
   if (Number.isFinite(numericLimit) && numericLimit > 0) {
     params.set("limit", String(Math.floor(numericLimit)));
+  }
+  if (cacheBust) {
+    params.set("_ts", String(Date.now()));
   }
 
   const path =
@@ -91,6 +95,32 @@ export async function sendChatMessage({
         payloadForRecipient,
         requestAmount,
         requestNote,
+      },
+      trackRequest,
+    }
+  );
+}
+
+export async function sendChatTransfer({
+  token,
+  threadId,
+  amountEth,
+  note,
+  trackRequest = true,
+} = {}) {
+  const normalizedThreadId = String(threadId || "").trim();
+  if (!normalizedThreadId) {
+    throw new Error("threadId is required");
+  }
+
+  return apiRequest(
+    `/api/chats/threads/${encodeURIComponent(normalizedThreadId)}/send`,
+    {
+      method: "POST",
+      token,
+      body: {
+        amountEth,
+        note,
       },
       trackRequest,
     }
