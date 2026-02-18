@@ -1,4 +1,4 @@
-import { sendLoginCodeEmail } from "./email.js";
+import { sendPaymentCodeEmail } from "./email.js";
 
 const VERIFICATION_CHANNELS = {
   EMAIL: "email",
@@ -92,7 +92,7 @@ export async function sendPaymentVerificationCode({
     throw err;
   }
 
-  await sendLoginCodeEmail({ to: email, code });
+  await sendPaymentCodeEmail({ to: email, code });
   user.paymentCode = code;
   user.paymentCodeExpiresAt = new Date(Date.now() + PAYMENT_CODE_TTL_MS);
   user.paymentCodeChannel = channel;
@@ -142,4 +142,3 @@ export async function requireAndConsumePaymentCode({ user, code } = {}) {
   clearPaymentCode(user);
   await user.save();
 }
-
