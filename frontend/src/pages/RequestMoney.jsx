@@ -25,6 +25,7 @@ function buildRequestLink({ walletAddress, amountEth, note, username }) {
 
 export default function RequestMoney() {
   const [me, setMe] = useState(null);
+  const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState("");
 
   const [linkAmount, setLinkAmount] = useState("");
@@ -41,6 +42,7 @@ export default function RequestMoney() {
       if (!token) {
         if (!isCancelled) {
           setPageError("You must be logged in.");
+          setPageLoading(false);
         }
         return;
       }
@@ -53,6 +55,10 @@ export default function RequestMoney() {
       } catch (err) {
         if (isCancelled) return;
         setPageError(err.message || "Failed to load request page.");
+      } finally {
+        if (!isCancelled) {
+          setPageLoading(false);
+        }
       }
     }
 
@@ -149,7 +155,7 @@ export default function RequestMoney() {
           </div>
         )}
 
-        {!canGenerateLink && (
+        {!pageLoading && !pageError && !canGenerateLink && (
           <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             Link your wallet in Account before generating request links.
           </div>
