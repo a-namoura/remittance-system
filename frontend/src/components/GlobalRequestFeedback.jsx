@@ -5,16 +5,26 @@ const ERROR_AUTO_HIDE_MS = 7000;
 
 export default function GlobalRequestFeedback() {
   const [activeRequests, setActiveRequests] = useState(0);
+  const [routeLoadStarted, setRouteLoadStarted] = useState(false);
+  const [routeLoadCompleted, setRouteLoadCompleted] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
+    function isPageLoadingEvent(event) {
+      return String(event?.method || "GET").toUpperCase() === "GET";
+    }
+
     return subscribeToRequestEvents((event) => {
       if (event.type === "start") {
+        if (!isPageLoadingEvent(event)) return;
+        setRouteLoadStarted(true);
         setActiveRequests((current) => current + 1);
         return;
       }
 
       if (event.type === "end") {
+        if (!isPageLoadingEvent(event)) return;
+        setRouteLoadCompleted(true);
         setActiveRequests((current) => Math.max(0, current - 1));
         return;
       }
@@ -35,7 +45,7 @@ export default function GlobalRequestFeedback() {
     return () => globalThis.clearTimeout(timeout);
   }, [errorMessage]);
 
-  const showLoading = activeRequests > 0;
+  const showLoading = routeLoadStarted && !routeLoadCompleted && activeRequests > 0;
 
   if (!showLoading && !errorMessage) {
     return null;
@@ -44,31 +54,21 @@ export default function GlobalRequestFeedback() {
   return (
     <>
       {showLoading && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
-          <div className="rounded-2xl border border-indigo-100 bg-white px-6 py-5 shadow-lg">
-            <div className="flex items-center gap-3">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-indigo-700">
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-5 w-5 animate-spin"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M21 12a9 9 0 1 1-6.22-8.56" />
-                </svg>
-              </span>
-              <div>
-                <p className="text-sm font-medium text-gray-900">Loading...</p>
-                <p className="text-xs text-gray-600">
-                  Please wait while we process your request. This might take a few seconds.
-                </p>
-              </div>
-            </div>
-          </div>
+        <div className="pointer-events-none fixed inset-0 z-[70] flex items-center justify-center">
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-indigo-700 shadow-sm ring-1 ring-indigo-100">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-6 w-6 animate-spin"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12a9 9 0 1 1-6.22-8.56" />
+            </svg>
+          </span>
         </div>
       )}
 

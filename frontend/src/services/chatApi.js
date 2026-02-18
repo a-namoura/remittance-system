@@ -12,7 +12,7 @@ export async function upsertChatPublicKey({ token, publicKeyJwk } = {}) {
   });
 }
 
-export async function getChatPublicKey({ token, userId } = {}) {
+export async function getChatPublicKey({ token, userId, trackRequest = true } = {}) {
   const normalizedUserId = String(userId || "").trim();
   if (!normalizedUserId) {
     throw new Error("userId is required");
@@ -20,6 +20,7 @@ export async function getChatPublicKey({ token, userId } = {}) {
 
   return apiRequest(`/api/chats/keys/${encodeURIComponent(normalizedUserId)}`, {
     token,
+    trackRequest,
   });
 }
 
@@ -35,7 +36,12 @@ export async function openChatThread({ token, peerUserId } = {}) {
   );
 }
 
-export async function getChatHistory({ token, threadId, limit = 120 } = {}) {
+export async function getChatHistory({
+  token,
+  threadId,
+  limit = 120,
+  trackRequest = true,
+} = {}) {
   const normalizedThreadId = String(threadId || "").trim();
   if (!normalizedThreadId) {
     throw new Error("threadId is required");
@@ -54,7 +60,7 @@ export async function getChatHistory({ token, threadId, limit = 120 } = {}) {
         )}/history?${params.toString()}`
       : `/api/chats/threads/${encodeURIComponent(normalizedThreadId)}/history`;
 
-  return apiRequest(path, { token });
+  return apiRequest(path, { token, trackRequest });
 }
 
 export async function sendChatMessage({
@@ -66,6 +72,7 @@ export async function sendChatMessage({
   payloadForRecipient,
   requestAmount,
   requestNote,
+  trackRequest = true,
 } = {}) {
   const normalizedThreadId = String(threadId || "").trim();
   if (!normalizedThreadId) {
@@ -85,6 +92,7 @@ export async function sendChatMessage({
         requestAmount,
         requestNote,
       },
+      trackRequest,
     }
   );
 }

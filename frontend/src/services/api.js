@@ -55,10 +55,11 @@ function toRequestBody(body) {
 
 export async function apiRequest(
   path,
-  { method = "GET", body, token, signal } = {}
+  { method = "GET", body, token, signal, trackRequest = true } = {}
 ) {
   const requestId = ++requestSequence;
   const finalToken = token ?? getAuthToken();
+  const shouldTrackRequest = Boolean(trackRequest);
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(
     () => controller.abort(),
@@ -75,12 +76,14 @@ export async function apiRequest(
   }
 
   try {
-    emitRequestEvent({
-      type: "start",
-      requestId,
-      path: normalizePath(path),
-      method: String(method || "GET").toUpperCase(),
-    });
+    if (shouldTrackRequest) {
+      emitRequestEvent({
+        type: "start",
+        requestId,
+        path: normalizePath(path),
+        method: String(method || "GET").toUpperCase(),
+      });
+    }
 
     const response = await fetch(`${getBaseUrl()}${normalizePath(path)}`, {
       method,
@@ -101,14 +104,16 @@ export async function apiRequest(
       error.status = response.status;
       error.data = data;
       error.alreadyReported = true;
-      emitRequestEvent({
-        type: "error",
-        requestId,
-        path: normalizePath(path),
-        method: String(method || "GET").toUpperCase(),
-        message,
-        status: response.status,
-      });
+      if (shouldTrackRequest) {
+        emitRequestEvent({
+          type: "error",
+          requestId,
+          path: normalizePath(path),
+          method: String(method || "GET").toUpperCase(),
+          message,
+          status: response.status,
+        });
+      }
       throw error;
     }
 
@@ -116,17 +121,19 @@ export async function apiRequest(
   } catch (error) {
     if (error?.name === "AbortError") {
       const timeoutError = new Error("Request timed out. Please try again.");
-      emitRequestEvent({
-        type: "error",
-        requestId,
-        path: normalizePath(path),
-        method: String(method || "GET").toUpperCase(),
-        message: timeoutError.message,
-      });
+      if (shouldTrackRequest) {
+        emitRequestEvent({
+          type: "error",
+          requestId,
+          path: normalizePath(path),
+          method: String(method || "GET").toUpperCase(),
+          message: timeoutError.message,
+        });
+      }
       throw timeoutError;
     }
 
-    if (!error?.alreadyReported) {
+    if (shouldTrackRequest && !error?.alreadyReported) {
       emitRequestEvent({
         type: "error",
         requestId,
@@ -139,12 +146,14 @@ export async function apiRequest(
 
     throw error;
   } finally {
-    emitRequestEvent({
-      type: "end",
-      requestId,
-      path: normalizePath(path),
-      method: String(method || "GET").toUpperCase(),
-    });
+    if (shouldTrackRequest) {
+      emitRequestEvent({
+        type: "end",
+        requestId,
+        path: normalizePath(path),
+        method: String(method || "GET").toUpperCase(),
+      });
+    }
 
     globalThis.clearTimeout(timeout);
     if (signal) {

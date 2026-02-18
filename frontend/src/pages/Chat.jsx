@@ -117,6 +117,10 @@ function requestStatusLabel(status) {
   return "Pending";
 }
 
+function createLocalMessageId() {
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export default function Chat() {
   const [searchParams] = useSearchParams();
   const requestedFriendId = String(searchParams.get("friend") || "").trim();
@@ -340,7 +344,10 @@ export default function Chat() {
     refreshWalletBalance();
   }, [refreshWalletBalance]);
 
-  async function fetchPeerPublicKey(peerUserId, { forceRefresh = false } = {}) {
+  async function fetchPeerPublicKey(
+    peerUserId,
+    { forceRefresh = false, trackRequest = true } = {}
+  ) {
     const cached = peerPublicKeys[String(peerUserId)];
     if (cached && !forceRefresh) return cached;
 
@@ -349,7 +356,11 @@ export default function Chat() {
       throw new Error("You must be logged in.");
     }
 
-    const response = await getChatPublicKey({ token, userId: peerUserId });
+    const response = await getChatPublicKey({
+      token,
+      userId: peerUserId,
+      trackRequest,
+    });
     const key = response?.publicKeyJwk || null;
     if (!key) {
       throw new Error("Friend has no chat key.");
@@ -363,7 +374,12 @@ export default function Chat() {
     return key;
   }
 
-  async function loadHistory({ threadId, identityValue, silent = false }) {
+  async function loadHistory({
+    threadId,
+    identityValue,
+    silent = false,
+    trackRequest = true,
+  }) {
     const token = getAuthToken();
     if (!token || !threadId || !identityValue?.privateKeyJwk) return;
 
@@ -373,7 +389,12 @@ export default function Chat() {
       }
       setTimelineError("");
 
-      const history = await getChatHistory({ token, threadId, limit: 180 });
+      const history = await getChatHistory({
+        token,
+        threadId,
+        limit: 180,
+        trackRequest,
+      });
       const decryptedMessages = await Promise.all(
         (history?.messages || []).map(async (message) => {
           try {
@@ -483,6 +504,7 @@ export default function Chat() {
         threadId: activeThread.id,
         identityValue: identity,
         silent: true,
+        trackRequest: false,
       });
     }, 12000);
 
@@ -515,6 +537,7 @@ export default function Chat() {
     try {
       const peerPublicKey = await fetchPeerPublicKey(activeFriend.peerUserId, {
         forceRefresh: true,
+        trackRequest: false,
       });
       const encrypted = await encryptForChat({
         plaintext,
@@ -531,12 +554,14 @@ export default function Chat() {
         payloadForRecipient: encrypted.payloadForRecipient,
         requestAmount: requestAmountValue,
         requestNote: requestNoteValue,
+        trackRequest: false,
       });
 
       await loadHistory({
         threadId: activeThread.id,
         identityValue: identity,
         silent: true,
+        trackRequest: false,
       });
       return true;
     } catch (err) {
@@ -549,13 +574,39 @@ export default function Chat() {
     event.preventDefault();
     const text = chatInput.trim();
     if (!text) return;
+    const localMessageId = createLocalMessageId();
+    setMessages((current) => [
+      ...current,
+      {
+        id: localMessageId,
+        messageType: "text",
+        senderUserId: me?.id || "me",
+        createdAt: new Date().toISOString(),
+        decoded: { kind: "text", text },
+        deliveryStatus: "sending",
+      },
+    ]);
     setSendingMessage(true);
     const sent = await sendEncryptedPayload({
       messageType: "text",
       plaintext: JSON.stringify({ kind: "text", text }),
     });
     setSendingMessage(false);
-    if (sent) setChatInput("");
+    if (!sent) {
+      setMessages((current) =>
+        current.filter((message) => String(message.id) !== String(localMessageId))
+      );
+      return;
+    }
+
+    setMessages((current) =>
+      current.map((message) =>
+        String(message.id) === String(localMessageId)
+          ? { ...message, deliveryStatus: "sent" }
+          : message
+      )
+    );
+    setChatInput("");
   }
 
   async function handleSendRequest(event) {
@@ -565,22 +616,57 @@ export default function Chat() {
       setTimelineError("Request amount must be a positive number.");
       return;
     }
+    const trimmedNote = requestNote.trim();
+    const localMessageId = createLocalMessageId();
+    setMessages((current) => [
+      ...current,
+      {
+        id: localMessageId,
+        messageType: "request",
+        senderUserId: me?.id || "me",
+        createdAt: new Date().toISOString(),
+        decoded: {
+          kind: "request",
+          amountEth: String(amount),
+          note: trimmedNote,
+        },
+        request: {
+          amount,
+          note: trimmedNote,
+          requesterUserId: me?.id,
+          status: "processing",
+        },
+        deliveryStatus: "sending",
+      },
+    ]);
     setSendingRequest(true);
     const sent = await sendEncryptedPayload({
       messageType: "request",
       plaintext: JSON.stringify({
         kind: "request",
         amountEth: String(amount),
-        note: requestNote.trim(),
+        note: trimmedNote,
       }),
       requestAmountValue: amount,
-      requestNoteValue: requestNote.trim(),
+      requestNoteValue: trimmedNote,
     });
     setSendingRequest(false);
-    if (sent) {
-      setRequestAmount("");
-      setRequestNote("");
+    if (!sent) {
+      setMessages((current) =>
+        current.filter((message) => String(message.id) !== String(localMessageId))
+      );
+      return;
     }
+
+    setMessages((current) =>
+      current.map((message) =>
+        String(message.id) === String(localMessageId)
+          ? { ...message, deliveryStatus: "sent" }
+          : message
+      )
+    );
+    setRequestAmount("");
+    setRequestNote("");
   }
 
   async function handleReportChat() {
@@ -1042,6 +1128,8 @@ export default function Chat() {
 
                       const message = entry.item;
                       const isMine = String(message.senderUserId) === String(me?.id);
+                      const isSendingMessage =
+                        String(message.deliveryStatus || "").trim().toLowerCase() === "sending";
                       const decoded = message.decoded || { kind: "text", text: "" };
                       const requestMeta = message.request || null;
                       const requestStatus = String(requestMeta?.status || "pending")
@@ -1161,7 +1249,35 @@ export default function Chat() {
                                   isMine ? "text-purple-100" : "text-gray-500"
                                 }`}
                               >
-                                {formatClock(message.createdAt)}
+                                {isSendingMessage ? (
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <svg
+                                      aria-hidden="true"
+                                      className="h-3 w-3 animate-spin"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                    >
+                                      <circle
+                                        cx="12"
+                                        cy="12"
+                                        r="9"
+                                        stroke="currentColor"
+                                        strokeWidth="2.5"
+                                        className="opacity-30"
+                                      />
+                                      <path
+                                        d="M21 12a9 9 0 0 0-9-9"
+                                        stroke="currentColor"
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                      />
+                                    </svg>
+                                    <span>Sending...</span>
+                                  </span>
+                                ) : (
+                                  formatClock(message.createdAt)
+                                )}
                               </p>
                             </div>
                           </div>

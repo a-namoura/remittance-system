@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
@@ -59,9 +59,11 @@ function AuthenticatedLayout({ children }) {
 }
 
 export default function App() {
+  const location = useLocation();
+
   return (
     <>
-      <GlobalRequestFeedback />
+      <GlobalRequestFeedback key={`${location.pathname}${location.search}`} />
 
       <Routes>
         {PUBLIC_ROUTES.map(({ path, element }) => (
