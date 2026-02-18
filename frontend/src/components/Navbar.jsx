@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { getCurrentUser, logoutCurrentUser } from "../services/authApi.js";
+import { listChatFriends } from "../services/chatApi.js";
+import {
+  countUnreadConversations,
+  subscribeChatUnreadUpdates,
+} from "../services/chatUnread.js";
 import { clearSessionStorage, getAuthToken } from "../services/session.js";
 
 function isActivePath(currentPath, targetPath) {
@@ -33,12 +38,21 @@ function getUserInitials(user) {
   return username.slice(0, 2).toUpperCase();
 }
 
+const NAVBAR_CHAT_SYNC_MS = 3000;
+const NAVBAR_BADGE_PULSE_MS = 700;
+
 export default function Navbar() {
   const [me, setMe] = useState(null);
   const [loadingMe, setLoadingMe] = useState(true);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [pulseUnreadBadge, setPulseUnreadBadge] = useState(false);
 
   const location = useLocation();
   const navigate = useNavigate();
+  const unreadSyncTimerRef = useRef(null);
+  const unreadSyncBusyRef = useRef(false);
+  const unreadPulseTimerRef = useRef(null);
+  const previousUnreadCountRef = useRef(null);
 
   const appNavItems = useMemo(
     () => [
@@ -90,6 +104,118 @@ export default function Navbar() {
       isCancelled = true;
     };
   }, [location.pathname]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (!me?.id) {
+      setChatUnreadCount(0);
+      return undefined;
+    }
+
+    async function refreshUnreadCount() {
+      if (isCancelled || unreadSyncBusyRef.current) return;
+      unreadSyncBusyRef.current = true;
+
+      try {
+        const token = getAuthToken();
+        if (!token || !me?.id) {
+          if (!isCancelled) {
+            setChatUnreadCount(0);
+          }
+          return;
+        }
+
+        const response = await listChatFriends({
+          token,
+          trackRequest: false,
+        });
+
+        if (isCancelled) return;
+        const nextUnread = countUnreadConversations({
+          friends: response?.friends || [],
+          viewerUserId: me.id,
+        });
+        setChatUnreadCount(nextUnread);
+      } catch {
+        // keep previous unread badge value on transient sync errors
+      } finally {
+        unreadSyncBusyRef.current = false;
+      }
+    }
+
+    async function syncUnreadLoop() {
+      if (isCancelled) return;
+      await refreshUnreadCount();
+      if (!isCancelled) {
+        unreadSyncTimerRef.current = window.setTimeout(syncUnreadLoop, NAVBAR_CHAT_SYNC_MS);
+      }
+    }
+
+    const handleVisibleRefresh = () => {
+      if (document.visibilityState === "hidden") return;
+      refreshUnreadCount();
+    };
+
+    syncUnreadLoop();
+
+    const unsubscribeUnreadEvents = subscribeChatUnreadUpdates(() => {
+      refreshUnreadCount();
+    });
+
+    window.addEventListener("focus", handleVisibleRefresh);
+    window.addEventListener("online", handleVisibleRefresh);
+    document.addEventListener("visibilitychange", handleVisibleRefresh);
+
+    return () => {
+      isCancelled = true;
+      unreadSyncBusyRef.current = false;
+      if (unreadSyncTimerRef.current != null) {
+        window.clearTimeout(unreadSyncTimerRef.current);
+        unreadSyncTimerRef.current = null;
+      }
+      unsubscribeUnreadEvents();
+      window.removeEventListener("focus", handleVisibleRefresh);
+      window.removeEventListener("online", handleVisibleRefresh);
+      document.removeEventListener("visibilitychange", handleVisibleRefresh);
+    };
+  }, [me?.id]);
+
+  useEffect(() => {
+    const previousUnread = previousUnreadCountRef.current;
+
+    if (
+      previousUnread != null &&
+      Number(chatUnreadCount) > Number(previousUnread)
+    ) {
+      setPulseUnreadBadge(true);
+      if (unreadPulseTimerRef.current != null) {
+        window.clearTimeout(unreadPulseTimerRef.current);
+      }
+      unreadPulseTimerRef.current = window.setTimeout(() => {
+        setPulseUnreadBadge(false);
+        unreadPulseTimerRef.current = null;
+      }, NAVBAR_BADGE_PULSE_MS);
+    } else if (Number(chatUnreadCount) <= 0) {
+      setPulseUnreadBadge(false);
+      if (unreadPulseTimerRef.current != null) {
+        window.clearTimeout(unreadPulseTimerRef.current);
+        unreadPulseTimerRef.current = null;
+      }
+    }
+
+    previousUnreadCountRef.current = Number(chatUnreadCount) || 0;
+  }, [chatUnreadCount]);
+
+  useEffect(
+    () => () => {
+      if (unreadPulseTimerRef.current != null) {
+        window.clearTimeout(unreadPulseTimerRef.current);
+        unreadPulseTimerRef.current = null;
+      }
+    },
+    []
+  );
 
   async function handleLogout() {
     const token = getAuthToken();
@@ -189,9 +315,13 @@ export default function Navbar() {
             <div className="flex shrink-0 items-center gap-2">
               <Link
                 to="/chat"
-                aria-label="Open chat"
+                aria-label={
+                  chatUnreadCount > 0
+                    ? `Open chat (${chatUnreadCount} unread)`
+                    : "Open chat"
+                }
                 title="Chat"
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition ${
+                className={`relative inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition ${
                   location.pathname.startsWith("/chat")
                     ? "border-purple-600 bg-purple-600 text-white"
                     : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"
@@ -210,6 +340,20 @@ export default function Navbar() {
                   <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H9l-4.3 3.2A.5.5 0 0 1 4 18.8V6.5Z" />
                   <path d="M8 8.5h8M8 11.5h5" />
                 </svg>
+                {chatUnreadCount > 0 ? (
+                  <>
+                    {pulseUnreadBadge ? (
+                      <span className="absolute -right-1 -top-1 inline-flex h-4 w-4 rounded-full bg-red-400 opacity-75 animate-ping" />
+                    ) : null}
+                    <span
+                      className={`absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-4 text-white transition-transform duration-150 ${
+                        pulseUnreadBadge ? "scale-110" : "scale-100"
+                      }`}
+                    >
+                      {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                    </span>
+                  </>
+                ) : null}
               </Link>
               <span
                 title={

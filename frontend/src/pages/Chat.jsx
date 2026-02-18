@@ -9,6 +9,7 @@ import {
   openChatThread,
   payChatRequest,
   reportChatThread,
+  sendChatTransfer,
   sendChatMessage,
   upsertChatPublicKey,
 } from "../services/chatApi.js";
@@ -22,6 +23,11 @@ import {
   encryptForChat,
   getOrCreateChatIdentity,
 } from "../utils/chatCrypto.js";
+import {
+  markChatPeerLatestSeen,
+  readChatLastSeenByPeer,
+  subscribeChatUnreadUpdates,
+} from "../services/chatUnread.js";
 
 function formatClock(value) {
   const parsed = new Date(value);
@@ -74,6 +80,40 @@ function getFirstName(value) {
   return parts[0] || "Friend";
 }
 
+function requestGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 5v14M7 10l5-5 5 5" />
+    </svg>
+  );
+}
+
+function sendGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 5v14M7 14l5 5 5-5" />
+    </svg>
+  );
+}
+
 function parseMessagePayload(messageType, plaintext) {
   try {
     const parsed = JSON.parse(String(plaintext || ""));
@@ -121,6 +161,23 @@ function createLocalMessageId() {
   return `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function toEpochMs(value) {
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getFriendLastActivityAt(friend) {
+  return (
+    friend?.latestMessage?.createdAt ||
+    friend?.thread?.lastMessageAt ||
+    friend?.createdAt ||
+    null
+  );
+}
+
+const CHAT_SYNC_INTERVAL_MS = 3000;
+const CHAT_SYNC_RETRY_MS = 1200;
+
 export default function Chat() {
   const [searchParams] = useSearchParams();
   const requestedFriendId = String(searchParams.get("friend") || "").trim();
@@ -133,23 +190,30 @@ export default function Chat() {
   const [friendsLoading, setFriendsLoading] = useState(true);
   const [friendsError, setFriendsError] = useState("");
   const [friendSearch, setFriendSearch] = useState("");
+  const [friendPreviewByPeer, setFriendPreviewByPeer] = useState({});
+  const [unreadStateVersion, setUnreadStateVersion] = useState(0);
 
   const [activeFriendId, setActiveFriendId] = useState("");
   const [activeThread, setActiveThread] = useState(null);
-  const [threadLoading, setThreadLoading] = useState(false);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState("");
   const [timelineInfo, setTimelineInfo] = useState("");
+  const [unreadDividerMessageId, setUnreadDividerMessageId] = useState("");
+  const [unreadDividerDismissed, setUnreadDividerDismissed] = useState(false);
 
   const [messages, setMessages] = useState([]);
   const [payments, setPayments] = useState([]);
 
   const [chatInput, setChatInput] = useState("");
+  const [sendAmount, setSendAmount] = useState("");
+  const [sendNote, setSendNote] = useState("");
   const [requestAmount, setRequestAmount] = useState("");
   const [requestNote, setRequestNote] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [sendingTransfer, setSendingTransfer] = useState(false);
   const [sendingRequest, setSendingRequest] = useState(false);
   const [composerMode, setComposerMode] = useState("message");
+  const [composerActionsOpen, setComposerActionsOpen] = useState(false);
 
   const [peerPublicKeys, setPeerPublicKeys] = useState({});
   const [reporting, setReporting] = useState(false);
@@ -168,6 +232,17 @@ export default function Chat() {
   const [paymentCode, setPaymentCode] = useState("");
 
   const timelineRef = useRef(null);
+  const composerActionsRef = useRef(null);
+  const historyLoadSeqRef = useRef(0);
+  const historySyncTimerRef = useRef(null);
+  const historySyncBusyRef = useRef(false);
+  const friendSyncTimerRef = useRef(null);
+  const friendSyncBusyRef = useRef(false);
+  const friendPreviewByMessageRef = useRef({});
+  const unreadDividerSeedRef = useRef({
+    peerUserId: "",
+    seenMessageId: "",
+  });
 
   const activeFriend = useMemo(
     () =>
@@ -179,7 +254,7 @@ export default function Chat() {
   const latestFriends = useMemo(
     () =>
       [...friends].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        (a, b) => toEpochMs(getFriendLastActivityAt(b)) - toEpochMs(getFriendLastActivityAt(a))
       ),
     [friends]
   );
@@ -235,6 +310,46 @@ export default function Chat() {
       null
     );
   }, [friends, requestedFriendId]);
+  const activeThreadId = String(activeThread?.id || "").trim();
+  const unreadDividerEntryId = unreadDividerMessageId
+    ? `message-${String(unreadDividerMessageId)}`
+    : "";
+  const myWalletAddress = String(me?.wallet?.address || "").trim().toLowerCase();
+  const myWalletReady = Boolean(me?.wallet?.linked && myWalletAddress);
+  const peerWalletAddress = String(activeFriend?.peerWalletAddress || "")
+    .trim()
+    .toLowerCase();
+  const peerWalletReady = Boolean(peerWalletAddress);
+  const transferBlockReason = !myWalletReady
+    ? "Link and verify your wallet in Account before using chat transfers."
+    : !peerWalletReady
+    ? "This friend does not have a linked wallet/account to receive funds."
+    : "";
+
+  const friendUnreadByPeer = useMemo(() => {
+    void unreadStateVersion;
+    const viewerId = String(me?.id || "").trim();
+    if (!viewerId) return {};
+
+    const lastSeenByPeer = readChatLastSeenByPeer(viewerId);
+    const unreadByPeer = {};
+
+    for (const friend of friends) {
+      const peerId = String(friend?.peerUserId || "").trim();
+      if (!peerId) continue;
+
+      const latestMessageId = String(friend?.latestMessage?.id || "").trim();
+      const latestRecipientId = String(friend?.latestMessage?.recipientUserId || "").trim();
+      const seenMessageId = String(lastSeenByPeer[peerId] || "").trim();
+
+      unreadByPeer[peerId] =
+        latestMessageId && latestRecipientId === viewerId && latestMessageId !== seenMessageId
+          ? 1
+          : 0;
+    }
+
+    return unreadByPeer;
+  }, [friends, me?.id, unreadStateVersion]);
 
   const refreshWalletBalance = useCallback(async () => {
     const token = getAuthToken();
@@ -310,6 +425,112 @@ export default function Chat() {
   }, []);
 
   useEffect(() => {
+    friendPreviewByMessageRef.current = {};
+    setFriendPreviewByPeer({});
+    unreadDividerSeedRef.current = {
+      peerUserId: "",
+      seenMessageId: "",
+    };
+    setUnreadDividerMessageId("");
+    setUnreadDividerDismissed(false);
+    setUnreadStateVersion((value) => value + 1);
+  }, [me?.id]);
+
+  useEffect(
+    () =>
+      subscribeChatUnreadUpdates(() => {
+        setUnreadStateVersion((value) => value + 1);
+      }),
+    []
+  );
+
+  useEffect(() => {
+    if (!me?.id) return undefined;
+    let isCancelled = false;
+
+    async function syncFriends() {
+      if (isCancelled) return;
+      if (friendSyncBusyRef.current) {
+        friendSyncTimerRef.current = window.setTimeout(syncFriends, CHAT_SYNC_RETRY_MS);
+        return;
+      }
+
+      friendSyncBusyRef.current = true;
+      try {
+        const token = getAuthToken();
+        if (!token) return;
+        const response = await listChatFriends({
+          token,
+          trackRequest: false,
+        });
+        if (!isCancelled) {
+          setFriends(response?.friends || []);
+        }
+      } catch {
+        // silent background sync
+      } finally {
+        friendSyncBusyRef.current = false;
+      }
+
+      if (!isCancelled) {
+        friendSyncTimerRef.current = window.setTimeout(syncFriends, CHAT_SYNC_INTERVAL_MS);
+      }
+    }
+
+    syncFriends();
+
+    return () => {
+      isCancelled = true;
+      friendSyncBusyRef.current = false;
+      if (friendSyncTimerRef.current != null) {
+        window.clearTimeout(friendSyncTimerRef.current);
+        friendSyncTimerRef.current = null;
+      }
+    };
+  }, [me?.id]);
+
+  useEffect(() => {
+    if (!me?.id) return undefined;
+    let isCancelled = false;
+
+    const syncNow = async () => {
+      if (isCancelled) return;
+      if (friendSyncBusyRef.current) return;
+      if (document.visibilityState === "hidden") return;
+      try {
+        const token = getAuthToken();
+        if (!token) return;
+        const response = await listChatFriends({
+          token,
+          trackRequest: false,
+        });
+        if (!isCancelled) {
+          setFriends(response?.friends || []);
+        }
+      } catch {
+        // ignore one-off refresh errors
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncNow();
+      }
+    };
+
+    window.addEventListener("focus", syncNow);
+    window.addEventListener("online", syncNow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      isCancelled = true;
+      window.removeEventListener("focus", syncNow);
+      window.removeEventListener("online", syncNow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [me?.id]);
+
+  useEffect(() => {
     let isCancelled = false;
 
     async function setupIdentity() {
@@ -344,6 +565,165 @@ export default function Chat() {
     refreshWalletBalance();
   }, [refreshWalletBalance]);
 
+  useEffect(() => {
+    if (!composerActionsOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!composerActionsRef.current) return;
+      if (!composerActionsRef.current.contains(event.target)) {
+        setComposerActionsOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setComposerActionsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [composerActionsOpen]);
+
+  useEffect(() => {
+    setComposerActionsOpen(false);
+  }, [activeFriendId]);
+
+  useEffect(() => {
+    const peerId = String(activeFriendId || "").trim();
+    if (!peerId) {
+      setUnreadDividerMessageId("");
+      setUnreadDividerDismissed(false);
+      return;
+    }
+    setUnreadDividerMessageId("");
+    setUnreadDividerDismissed(false);
+  }, [activeFriendId]);
+
+  useEffect(() => {
+    const viewerId = String(me?.id || "").trim();
+    const peerId = String(activeFriendId || "").trim();
+    if (!viewerId || !peerId) return;
+
+    const activeFriendEntry =
+      friends.find((friend) => String(friend?.peerUserId || "").trim() === peerId) || null;
+    const latestMessageId = String(activeFriendEntry?.latestMessage?.id || "").trim();
+    if (!latestMessageId) return;
+
+    markChatPeerLatestSeen({
+      userId: viewerId,
+      peerUserId: peerId,
+      messageId: latestMessageId,
+    });
+  }, [friends, activeFriendId, me?.id]);
+
+  useEffect(() => {
+    if (unreadDividerDismissed) return;
+    const viewerId = String(me?.id || "").trim();
+    const peerId = String(activeFriendId || "").trim();
+    if (!viewerId || !peerId || !messages.length) return;
+
+    const seed = unreadDividerSeedRef.current;
+    if (String(seed?.peerUserId || "") !== peerId) return;
+
+    const seenMessageId = String(seed?.seenMessageId || "").trim();
+    const seenIndex = seenMessageId
+      ? messages.findIndex((message) => String(message?.id || "") === seenMessageId)
+      : -1;
+    const unreadIncoming = messages.filter((message, index) => {
+      if (index <= seenIndex) return false;
+      return String(message?.recipientUserId || "").trim() === viewerId;
+    });
+
+    if (!unreadIncoming.length) {
+      setUnreadDividerMessageId("");
+      return;
+    }
+
+    const markerMessage =
+      seenMessageId && seenIndex === -1
+        ? unreadIncoming[unreadIncoming.length - 1]
+        : unreadIncoming[0];
+
+    setUnreadDividerMessageId(String(markerMessage?.id || "").trim());
+  }, [messages, activeFriendId, me?.id, unreadDividerDismissed]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function hydrateLatestPreviews() {
+      if (!identity?.privateKeyJwk) return;
+      const updates = {};
+
+      for (const friend of friends) {
+        const peerId = String(friend?.peerUserId || "").trim();
+        if (!peerId) continue;
+
+        const latestMessage = friend?.latestMessage || null;
+        if (!latestMessage?.id) {
+          updates[peerId] = "";
+          continue;
+        }
+
+        const latestMessageId = String(latestMessage.id);
+        const cachedPreview = friendPreviewByMessageRef.current[latestMessageId];
+        if (cachedPreview) {
+          updates[peerId] = cachedPreview;
+          continue;
+        }
+
+        let preview = "";
+        if (latestMessage.messageType === "request") {
+          const requestAmount = latestMessage?.request?.amount;
+          preview =
+            requestAmount != null && requestAmount !== ""
+              ? `Request ${formatAmount(requestAmount)} ETH`
+              : "Payment request";
+        } else {
+          try {
+            const plaintext = await decryptChatPayload({
+              payload: latestMessage.encryptedPayload,
+              privateKeyJwk: identity.privateKeyJwk,
+              privateKeyJwks: identity.privateKeyJwks,
+            });
+            const decoded = parseMessagePayload(latestMessage.messageType, plaintext);
+            if (decoded.kind === "request") {
+              const amount = String(decoded.amountEth || "").trim();
+              preview = amount ? `Request ${amount} ETH` : "Payment request";
+            } else {
+              preview = String(decoded.text || "").trim() || "Message";
+            }
+          } catch {
+            preview =
+              latestMessage.messageType === "request"
+                ? "Payment request"
+                : "Encrypted message";
+          }
+        }
+
+        friendPreviewByMessageRef.current[latestMessageId] = preview;
+        updates[peerId] = preview;
+      }
+
+      if (isCancelled) return;
+      setFriendPreviewByPeer((current) => ({
+        ...current,
+        ...updates,
+      }));
+    }
+
+    hydrateLatestPreviews();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [friends, identity]);
+
   async function fetchPeerPublicKey(
     peerUserId,
     { forceRefresh = false, trackRequest = true } = {}
@@ -374,67 +754,78 @@ export default function Chat() {
     return key;
   }
 
-  async function loadHistory({
-    threadId,
-    identityValue,
-    silent = false,
-    trackRequest = true,
-  }) {
-    const token = getAuthToken();
-    if (!token || !threadId || !identityValue?.privateKeyJwk) return;
+  const loadHistory = useCallback(
+    async ({
+      threadId,
+      identityValue,
+      silent = false,
+      trackRequest = true,
+      clearError = true,
+    }) => {
+      const token = getAuthToken();
+      const normalizedThreadId = String(threadId || "").trim();
+      if (!token || !normalizedThreadId || !identityValue?.privateKeyJwk) return;
+      const loadSeq = ++historyLoadSeqRef.current;
 
-    try {
-      if (!silent) {
-        setTimelineLoading(true);
+      try {
+        if (!silent) {
+          setTimelineLoading(true);
+        }
+        if (clearError) {
+          setTimelineError("");
+        }
+
+        const history = await getChatHistory({
+          token,
+          threadId: normalizedThreadId,
+          limit: 80,
+          trackRequest,
+          cacheBust: true,
+        });
+        const decryptedMessages = await Promise.all(
+          (history?.messages || []).map(async (message) => {
+            try {
+              const plaintext = await decryptChatPayload({
+                payload: message.encryptedPayload,
+                privateKeyJwk: identityValue.privateKeyJwk,
+                privateKeyJwks: identityValue.privateKeyJwks,
+              });
+
+              return {
+                ...message,
+                decoded: parseMessagePayload(message.messageType, plaintext),
+              };
+            } catch {
+              return {
+                ...message,
+                decoded:
+                  message?.messageType === "request"
+                    ? {
+                        kind: "request",
+                        amountEth: String(message?.request?.amount || ""),
+                        note: String(message?.request?.note || "Request details unavailable."),
+                      }
+                    : { kind: "text", text: "Encrypted message unavailable." },
+              };
+            }
+          })
+        );
+
+        if (loadSeq !== historyLoadSeqRef.current) return;
+        setMessages(decryptedMessages);
+        setPayments(history?.payments || []);
+        setTimelineInfo(history?.privacyNotice || "");
+      } catch (err) {
+        if (loadSeq !== historyLoadSeqRef.current) return;
+        setTimelineError(err.message || "Failed to load chat timeline.");
+      } finally {
+        if (!silent && loadSeq === historyLoadSeqRef.current) {
+          setTimelineLoading(false);
+        }
       }
-      setTimelineError("");
-
-      const history = await getChatHistory({
-        token,
-        threadId,
-        limit: 180,
-        trackRequest,
-      });
-      const decryptedMessages = await Promise.all(
-        (history?.messages || []).map(async (message) => {
-          try {
-            const plaintext = await decryptChatPayload({
-              payload: message.encryptedPayload,
-              privateKeyJwk: identityValue.privateKeyJwk,
-              privateKeyJwks: identityValue.privateKeyJwks,
-            });
-
-            return {
-              ...message,
-              decoded: parseMessagePayload(message.messageType, plaintext),
-            };
-          } catch {
-            return {
-              ...message,
-              decoded:
-                message?.messageType === "request"
-                  ? {
-                      kind: "request",
-                      amountEth: String(message?.request?.amount || ""),
-                      note: String(message?.request?.note || "Request details unavailable."),
-                    }
-                  : { kind: "text", text: "Encrypted message unavailable." },
-            };
-          }
-        })
-      );
-
-      setMessages(decryptedMessages);
-      setPayments(history?.payments || []);
-      setTimelineInfo(history?.privacyNotice || "");
-    } catch (err) {
-      setTimelineError(err.message || "Failed to load chat timeline.");
-    } finally {
-      if (!silent) {
-        setTimelineLoading(false);
-      }
-    }
-  }
+    },
+    []
+  );
 
   const openFriendThread = useCallback(async (friend) => {
     const token = getAuthToken();
@@ -448,29 +839,62 @@ export default function Chat() {
       return;
     }
 
+    const openedPeerId = String(friend?.peerUserId || "").trim();
+    if (!openedPeerId) return;
+
+    const viewerId = String(me?.id || "").trim();
+    const lastSeenByPeer = viewerId ? readChatLastSeenByPeer(viewerId) : {};
+    const previouslySeenMessageId = String(lastSeenByPeer[openedPeerId] || "").trim();
+
     try {
-      setThreadLoading(true);
       setTimelineError("");
-      setActiveFriendId(String(friend.peerUserId));
+      historyLoadSeqRef.current += 1;
+      unreadDividerSeedRef.current = {
+        peerUserId: openedPeerId,
+        seenMessageId: previouslySeenMessageId,
+      };
+      setUnreadDividerDismissed(false);
+      setUnreadDividerMessageId("");
+      setActiveFriendId(openedPeerId);
+      markChatPeerLatestSeen({
+        userId: viewerId,
+        peerUserId: openedPeerId,
+        messageId: friend?.latestMessage?.id,
+      });
       setMessages([]);
       setPayments([]);
 
-      const response = await openChatThread({
-        token,
-        peerUserId: friend.peerUserId,
-      });
+      const knownThread = friend?.thread || null;
+      const knownThreadId = String(knownThread?.id || "").trim();
 
-      setActiveThread(response.thread || null);
-      await loadHistory({
-        threadId: response?.thread?.id,
-        identityValue: identity,
-      });
+      if (knownThreadId) {
+        setActiveThread(knownThread);
+        await loadHistory({
+          threadId: knownThreadId,
+          identityValue: identity,
+          silent: true,
+          trackRequest: false,
+          clearError: false,
+        });
+      } else {
+        const response = await openChatThread({
+          token,
+          peerUserId: openedPeerId,
+        });
+
+        setActiveThread(response.thread || null);
+        await loadHistory({
+          threadId: response?.thread?.id,
+          identityValue: identity,
+          silent: true,
+          trackRequest: false,
+          clearError: false,
+        });
+      }
     } catch (err) {
       setTimelineError(err.message || "Failed to open chat thread.");
-    } finally {
-      setThreadLoading(false);
     }
-  }, [identity]);
+  }, [identity, loadHistory, me?.id]);
 
   useEffect(() => {
     if (requestedFriendHandled) return;
@@ -497,25 +921,83 @@ export default function Chat() {
   ]);
 
   useEffect(() => {
-    if (!activeThread?.id || !identity?.privateKeyJwk) return undefined;
+    if (!activeThreadId || !identity?.privateKeyJwk) return undefined;
+    let isCancelled = false;
 
-    const intervalId = window.setInterval(() => {
+    async function syncHistory() {
+      if (isCancelled) return;
+      if (historySyncBusyRef.current) {
+        historySyncTimerRef.current = window.setTimeout(syncHistory, CHAT_SYNC_RETRY_MS);
+        return;
+      }
+
+      historySyncBusyRef.current = true;
+      try {
+        await loadHistory({
+          threadId: activeThreadId,
+          identityValue: identity,
+          silent: true,
+          trackRequest: false,
+          clearError: false,
+        });
+      } finally {
+        historySyncBusyRef.current = false;
+      }
+
+      if (!isCancelled) {
+        historySyncTimerRef.current = window.setTimeout(syncHistory, CHAT_SYNC_INTERVAL_MS);
+      }
+    }
+
+    syncHistory();
+
+    return () => {
+      isCancelled = true;
+      historySyncBusyRef.current = false;
+      if (historySyncTimerRef.current != null) {
+        window.clearTimeout(historySyncTimerRef.current);
+        historySyncTimerRef.current = null;
+      }
+    };
+  }, [activeThreadId, identity, loadHistory]);
+
+  useEffect(() => {
+    if (!activeThreadId || !identity?.privateKeyJwk) return undefined;
+
+    const syncNow = () => {
+      if (historySyncBusyRef.current) return;
+      if (document.visibilityState === "hidden") return;
       loadHistory({
-        threadId: activeThread.id,
+        threadId: activeThreadId,
         identityValue: identity,
         silent: true,
         trackRequest: false,
+        clearError: false,
       });
-    }, 12000);
+    };
 
-    return () => window.clearInterval(intervalId);
-  }, [activeThread, identity]);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncNow();
+      }
+    };
+
+    window.addEventListener("focus", syncNow);
+    window.addEventListener("online", syncNow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", syncNow);
+      window.removeEventListener("online", syncNow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeThreadId, identity, loadHistory]);
 
   useEffect(() => {
     const node = timelineRef.current;
     if (!node) return;
     node.scrollTop = node.scrollHeight;
-  }, [timeline, activeThread?.id]);
+  }, [timeline, activeThreadId]);
 
   async function sendEncryptedPayload({
     messageType,
@@ -572,8 +1054,10 @@ export default function Chat() {
 
   async function handleSendText(event) {
     event.preventDefault();
+
     const text = chatInput.trim();
     if (!text) return;
+
     const localMessageId = createLocalMessageId();
     setMessages((current) => [
       ...current,
@@ -586,12 +1070,14 @@ export default function Chat() {
         deliveryStatus: "sending",
       },
     ]);
+
     setSendingMessage(true);
     const sent = await sendEncryptedPayload({
       messageType: "text",
       plaintext: JSON.stringify({ kind: "text", text }),
     });
     setSendingMessage(false);
+
     if (!sent) {
       setMessages((current) =>
         current.filter((message) => String(message.id) !== String(localMessageId))
@@ -606,11 +1092,17 @@ export default function Chat() {
           : message
       )
     );
+    setUnreadDividerDismissed(true);
+    setUnreadDividerMessageId("");
     setChatInput("");
   }
 
   async function handleSendRequest(event) {
     event.preventDefault();
+    if (transferBlockReason) {
+      setTimelineError(transferBlockReason);
+      return;
+    }
     const amount = Number(requestAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setTimelineError("Request amount must be a positive number.");
@@ -667,6 +1159,78 @@ export default function Chat() {
     );
     setRequestAmount("");
     setRequestNote("");
+  }
+
+  async function handleSendTransfer(event) {
+    event.preventDefault();
+
+    if (transferBlockReason) {
+      setTimelineError(transferBlockReason);
+      return;
+    }
+
+    if (!activeThread?.id || !activeFriend?.peerUserId) {
+      setTimelineError("Select a friend before sending funds.");
+      return;
+    }
+
+    const amount = Number(sendAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setTimelineError("Send amount must be a positive number.");
+      return;
+    }
+
+    const normalizedNote = String(sendNote || "").trim();
+    if (normalizedNote.length > 280) {
+      setTimelineError("Send note cannot exceed 280 characters.");
+      return;
+    }
+
+    if (!Number.isFinite(walletBalance)) {
+      setTimelineError(walletBalanceError || "Unable to verify your balance.");
+      return;
+    }
+
+    if (amount > walletBalance) {
+      setTimelineError(
+        `Insufficient balance. Available: ${walletBalance.toFixed(4)} ETH.`
+      );
+      return;
+    }
+
+    const token = getAuthToken();
+    if (!token) {
+      setTimelineError("You must be logged in.");
+      return;
+    }
+
+    try {
+      setSendingTransfer(true);
+      setTimelineError("");
+      setTimelineInfo("");
+      await sendChatTransfer({
+        token,
+        threadId: activeThread.id,
+        amountEth: amount,
+        note: normalizedNote || undefined,
+        trackRequest: false,
+      });
+
+      setSendAmount("");
+      setSendNote("");
+      setTimelineInfo("Payment sent.");
+      await loadHistory({
+        threadId: activeThread.id,
+        identityValue: identity,
+        silent: true,
+        trackRequest: false,
+      });
+      await refreshWalletBalance();
+    } catch (err) {
+      setTimelineError(err.message || "Failed to send payment.");
+    } finally {
+      setSendingTransfer(false);
+    }
   }
 
   async function handleReportChat() {
@@ -852,7 +1416,7 @@ export default function Chat() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+    <div className="mx-auto max-w-[92rem] px-4 py-6 sm:px-6 sm:py-8">
       {(friendsError || identityError || timelineError) && (
         <div className="mb-3 space-y-2">
           {friendsError && (
@@ -873,9 +1437,9 @@ export default function Chat() {
         </div>
       )}
 
-      <section className="rounded-[2rem] border border-gray-200 bg-white p-3 shadow-sm sm:p-4 lg:h-[calc(100vh-11rem)]">
-        <div className="grid gap-3 lg:h-full lg:grid-cols-2">
-          <aside className="flex min-h-[34rem] flex-col rounded-3xl border border-gray-200 bg-gray-50 p-4 lg:h-full lg:min-h-0">
+      <section className="rounded-[2rem] border border-gray-200 bg-white p-3 shadow-sm sm:p-4 md:h-[calc(100vh-9.5rem)]">
+        <div className="grid gap-3 md:h-full md:grid-cols-[minmax(300px,_0.85fr)_minmax(0,_1.45fr)]">
+          <aside className="flex min-h-[36rem] flex-col rounded-3xl border border-gray-200 bg-gray-50 p-4 md:h-full md:min-h-0">
             <div>
               <label className="sr-only" htmlFor="chat-friend-search">
                 Search friends
@@ -943,7 +1507,7 @@ export default function Chat() {
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
                 Contacts
               </p>
-              <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
+              <div className="mt-2 flex gap-3 overflow-x-auto py-1">
                 {friendsLoading ? (
                   <p className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500">
                     Loading contacts...
@@ -956,6 +1520,8 @@ export default function Chat() {
                   circleFriends.map((friend) => {
                     const active = String(activeFriendId) === String(friend.peerUserId);
                     const displayName = friend.label || friend.peerDisplayName || "Friend";
+                    const peerId = String(friend.peerUserId || "");
+                    const unreadCount = Number(friendUnreadByPeer[peerId] || 0);
                     return (
                       <button
                         key={`circle-${String(friend.peerUserId)}`}
@@ -968,9 +1534,14 @@ export default function Chat() {
                             active
                               ? "bg-purple-700"
                               : "bg-purple-600/90 group-hover:bg-purple-700"
-                          }`}
+                          } relative`}
                         >
                           {getInitials(displayName)}
+                          {unreadCount > 0 ? (
+                            <span className="absolute right-0 top-0 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-semibold text-white shadow-sm ring-2 ring-white">
+                              {unreadCount > 99 ? "99+" : unreadCount}
+                            </span>
+                          ) : null}
                         </span>
                         <span className="mt-1 w-full truncate text-center text-xs text-gray-700">
                           {getFirstName(displayName)}
@@ -1000,6 +1571,17 @@ export default function Chat() {
                     const active = String(activeFriendId) === String(friend.peerUserId);
                     const displayName = friend.label || friend.peerDisplayName || "Friend";
                     const username = friend.peerUsername || friend.username || "friend";
+                    const peerId = String(friend.peerUserId || "");
+                    const unreadCount = Number(friendUnreadByPeer[peerId] || 0);
+                    const latestPreview = String(friendPreviewByPeer[peerId] || "").trim();
+                    const hasLatestMessage = Boolean(friend?.latestMessage?.id);
+                    const lastActivityAt = getFriendLastActivityAt(friend);
+                    const isLatestMine =
+                      String(friend?.latestMessage?.senderUserId || "").trim() ===
+                      String(me?.id || "").trim();
+                    const previewLine = hasLatestMessage
+                      ? `${isLatestMine ? "You: " : ""}${latestPreview || "New message"}`
+                      : "No messages yet.";
                     return (
                       <button
                         key={`latest-${String(friend.peerUserId)}`}
@@ -1020,11 +1602,19 @@ export default function Chat() {
                               <p className="truncate text-sm font-semibold text-gray-900">
                                 {displayName}
                               </p>
-                              <p className="shrink-0 text-[11px] text-gray-500">
-                                {formatListDay(friend.createdAt)}
-                              </p>
+                              <div className="flex shrink-0 items-center gap-2">
+                                {unreadCount > 0 ? (
+                                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                    {unreadCount > 99 ? "99+" : unreadCount}
+                                  </span>
+                                ) : null}
+                                <p className="text-[11px] text-gray-500">
+                                  {formatListDay(lastActivityAt)}
+                                </p>
+                              </div>
                             </div>
                             <p className="truncate text-xs text-gray-500">@{username}</p>
+                            <p className="mt-0.5 truncate text-xs text-gray-600">{previewLine}</p>
                           </div>
                         </div>
                       </button>
@@ -1035,9 +1625,9 @@ export default function Chat() {
             </div>
           </aside>
 
-          <section className="flex min-h-[34rem] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white lg:h-full lg:min-h-0">
+          <section className="flex min-h-[36rem] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white md:h-full md:min-h-0">
             {!activeFriend ? (
-              <div className="h-full min-h-[34rem] bg-white lg:min-h-0" />
+              <div className="h-full min-h-[36rem] bg-white md:min-h-0" />
             ) : (
               <>
                 <header className="border-b border-gray-200 bg-gray-50 px-4 py-3 sm:px-6">
@@ -1074,8 +1664,8 @@ export default function Chat() {
                   ref={timelineRef}
                   className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-white px-4 py-4 sm:px-6"
                 >
-                  {threadLoading || timelineLoading ? (
-                    <p className="text-sm text-gray-500">Loading timeline...</p>
+                  {timelineLoading && timeline.length === 0 ? (
+                    <p className="text-sm text-gray-500">Loading messages...</p>
                   ) : timeline.length === 0 ? (
                     <p className="text-sm text-gray-500">No messages yet in this conversation.</p>
                   ) : (
@@ -1084,6 +1674,10 @@ export default function Chat() {
                       const showDate =
                         !previous ||
                         formatDay(previous.createdAt) !== formatDay(entry.createdAt);
+                      const showUnreadDivider =
+                        !unreadDividerDismissed &&
+                        Boolean(unreadDividerEntryId) &&
+                        entry.id === unreadDividerEntryId;
 
                       if (entry.kind === "payment") {
                         const payment = entry.item;
@@ -1115,8 +1709,14 @@ export default function Chat() {
                                     isSent ? "text-purple-800" : "text-gray-900"
                                   }`}
                                 >
-                                  {formatAmount(payment.amount)} ETH
+                                  {formatAmount(payment.amount)}{" "}
+                                  {String(payment.assetSymbol || "ETH").trim().toUpperCase()}
                                 </p>
+                                {payment.note ? (
+                                  <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
+                                    {payment.note}
+                                  </p>
+                                ) : null}
                                 <p className="mt-2 text-xs text-gray-600">
                                   {formatClock(payment.createdAt)} | {payment.status}
                                 </p>
@@ -1166,6 +1766,15 @@ export default function Chat() {
                               {formatDay(entry.createdAt)}
                             </div>
                           )}
+                          {showUnreadDivider ? (
+                            <div className="flex items-center gap-2 py-1">
+                              <span className="h-px flex-1 bg-purple-200" />
+                              <span className="rounded-full border border-purple-200 bg-purple-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-purple-700">
+                                Unread messages
+                              </span>
+                              <span className="h-px flex-1 bg-purple-200" />
+                            </div>
+                          ) : null}
                           <div className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                             {!isMine ? (
                               <span className="mr-2 mt-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-600 text-[11px] font-semibold text-white">
@@ -1288,95 +1897,51 @@ export default function Chat() {
                 </div>
 
                 <div className="border-t border-gray-200 bg-gray-50 px-3 py-3 sm:px-4">
-                  <div className="mb-3 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setComposerMode("request")}
-                      className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                        composerMode === "request"
-                          ? "bg-purple-600 text-white"
-                          : "bg-white text-gray-700 hover:bg-gray-100"
-                      }`}
-                    >
-                      Request
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setComposerMode("message")}
-                      className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                        composerMode === "message"
-                          ? "bg-purple-600 text-white"
-                          : "bg-white text-gray-700 hover:bg-gray-100"
-                      }`}
-                    >
-                      Send
-                    </button>
-                  </div>
+                  {composerMode !== "message" && transferBlockReason ? (
+                    <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      {transferBlockReason}
+                    </div>
+                  ) : null}
 
-                  {composerMode === "message" ? (
-                    <form onSubmit={handleSendText} className="flex gap-2">
+                  {composerMode === "send" ? (
+                    <form
+                      onSubmit={handleSendTransfer}
+                      className="grid gap-2 sm:grid-cols-[150px,1fr,auto]"
+                    >
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.0001"
+                        required
+                        value={sendAmount}
+                        onChange={(event) => setSendAmount(event.target.value)}
+                        placeholder="Amount ETH"
+                        className="w-full rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-400"
+                      />
                       <input
                         type="text"
-                        value={chatInput}
-                        onChange={(event) => setChatInput(event.target.value)}
-                        placeholder="Type a message..."
-                        className="min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-400"
+                        value={sendNote}
+                        onChange={(event) => setSendNote(event.target.value)}
+                        placeholder="Send note (optional)"
+                        className="w-full rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-400"
                       />
                       <button
                         type="submit"
                         disabled={
-                          sendingMessage ||
+                          sendingTransfer ||
+                          Boolean(transferBlockReason) ||
                           !activeThread?.id ||
-                          !chatInput.trim() ||
+                          !sendAmount.trim() ||
                           !identity?.publicKeyJwk
                         }
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-purple-600 text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                        className="rounded-full bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
                       >
-                        {sendingMessage ? (
-                          <svg
-                            aria-hidden="true"
-                            className="h-5 w-5 animate-spin"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <circle
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="3"
-                              className="opacity-30"
-                            />
-                            <path
-                              d="M22 12a10 10 0 0 0-10-10"
-                              stroke="currentColor"
-                              strokeWidth="3"
-                              strokeLinecap="round"
-                            />
-                          </svg>
-                        ) : (
-                          <svg
-                            aria-hidden="true"
-                            className="h-5 w-5"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              d="M3 11.5L21 3L14 21L11 13L3 11.5Z"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        )}
-                        <span className="sr-only">
-                          {sendingMessage ? "Sending message..." : "Send message"}
-                        </span>
+                        {sendingTransfer ? "Sending..." : "Send now"}
                       </button>
                     </form>
-                  ) : (
+                  ) : null}
+
+                  {composerMode === "request" ? (
                     <form
                       onSubmit={handleSendRequest}
                       className="grid gap-2 sm:grid-cols-[150px,1fr,auto]"
@@ -1400,13 +1965,154 @@ export default function Chat() {
                       />
                       <button
                         type="submit"
-                        disabled={sendingRequest || !activeThread?.id || !identity?.publicKeyJwk}
+                        disabled={
+                          sendingRequest ||
+                          Boolean(transferBlockReason) ||
+                          !activeThread?.id ||
+                          !identity?.publicKeyJwk
+                        }
                         className="rounded-full bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
                       >
                         {sendingRequest ? "Requesting..." : "Request"}
                       </button>
                     </form>
-                  )}
+                  ) : null}
+
+                  <div
+                    ref={composerActionsRef}
+                    className={`relative ${composerMode === "message" ? "" : "mt-3"}`}
+                  >
+                    {composerActionsOpen ? (
+                      <div className="absolute bottom-full left-0 z-20 mb-2 w-52 rounded-2xl border border-gray-200 bg-white p-2 shadow-lg">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setComposerMode((current) =>
+                              current === "request" ? "message" : "request"
+                            );
+                            setComposerActionsOpen(false);
+                          }}
+                          className={`inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
+                            composerMode === "request"
+                              ? "bg-purple-100 text-purple-700"
+                              : "text-gray-700 hover:bg-gray-100"
+                          }`}
+                        >
+                          {requestGlyph()}
+                          Request
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setComposerMode((current) =>
+                              current === "send" ? "message" : "send"
+                            );
+                            setComposerActionsOpen(false);
+                          }}
+                          className={`mt-1 inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
+                            composerMode === "send"
+                              ? "bg-purple-100 text-purple-700"
+                              : "text-gray-700 hover:bg-gray-100"
+                          }`}
+                        >
+                          {sendGlyph()}
+                          Send
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setComposerActionsOpen((current) => !current)}
+                        aria-expanded={composerActionsOpen}
+                        aria-haspopup="menu"
+                        className={`inline-flex h-11 items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition ${
+                          composerActionsOpen
+                            ? "border-purple-300 bg-purple-100 text-purple-700"
+                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
+                        }`}
+                      >
+                        <svg
+                          aria-hidden="true"
+                          className="h-4 w-4"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            d="M12 5V19M5 12H19"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        {composerActionsOpen ? "Hide" : "Actions"}
+                      </button>
+                      <form onSubmit={handleSendText} className="flex min-w-0 flex-1 gap-2">
+                        <input
+                          type="text"
+                          value={chatInput}
+                          onChange={(event) => setChatInput(event.target.value)}
+                          placeholder="Type a message..."
+                          className="min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-400"
+                        />
+                        <button
+                          type="submit"
+                          disabled={
+                            sendingMessage ||
+                            !activeThread?.id ||
+                            !chatInput.trim() ||
+                            !identity?.publicKeyJwk
+                          }
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-purple-600 text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                        >
+                          {sendingMessage ? (
+                            <svg
+                              aria-hidden="true"
+                              className="h-5 w-5 animate-spin"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <circle
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                                className="opacity-30"
+                              />
+                              <path
+                                d="M22 12a10 10 0 0 0-10-10"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                          ) : (
+                            <svg
+                              aria-hidden="true"
+                              className="h-5 w-5"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                d="M3 11.5L21 3L14 21L11 13L3 11.5Z"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          )}
+                          <span className="sr-only">
+                            {sendingMessage ? "Sending message..." : "Send message"}
+                          </span>
+                        </button>
+                      </form>
+                    </div>
+                  </div>
                 </div>
               </>
             )}
