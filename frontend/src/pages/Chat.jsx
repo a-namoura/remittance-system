@@ -166,6 +166,10 @@ function toEpochMs(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizeLookupValue(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function getFriendLastActivityAt(friend) {
   return (
     friend?.latestMessage?.createdAt ||
@@ -180,7 +184,21 @@ const CHAT_SYNC_RETRY_MS = 1200;
 
 export default function Chat() {
   const [searchParams] = useSearchParams();
-  const requestedFriendId = String(searchParams.get("friend") || "").trim();
+  const requestedPeerUserId = String(searchParams.get("friend") || "").trim();
+  const requestedFriendContactId = String(searchParams.get("friendId") || "").trim();
+  const requestedFriendUsername = normalizeLookupValue(searchParams.get("friendUsername"));
+  const requestedFriendWallet = normalizeLookupValue(searchParams.get("friendWallet"));
+  const requestedComposerModeParam = normalizeLookupValue(searchParams.get("compose"));
+  const requestedComposerMode =
+    requestedComposerModeParam === "send" || requestedComposerModeParam === "request"
+      ? requestedComposerModeParam
+      : "";
+  const hasRequestedFriend = Boolean(
+    requestedPeerUserId ||
+      requestedFriendContactId ||
+      requestedFriendUsername ||
+      requestedFriendWallet
+  );
 
   const [me, setMe] = useState(null);
   const [identity, setIdentity] = useState(null);
@@ -304,12 +322,40 @@ export default function Chat() {
   }, [messages, payments]);
 
   const requestedFriend = useMemo(() => {
-    if (!requestedFriendId) return null;
+    if (!hasRequestedFriend) return null;
+
     return (
-      friends.find((friend) => String(friend.peerUserId) === String(requestedFriendId)) ||
-      null
+      friends.find((friend) => {
+        const peerUserId = String(friend?.peerUserId || "").trim();
+        const friendContactId = String(friend?.friendId || "").trim();
+        const friendUsername = normalizeLookupValue(friend?.username);
+        const peerUsername = normalizeLookupValue(friend?.peerUsername);
+        const friendWallet = normalizeLookupValue(friend?.walletAddress);
+        const peerWallet = normalizeLookupValue(friend?.peerWalletAddress);
+
+        if (requestedPeerUserId && peerUserId === requestedPeerUserId) return true;
+        if (requestedFriendContactId && friendContactId === requestedFriendContactId) return true;
+        if (
+          requestedFriendUsername &&
+          (friendUsername === requestedFriendUsername || peerUsername === requestedFriendUsername)
+        ) {
+          return true;
+        }
+        if (requestedFriendWallet && (friendWallet === requestedFriendWallet || peerWallet === requestedFriendWallet)) {
+          return true;
+        }
+
+        return false;
+      }) || null
     );
-  }, [friends, requestedFriendId]);
+  }, [
+    friends,
+    hasRequestedFriend,
+    requestedPeerUserId,
+    requestedFriendContactId,
+    requestedFriendUsername,
+    requestedFriendWallet,
+  ]);
   const activeThreadId = String(activeThread?.id || "").trim();
   const unreadDividerEntryId = unreadDividerMessageId
     ? `message-${String(unreadDividerMessageId)}`
@@ -325,6 +371,8 @@ export default function Chat() {
     : !peerWalletReady
     ? "This friend does not have a linked wallet/account to receive funds."
     : "";
+  const isSendComposer = composerMode === "send";
+  const isRequestComposer = composerMode === "request";
 
   const friendUnreadByPeer = useMemo(() => {
     void unreadStateVersion;
@@ -897,8 +945,23 @@ export default function Chat() {
   }, [identity, loadHistory, me?.id]);
 
   useEffect(() => {
+    setRequestedFriendHandled(false);
+  }, [
+    hasRequestedFriend,
+    requestedPeerUserId,
+    requestedFriendContactId,
+    requestedFriendUsername,
+    requestedFriendWallet,
+    requestedComposerMode,
+  ]);
+
+  useEffect(() => {
     if (requestedFriendHandled) return;
-    if (!requestedFriendId) {
+    if (!hasRequestedFriend) {
+      if (requestedComposerMode) {
+        setComposerMode(requestedComposerMode);
+        setComposerActionsOpen(false);
+      }
       setRequestedFriendHandled(true);
       return;
     }
@@ -909,11 +972,16 @@ export default function Chat() {
       return;
     }
 
+    if (requestedComposerMode) {
+      setComposerMode(requestedComposerMode);
+      setComposerActionsOpen(false);
+    }
     openFriendThread(requestedFriend);
     setRequestedFriendHandled(true);
   }, [
     requestedFriendHandled,
-    requestedFriendId,
+    hasRequestedFriend,
+    requestedComposerMode,
     friendsLoading,
     identity,
     requestedFriend,
@@ -1159,6 +1227,8 @@ export default function Chat() {
     );
     setRequestAmount("");
     setRequestNote("");
+    setComposerMode("message");
+    setTimelineInfo("Request sent.");
   }
 
   async function handleSendTransfer(event) {
@@ -1218,6 +1288,7 @@ export default function Chat() {
 
       setSendAmount("");
       setSendNote("");
+      setComposerMode("message");
       setTimelineInfo("Payment sent.");
       await loadHistory({
         threadId: activeThread.id,
@@ -1255,6 +1326,18 @@ export default function Chat() {
     } finally {
       setReporting(false);
     }
+  }
+
+  function handleCloseActiveChat() {
+    setActiveFriendId("");
+    setActiveThread(null);
+    setMessages([]);
+    setPayments([]);
+    setTimelineInfo("");
+    setTimelineError("");
+    setComposerMode("message");
+    setComposerActionsOpen(false);
+    closeRequestModal();
   }
 
   function closeRequestModal() {
@@ -1416,7 +1499,7 @@ export default function Chat() {
   }
 
   return (
-    <div className="mx-auto max-w-[92rem] px-4 py-6 sm:px-6 sm:py-8">
+    <div className="mx-auto max-w-[92rem] px-4 py-8 sm:px-6 sm:py-10">
       {(friendsError || identityError || timelineError) && (
         <div className="mb-3 space-y-2">
           {friendsError && (
@@ -1645,14 +1728,25 @@ export default function Chat() {
                         </p>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleReportChat}
-                      disabled={reporting}
-                      className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-60"
-                    >
-                      {reporting ? "Reporting..." : "Report"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleReportChat}
+                        disabled={reporting}
+                        className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-60"
+                      >
+                        {reporting ? "Reporting..." : "Report"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCloseActiveChat}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-base font-semibold text-gray-600 hover:bg-gray-100"
+                        aria-label="Close chat"
+                        title="Close chat"
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
                   <p className="mt-3 text-xs text-gray-500">
                     {timelineInfo ||
@@ -1897,103 +1991,20 @@ export default function Chat() {
                 </div>
 
                 <div className="border-t border-gray-200 bg-gray-50 px-3 py-3 sm:px-4">
-                  {composerMode !== "message" && transferBlockReason ? (
-                    <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                      {transferBlockReason}
-                    </div>
-                  ) : null}
-
-                  {composerMode === "send" ? (
-                    <form
-                      onSubmit={handleSendTransfer}
-                      className="grid gap-2 sm:grid-cols-[150px,1fr,auto]"
-                    >
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.0001"
-                        required
-                        value={sendAmount}
-                        onChange={(event) => setSendAmount(event.target.value)}
-                        placeholder="Amount ETH"
-                        className="w-full rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-400"
-                      />
-                      <input
-                        type="text"
-                        value={sendNote}
-                        onChange={(event) => setSendNote(event.target.value)}
-                        placeholder="Send note (optional)"
-                        className="w-full rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-400"
-                      />
-                      <button
-                        type="submit"
-                        disabled={
-                          sendingTransfer ||
-                          Boolean(transferBlockReason) ||
-                          !activeThread?.id ||
-                          !sendAmount.trim() ||
-                          !identity?.publicKeyJwk
-                        }
-                        className="rounded-full bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-                      >
-                        {sendingTransfer ? "Sending..." : "Send now"}
-                      </button>
-                    </form>
-                  ) : null}
-
-                  {composerMode === "request" ? (
-                    <form
-                      onSubmit={handleSendRequest}
-                      className="grid gap-2 sm:grid-cols-[150px,1fr,auto]"
-                    >
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.0001"
-                        required
-                        value={requestAmount}
-                        onChange={(event) => setRequestAmount(event.target.value)}
-                        placeholder="Amount ETH"
-                        className="w-full rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-400"
-                      />
-                      <input
-                        type="text"
-                        value={requestNote}
-                        onChange={(event) => setRequestNote(event.target.value)}
-                        placeholder="Request note (optional)"
-                        className="w-full rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-400"
-                      />
-                      <button
-                        type="submit"
-                        disabled={
-                          sendingRequest ||
-                          Boolean(transferBlockReason) ||
-                          !activeThread?.id ||
-                          !identity?.publicKeyJwk
-                        }
-                        className="rounded-full bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-                      >
-                        {sendingRequest ? "Requesting..." : "Request"}
-                      </button>
-                    </form>
-                  ) : null}
-
                   <div
                     ref={composerActionsRef}
-                    className={`relative ${composerMode === "message" ? "" : "mt-3"}`}
+                    className="relative"
                   >
                     {composerActionsOpen ? (
                       <div className="absolute bottom-full left-0 z-20 mb-2 w-52 rounded-2xl border border-gray-200 bg-white p-2 shadow-lg">
                         <button
                           type="button"
                           onClick={() => {
-                            setComposerMode((current) =>
-                              current === "request" ? "message" : "request"
-                            );
+                            setComposerMode("request");
                             setComposerActionsOpen(false);
                           }}
                           className={`inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
-                            composerMode === "request"
+                            isRequestComposer
                               ? "bg-purple-100 text-purple-700"
                               : "text-gray-700 hover:bg-gray-100"
                           }`}
@@ -2004,13 +2015,11 @@ export default function Chat() {
                         <button
                           type="button"
                           onClick={() => {
-                            setComposerMode((current) =>
-                              current === "send" ? "message" : "send"
-                            );
+                            setComposerMode("send");
                             setComposerActionsOpen(false);
                           }}
                           className={`mt-1 inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
-                            composerMode === "send"
+                            isSendComposer
                               ? "bg-purple-100 text-purple-700"
                               : "text-gray-700 hover:bg-gray-100"
                           }`}
@@ -2119,6 +2128,139 @@ export default function Chat() {
           </section>
         </div>
       </section>
+
+      {isSendComposer || isRequestComposer ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/35 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">
+                {isSendComposer ? "Send payment" : "Request payment"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setComposerMode("message")}
+                className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
+              <p className="text-xs uppercase tracking-[0.12em] text-gray-500">Friend</p>
+              <p className="mt-1 text-sm font-semibold text-gray-900">
+                {activeFriend?.peerDisplayName || activeFriend?.label || "Friend"}
+              </p>
+              <p className="text-xs text-gray-500">
+                @{activeFriend?.peerUsername || activeFriend?.username || "friend"}
+              </p>
+            </div>
+
+            {isSendComposer ? (
+              <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                {walletBalanceLoading ? (
+                  <p className="text-xs text-gray-500">Checking balance...</p>
+                ) : Number.isFinite(walletBalance) ? (
+                  <p className="text-xs text-gray-600">
+                    Available balance:{" "}
+                    <span className="font-semibold text-gray-900">
+                      {walletBalance.toFixed(4)} ETH
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-red-600">
+                    {walletBalanceError || "Balance unavailable."}
+                  </p>
+                )}
+              </div>
+            ) : null}
+
+            {transferBlockReason ? (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {transferBlockReason}
+              </div>
+            ) : null}
+
+            <form
+              onSubmit={isSendComposer ? handleSendTransfer : handleSendRequest}
+              className="mt-3 space-y-3"
+            >
+              <input
+                type="number"
+                min="0"
+                step="0.0001"
+                required
+                value={isSendComposer ? sendAmount : requestAmount}
+                onChange={(event) => {
+                  if (isSendComposer) {
+                    setSendAmount(event.target.value);
+                    return;
+                  }
+                  setRequestAmount(event.target.value);
+                }}
+                placeholder="Amount ETH"
+                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-purple-400"
+              />
+
+              <input
+                type="text"
+                value={isSendComposer ? sendNote : requestNote}
+                onChange={(event) => {
+                  if (isSendComposer) {
+                    setSendNote(event.target.value);
+                    return;
+                  }
+                  setRequestNote(event.target.value);
+                }}
+                placeholder={isSendComposer ? "Send note (optional)" : "Request note (optional)"}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-purple-400"
+              />
+
+              {isSendComposer &&
+              Number.isFinite(walletBalance) &&
+              Number(sendAmount || 0) > Number(walletBalance) ? (
+                <p className="text-xs font-medium text-red-600">
+                  Amount exceeds your available balance.
+                </p>
+              ) : null}
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setComposerMode("message")}
+                  className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    isSendComposer
+                      ? sendingTransfer ||
+                        Boolean(transferBlockReason) ||
+                        !activeThread?.id ||
+                        !sendAmount.trim() ||
+                        !identity?.publicKeyJwk
+                      : sendingRequest ||
+                        Boolean(transferBlockReason) ||
+                        !activeThread?.id ||
+                        !requestAmount.trim() ||
+                        !identity?.publicKeyJwk
+                  }
+                  className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                >
+                  {isSendComposer
+                    ? sendingTransfer
+                      ? "Sending..."
+                      : "Send now"
+                    : sendingRequest
+                    ? "Requesting..."
+                    : "Request"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       {requestModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
