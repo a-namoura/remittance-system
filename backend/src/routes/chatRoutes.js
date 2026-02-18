@@ -15,8 +15,10 @@ import {
 } from "../blockchain/remittanceClient.js";
 import { logAudit } from "../utils/audit.js";
 import { requireAndConsumePaymentCode } from "../utils/paymentVerification.js";
+import { getNativeAssetSymbol } from "../utils/currency.js";
 
 export const chatRouter = express.Router();
+const DEFAULT_CHAT_ASSET_SYMBOL = getNativeAssetSymbol();
 
 function normalizeAddress(value) {
   return String(value || "").trim().toLowerCase();
@@ -194,6 +196,138 @@ async function resolveFriendContactByPeer(userId, peerUserId) {
   );
 }
 
+async function attachLatestThreadMetadata({ contacts, viewerUserId }) {
+  const safeContacts = Array.isArray(contacts) ? contacts : [];
+  if (!safeContacts.length) return [];
+
+  const participantKeys = [
+    ...new Set(
+      safeContacts
+        .map((contact) => buildParticipantKey(viewerUserId, contact.peerUserId))
+        .filter(Boolean)
+    ),
+  ];
+
+  if (!participantKeys.length) {
+    return safeContacts.map((contact) => ({
+      ...contact,
+      thread: null,
+      latestMessage: null,
+    }));
+  }
+
+  const threadDocs = await ChatThread.find({
+    participantKey: { $in: participantKeys },
+  })
+    .select("_id participantKey participants lastMessageAt createdAt updatedAt")
+    .lean();
+
+  const threadByKey = new Map(
+    threadDocs.map((threadDoc) => [String(threadDoc.participantKey), threadDoc])
+  );
+
+  const threadIds = threadDocs
+    .map((threadDoc) => asObjectId(threadDoc?._id))
+    .filter(Boolean);
+
+  const latestRows = threadIds.length
+    ? await ChatMessage.aggregate([
+        { $match: { threadId: { $in: threadIds } } },
+        { $sort: { createdAt: -1 } },
+        { $group: { _id: "$threadId", message: { $first: "$$ROOT" } } },
+      ])
+    : [];
+
+  const latestByThreadId = new Map(
+    latestRows
+      .map((row) => [String(row?._id || ""), row?.message || null])
+      .filter(([threadId]) => threadId)
+  );
+
+  const requestIds = [
+    ...new Set(
+      latestRows
+        .map((row) => asObjectId(row?.message?.requestId))
+        .filter(Boolean)
+        .map((id) => String(id))
+    ),
+  ]
+    .map((id) => asObjectId(id))
+    .filter(Boolean);
+
+  const requestDocs = requestIds.length
+    ? await ChatRequest.find({
+        _id: { $in: requestIds },
+      }).lean()
+    : [];
+
+  const requestById = new Map(
+    requestDocs.map((requestDoc) => [String(requestDoc._id), requestDoc])
+  );
+
+  const viewerId = String(viewerUserId);
+
+  return safeContacts.map((contact) => {
+    const participantKey = buildParticipantKey(viewerUserId, contact.peerUserId);
+    const threadDoc = threadByKey.get(String(participantKey)) || null;
+
+    if (!threadDoc) {
+      return {
+        ...contact,
+        thread: null,
+        latestMessage: null,
+      };
+    }
+
+    const latestRaw = latestByThreadId.get(String(threadDoc._id)) || null;
+    const latestRequest = latestRaw?.requestId
+      ? requestById.get(String(latestRaw.requestId)) || null
+      : null;
+    const isSender = String(latestRaw?.senderUserId) === viewerId;
+
+    return {
+      ...contact,
+      thread: {
+        id: threadDoc._id,
+        participantKey: threadDoc.participantKey,
+        participants: threadDoc.participants,
+        lastMessageAt: threadDoc.lastMessageAt,
+        createdAt: threadDoc.createdAt,
+        updatedAt: threadDoc.updatedAt,
+      },
+      latestMessage: latestRaw
+        ? {
+            id: latestRaw._id,
+            senderUserId: latestRaw.senderUserId,
+            recipientUserId: latestRaw.recipientUserId,
+            messageType: latestRaw.messageType,
+            request: latestRequest
+              ? {
+                  id: latestRequest._id,
+                  requesterUserId: latestRequest.requesterUserId,
+                  targetUserId: latestRequest.targetUserId,
+                  amount: latestRequest.amount,
+                  note: latestRequest.note || "",
+                  status: latestRequest.status,
+                  paidAt: latestRequest.paidAt || null,
+                  paidByUserId: latestRequest.paidByUserId || null,
+                  paidTransactionId: latestRequest.paidTransactionId || null,
+                  paidTxHash: latestRequest.paidTxHash || null,
+                  cancelledAt: latestRequest.cancelledAt || null,
+                  cancelledByUserId: latestRequest.cancelledByUserId || null,
+                  createdAt: latestRequest.createdAt,
+                }
+              : null,
+            encryptedPayload: isSender
+              ? latestRaw.cipherForSender
+              : latestRaw.cipherForRecipient,
+            createdAt: latestRaw.createdAt,
+          }
+        : null,
+    };
+  });
+}
+
 function threadContainsUser(threadDoc, userId) {
   const userIdStr = String(userId);
   return threadDoc.participants.some(
@@ -212,9 +346,13 @@ function otherParticipantId(threadDoc, userId) {
 chatRouter.get("/friends", protect, async (req, res, next) => {
   try {
     const contacts = await resolveFriendContacts(req.user._id);
+    const contactsWithThreads = await attachLatestThreadMetadata({
+      contacts,
+      viewerUserId: req.user._id,
+    });
     res.json({
       ok: true,
-      friends: contacts,
+      friends: contactsWithThreads,
     });
   } catch (err) {
     next(err);
@@ -457,6 +595,8 @@ chatRouter.get("/threads/:threadId/history", protect, async (req, res, next) => 
         senderWallet: paymentDoc.senderWallet,
         receiverWallet: paymentDoc.receiverWallet,
         amount: paymentDoc.amount,
+        note: paymentDoc.note || "",
+        assetSymbol: paymentDoc.assetSymbol || DEFAULT_CHAT_ASSET_SYMBOL,
         status: paymentDoc.status,
         txHash: paymentDoc.txHash || null,
         direction,
@@ -529,24 +669,53 @@ chatRouter.post("/threads/:threadId/messages", protect, async (req, res, next) =
     }
 
     let createdRequest = null;
-    if (messageType === "request") {
-      const requestAmount = Number(req.body?.requestAmount);
-      const requestNote = String(req.body?.requestNote || "").trim();
+      if (messageType === "request") {
+        const requestAmount = Number(req.body?.requestAmount);
+        const requestNote = String(req.body?.requestNote || "").trim();
 
-      if (!Number.isFinite(requestAmount) || requestAmount <= 0) {
+        if (!Number.isFinite(requestAmount) || requestAmount <= 0) {
         res.status(400);
         throw new Error("requestAmount must be a positive number.");
       }
 
-      if (requestNote.length > 280) {
-        res.status(400);
-        throw new Error("requestNote cannot exceed 280 characters.");
-      }
+        if (requestNote.length > 280) {
+          res.status(400);
+          throw new Error("requestNote cannot exceed 280 characters.");
+        }
 
-      createdRequest = await ChatRequest.create({
-        threadId: thread._id,
-        requesterUserId: senderUserId,
-        targetUserId: recipientUserId,
+        const [requesterWalletDoc, targetWalletDoc] = await Promise.all([
+          Wallet.findOne({
+            userId: senderUserId,
+            isVerified: true,
+          })
+            .select("_id")
+            .lean(),
+          Wallet.findOne({
+            userId: recipientUserId,
+            isVerified: true,
+          })
+            .select("_id")
+            .lean(),
+        ]);
+
+        if (!requesterWalletDoc) {
+          res.status(400);
+          throw new Error(
+            "You must link and verify a wallet before creating payment requests."
+          );
+        }
+
+        if (!targetWalletDoc) {
+          res.status(400);
+          throw new Error(
+            "Recipient must have a linked and verified wallet to receive requests."
+          );
+        }
+
+        createdRequest = await ChatRequest.create({
+          threadId: thread._id,
+          requesterUserId: senderUserId,
+          targetUserId: recipientUserId,
         amount: requestAmount,
         note: requestNote || undefined,
         status: "pending",
@@ -605,6 +774,144 @@ chatRouter.post("/threads/:threadId/messages", protect, async (req, res, next) =
       },
     });
   } catch (err) {
+    next(err);
+  }
+});
+
+chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
+  let txDoc = null;
+
+  try {
+    const threadId = asObjectId(req.params.threadId);
+    if (!threadId) {
+      res.status(400);
+      throw new Error("Invalid thread id.");
+    }
+
+    const thread = await ChatThread.findById(threadId);
+    if (!thread) {
+      res.status(404);
+      throw new Error("Chat thread not found.");
+    }
+
+    if (!threadContainsUser(thread, req.user._id)) {
+      res.status(403);
+      throw new Error("You do not have access to this chat thread.");
+    }
+
+    const senderUserId = String(req.user._id);
+    const recipientUserId = otherParticipantId(thread, req.user._id);
+
+    if (!recipientUserId) {
+      res.status(400);
+      throw new Error("Unable to resolve chat recipient.");
+    }
+
+    const amountNumber = Number(req.body?.amountEth);
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      res.status(400);
+      throw new Error("amountEth must be a positive number.");
+    }
+
+    const note = String(req.body?.note || "").trim();
+    if (note.length > 280) {
+      res.status(400);
+      throw new Error("note cannot exceed 280 characters.");
+    }
+
+    const [senderWalletDoc, recipientWalletDoc] = await Promise.all([
+      Wallet.findOne({
+        userId: senderUserId,
+        isVerified: true,
+      })
+        .select("address")
+        .lean(),
+      Wallet.findOne({
+        userId: recipientUserId,
+        isVerified: true,
+      })
+        .select("address")
+        .lean(),
+    ]);
+
+    if (!senderWalletDoc?.address) {
+      res.status(400);
+      throw new Error("You must link and verify a wallet before sending.");
+    }
+
+    if (!recipientWalletDoc?.address) {
+      res.status(400);
+      throw new Error("Recipient does not have a linked and verified wallet.");
+    }
+
+    const availableBalance = await getEthBalance(senderWalletDoc.address);
+    if (amountNumber > availableBalance) {
+      res.status(400);
+      throw new Error(
+        `Insufficient balance. Available: ${availableBalance.toFixed(
+          4
+        )} ${DEFAULT_CHAT_ASSET_SYMBOL}.`
+      );
+    }
+
+    txDoc = await Transaction.create({
+      senderUserId,
+      receiverUserId: recipientUserId,
+      senderWallet: senderWalletDoc.address,
+      receiverWallet: String(recipientWalletDoc.address || "")
+        .trim()
+        .toLowerCase(),
+      amount: amountNumber,
+      note: note || undefined,
+      assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
+      status: "pending",
+      type: "sent",
+    });
+
+    const result = await sendRemittance(recipientWalletDoc.address, amountNumber);
+
+    txDoc.status = "success";
+    txDoc.txHash = result.txHash || null;
+    await txDoc.save();
+
+    thread.lastMessageAt = new Date();
+    await thread.save();
+
+    try {
+      await logAudit({
+        user: req.user,
+        action: "SEND_CHAT_TRANSFER",
+        metadata: {
+          threadId: String(thread._id),
+          txId: String(txDoc._id),
+          amount: amountNumber,
+          assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
+          txHash: txDoc.txHash || null,
+        },
+        req,
+      });
+    } catch (auditErr) {
+      console.error("Failed to write SEND_CHAT_TRANSFER audit log:", auditErr.message);
+    }
+
+    res.status(201).json({
+      ok: true,
+      transaction: {
+        id: txDoc._id,
+        status: txDoc.status,
+        txHash: txDoc.txHash || null,
+        amount: txDoc.amount,
+        note: txDoc.note || "",
+        assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
+        senderWallet: txDoc.senderWallet,
+        receiverWallet: txDoc.receiverWallet,
+      },
+    });
+  } catch (err) {
+    if (txDoc) {
+      txDoc.status = "failed";
+      await txDoc.save().catch(() => {});
+    }
     next(err);
   }
 });

@@ -13,6 +13,7 @@ const transactionSchema = new mongoose.Schema(
     receiverWallet: { type: String, required: true, lowercase: true, trim: true },
 
     amount: { type: Number, required: true, min: 0 },
+    note: { type: String, trim: true, maxlength: 280 },
     assetSymbol: {
       type: String,
       trim: true,
