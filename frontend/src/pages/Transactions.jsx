@@ -6,6 +6,7 @@ import { formatDateTime } from "../utils/datetime.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 const PAGE_LIMIT = 10;
 
 function statusBadgeClasses(status) {
@@ -85,7 +86,7 @@ export default function Transactions() {
         setTotal(data.total || 0);
       } catch (err) {
         if (isCancelled) return;
-        setError(err.message || "Failed to load transactions.");
+        setError(getUserErrorMessage(err, "Failed to load transactions."));
       } finally {
         if (!isCancelled) {
           setLoading(false);
@@ -228,10 +229,24 @@ export default function Transactions() {
                 transaction.direction || transaction.type
               );
               const counterpartyLabel = direction === "received" ? "From" : "To";
+              const counterpartyUsername =
+                direction === "received"
+                  ? transaction.senderUsername
+                  : transaction.receiverUsername;
+              const counterpartyDisplayName =
+                direction === "received"
+                  ? transaction.senderDisplayName
+                  : transaction.receiverDisplayName;
               const counterpartyWallet =
                 direction === "received"
                   ? transaction.senderWallet
                   : transaction.receiverWallet;
+              const counterpartyValue = counterpartyUsername
+                ? `@${counterpartyUsername}`
+                : counterpartyDisplayName || counterpartyWallet || "-";
+              const counterpartyValueClass = counterpartyUsername || counterpartyDisplayName
+                ? "mt-1 text-xs text-gray-700"
+                : "mt-1 font-mono text-xs text-gray-700";
               const assetSymbol = String(transaction.assetSymbol || "ETH")
                 .trim()
                 .toUpperCase();
@@ -261,11 +276,11 @@ export default function Transactions() {
                             (~ {transaction.fiatAmountUsd.toFixed(2)}{" "}
                             {transaction.fiatCurrency || "USD"})
                           </span>
-                        )}
+                      )}
                       </div>
 
-                      <div className="mt-1 font-mono text-xs text-gray-700">
-                        {counterpartyLabel}: {counterpartyWallet || "-"}
+                      <div className={counterpartyValueClass}>
+                        {counterpartyLabel}: {counterpartyValue}
                       </div>
 
                       <div className="mt-1 text-xs text-gray-500">

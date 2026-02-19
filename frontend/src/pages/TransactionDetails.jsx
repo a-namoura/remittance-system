@@ -6,6 +6,7 @@ import { formatDateTime } from "../utils/datetime.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 function statusBadgeClasses(status) {
   if (status === "success") return "bg-green-100 text-green-700";
   if (status === "failed") return "bg-red-100 text-red-700";
@@ -61,7 +62,7 @@ export default function TransactionDetails() {
         setTransaction(data.transaction || null);
       } catch (err) {
         if (isCancelled) return;
-        setError(err.message || "Failed to load transaction.");
+        setError(getUserErrorMessage(err, "Failed to load transaction."));
       } finally {
         if (!isCancelled) {
           setLoading(false);
@@ -79,6 +80,24 @@ export default function TransactionDetails() {
   const explorerUrl = transaction
     ? getExplorerTxUrl(transaction.txHash)
     : null;
+  const senderPrimaryValue = transaction
+    ? transaction.senderUsername
+      ? `@${transaction.senderUsername}`
+      : transaction.senderDisplayName || transaction.senderWallet || "-"
+    : "-";
+  const receiverPrimaryValue = transaction
+    ? transaction.receiverUsername
+      ? `@${transaction.receiverUsername}`
+      : transaction.receiverDisplayName || transaction.receiverWallet || "-"
+    : "-";
+  const showSenderSecondaryWallet = Boolean(
+    transaction?.senderWallet &&
+      (transaction?.senderUsername || transaction?.senderDisplayName)
+  );
+  const showReceiverSecondaryWallet = Boolean(
+    transaction?.receiverWallet &&
+      (transaction?.receiverUsername || transaction?.receiverDisplayName)
+  );
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
@@ -159,17 +178,35 @@ export default function TransactionDetails() {
 
           <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <div className="text-xs text-gray-500">Sender Wallet</div>
-              <div className="font-mono text-sm break-all text-gray-900">
-                {transaction.senderWallet}
+              <div className="text-xs text-gray-500">Sender</div>
+              <div
+                className={`text-sm text-gray-900 ${
+                  showSenderSecondaryWallet ? "" : "font-mono break-all"
+                }`}
+              >
+                {senderPrimaryValue}
               </div>
+              {showSenderSecondaryWallet && (
+                <div className="font-mono text-[11px] break-all text-gray-500">
+                  {transaction.senderWallet}
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">
-              <div className="text-xs text-gray-500">Receiver Wallet</div>
-              <div className="font-mono text-sm break-all text-gray-900">
-                {transaction.receiverWallet}
+              <div className="text-xs text-gray-500">Receiver</div>
+              <div
+                className={`text-sm text-gray-900 ${
+                  showReceiverSecondaryWallet ? "" : "font-mono break-all"
+                }`}
+              >
+                {receiverPrimaryValue}
               </div>
+              {showReceiverSecondaryWallet && (
+                <div className="font-mono text-[11px] break-all text-gray-500">
+                  {transaction.receiverWallet}
+                </div>
+              )}
             </div>
           </div>
 

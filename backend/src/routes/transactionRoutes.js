@@ -61,6 +61,40 @@ function getFiatAmountUsd(amount, assetSymbol) {
   };
 }
 
+function normalizeObjectId(value) {
+  if (!value) return null;
+  const normalized = String(
+    typeof value === "object" && value !== null && value._id ? value._id : value
+  ).trim();
+  return normalized || null;
+}
+
+function getUserDisplayName(userDoc) {
+  if (!userDoc) return null;
+  const fullName = [userDoc.firstName, userDoc.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  if (fullName) return fullName;
+  const username = String(userDoc.username || "").trim();
+  return username || null;
+}
+
+async function loadUsersById(userIds = []) {
+  const uniqueIds = [...new Set(userIds.map(normalizeObjectId).filter(Boolean))];
+  if (uniqueIds.length === 0) return new Map();
+
+  const users = await User.find({ _id: { $in: uniqueIds } })
+    .select("username firstName lastName")
+    .lean();
+
+  const userMap = new Map();
+  users.forEach((userDoc) => {
+    userMap.set(String(userDoc._id), userDoc);
+  });
+  return userMap;
+}
+
 function hashLinkToken(token) {
   return crypto.createHash("sha256").update(String(token)).digest("hex");
 }
@@ -621,11 +655,16 @@ transactionRouter.get("/my", protect, async (req, res, next) => {
       Transaction.countDocuments(query),
     ]);
 
+    const userLookup = await loadUsersById(
+      txs.flatMap((txDoc) => [txDoc.senderUserId, txDoc.receiverUserId])
+    );
+
     const transactions = txs.map((t) => {
-      const isSender =
-        t.senderUserId &&
-        t.senderUserId.toString &&
-        t.senderUserId.toString() === userIdStr;
+      const senderUserId = normalizeObjectId(t.senderUserId);
+      const receiverUserId = normalizeObjectId(t.receiverUserId);
+      const senderUserDoc = senderUserId ? userLookup.get(senderUserId) : null;
+      const receiverUserDoc = receiverUserId ? userLookup.get(receiverUserId) : null;
+      const isSender = senderUserId === userIdStr;
 
       const direction = isSender ? "sent" : "received";
       const assetSymbol = normalizeTransferAssetSymbol(t.assetSymbol);
@@ -636,6 +675,12 @@ transactionRouter.get("/my", protect, async (req, res, next) => {
 
       return {
         id: t._id,
+        senderUserId,
+        receiverUserId,
+        senderUsername: senderUserDoc?.username || null,
+        receiverUsername: receiverUserDoc?.username || null,
+        senderDisplayName: getUserDisplayName(senderUserDoc),
+        receiverDisplayName: getUserDisplayName(receiverUserDoc),
         senderWallet: t.senderWallet,
         receiverWallet: t.receiverWallet,
         amount: t.amount,
@@ -675,20 +720,22 @@ transactionRouter.get("/:id", protect, async (req, res, next) => {
 
     const userId = req.user._id.toString();
     const isAdmin = req.user.role === "admin";
+    const senderUserId = normalizeObjectId(tx.senderUserId);
+    const receiverUserId = normalizeObjectId(tx.receiverUserId);
 
     const involved =
-      (tx.senderUserId && tx.senderUserId.toString() === userId) ||
-      (tx.receiverUserId && tx.receiverUserId.toString() === userId);
+      senderUserId === userId || receiverUserId === userId;
 
     if (!isAdmin && !involved) {
       res.status(403);
       throw new Error("You are not allowed to view this transaction.");
     }
 
-    const isSender =
-      tx.senderUserId &&
-      tx.senderUserId.toString &&
-      tx.senderUserId.toString() === userId;
+    const userLookup = await loadUsersById([senderUserId, receiverUserId]);
+    const senderUserDoc = senderUserId ? userLookup.get(senderUserId) : null;
+    const receiverUserDoc = receiverUserId ? userLookup.get(receiverUserId) : null;
+
+    const isSender = senderUserId === userId;
     const direction = involved ? (isSender ? "sent" : "received") : tx.type || null;
 
     const assetSymbol = normalizeTransferAssetSymbol(tx.assetSymbol);
@@ -701,6 +748,12 @@ transactionRouter.get("/:id", protect, async (req, res, next) => {
       ok: true,
       transaction: {
         id: tx._id,
+        senderUserId,
+        receiverUserId,
+        senderUsername: senderUserDoc?.username || null,
+        receiverUsername: receiverUserDoc?.username || null,
+        senderDisplayName: getUserDisplayName(senderUserDoc),
+        receiverDisplayName: getUserDisplayName(receiverUserDoc),
         senderWallet: tx.senderWallet,
         receiverWallet: tx.receiverWallet,
         amount: tx.amount,

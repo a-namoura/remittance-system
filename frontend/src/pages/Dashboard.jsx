@@ -13,6 +13,7 @@ import { formatDateTime } from "../utils/datetime.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 const QUICK_PLUS_ACTIONS = [
   {
     id: "buy",
@@ -169,7 +170,7 @@ export default function Dashboard() {
         setAccountAddress(walletState.address);
       } catch (err) {
         if (isCancelled) return;
-        setError(err.message || "Failed to load dashboard.");
+        setError(getUserErrorMessage(err, "Failed to load dashboard."));
 
         if (err.status === 401 || err.status === 403) {
           clearSessionStorage();
@@ -199,7 +200,7 @@ export default function Dashboard() {
         setFriends(data.friends || []);
       } catch (err) {
         if (isCancelled) return;
-        setFriendsError(err.message || "Failed to load friends.");
+        setFriendsError(getUserErrorMessage(err, "Failed to load friends."));
       }
     }
 
@@ -224,7 +225,7 @@ export default function Dashboard() {
         setTransactions(data.transactions || []);
       } catch (err) {
         if (isCancelled) return;
-        setTxError(err.message || "Failed to load activity.");
+        setTxError(getUserErrorMessage(err, "Failed to load activity."));
       }
     }
 
@@ -299,7 +300,7 @@ export default function Dashboard() {
         setSelectedCurrency(nextSelectedCurrency);
       } catch (err) {
         if (!isCancelled) {
-          setBalanceError(err.message || "Failed to load account balance.");
+          setBalanceError(getUserErrorMessage(err, "Failed to load account balance."));
           setAccountBalances({});
           setAvailableCurrencies([]);
           setSelectedCurrency("");
@@ -509,10 +510,24 @@ export default function Dashboard() {
                 .trim()
                 .toUpperCase();
               const counterpartyLabel = direction === "received" ? "From" : "To";
+              const counterpartyUsername =
+                direction === "received"
+                  ? transaction.senderUsername
+                  : transaction.receiverUsername;
+              const counterpartyDisplayName =
+                direction === "received"
+                  ? transaction.senderDisplayName
+                  : transaction.receiverDisplayName;
               const counterpartyWallet =
                 direction === "received"
                   ? transaction.senderWallet
                   : transaction.receiverWallet;
+              const counterpartyValue = counterpartyUsername
+                ? `@${counterpartyUsername}`
+                : counterpartyDisplayName || counterpartyWallet || "-";
+              const counterpartyValueClass = counterpartyUsername || counterpartyDisplayName
+                ? "mt-1 text-xs text-gray-600"
+                : "mt-1 text-xs text-gray-600 font-mono";
 
               return (
                 <Link
@@ -531,8 +546,8 @@ export default function Dashboard() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-1 text-xs text-gray-600 font-mono">
-                      {counterpartyLabel}: {counterpartyWallet || "-"}
+                    <div className={counterpartyValueClass}>
+                      {counterpartyLabel}: {counterpartyValue}
                     </div>
                     <div className="mt-1 text-xs text-gray-500">
                       {formatDateTime(transaction.createdAt) || "-"}
