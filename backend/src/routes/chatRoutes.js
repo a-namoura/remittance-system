@@ -14,11 +14,11 @@ import {
   sendRemittance,
 } from "../blockchain/remittanceClient.js";
 import { logAudit } from "../utils/audit.js";
-import { requireAndConsumePaymentCode } from "../utils/paymentVerification.js";
 import { getNativeAssetSymbol } from "../utils/currency.js";
 
 export const chatRouter = express.Router();
 const DEFAULT_CHAT_ASSET_SYMBOL = getNativeAssetSymbol();
+const MAX_CHAT_PLAINTEXT_FALLBACK_LENGTH = 4000;
 
 function normalizeAddress(value) {
   return String(value || "").trim().toLowerCase();
@@ -62,6 +62,78 @@ function validEncryptedPayload(payload) {
   }
 
   return true;
+}
+
+function hasPayloadContent(payload) {
+  if (payload == null) return false;
+  if (typeof payload === "string") return Boolean(payload.trim());
+  if (typeof payload === "object" && !Array.isArray(payload)) {
+    return Object.keys(payload).length > 0;
+  }
+  return false;
+}
+
+function payloadFingerprint(payload) {
+  if (typeof payload === "string") {
+    return `str:${payload.trim()}`;
+  }
+
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const ciphertext = String(payload.ciphertext || "").trim();
+    const iv = String(payload.iv || "").trim();
+    const wrappedKey = String(payload.wrappedKey || "").trim();
+    if (ciphertext || iv || wrappedKey) {
+      return `enc:${ciphertext}|${iv}|${wrappedKey}`;
+    }
+    try {
+      return `obj:${JSON.stringify(payload)}`;
+    } catch {
+      return `obj:${Object.keys(payload).sort().join(",")}`;
+    }
+  }
+
+  return "";
+}
+
+function uniquePayloads(payloads) {
+  const deduped = [];
+  const seen = new Set();
+
+  for (const payload of payloads) {
+    if (!hasPayloadContent(payload)) continue;
+    const fingerprint = payloadFingerprint(payload);
+    if (!fingerprint || seen.has(fingerprint)) continue;
+    seen.add(fingerprint);
+    deduped.push(payload);
+  }
+
+  return deduped;
+}
+
+function resolveMessagePayloadCandidates(messageDoc, viewerId) {
+  const isSender = String(messageDoc?.senderUserId || "") === String(viewerId || "");
+
+  const senderCandidates = [
+    messageDoc?.cipherForSender,
+    messageDoc?.payloadForSender,
+    messageDoc?.senderEncryptedPayload,
+  ];
+  const recipientCandidates = [
+    messageDoc?.cipherForRecipient,
+    messageDoc?.payloadForRecipient,
+    messageDoc?.recipientEncryptedPayload,
+  ];
+  const legacyCandidates = [
+    messageDoc?.encryptedPayload,
+    messageDoc?.payload,
+    messageDoc?.cipher,
+  ];
+
+  return uniquePayloads(
+    isSender
+      ? [...senderCandidates, ...legacyCandidates, ...recipientCandidates]
+      : [...recipientCandidates, ...legacyCandidates, ...senderCandidates]
+  );
 }
 
 async function resolveFriendContacts(userId) {
@@ -283,7 +355,7 @@ async function attachLatestThreadMetadata({ contacts, viewerUserId }) {
     const latestRequest = latestRaw?.requestId
       ? requestById.get(String(latestRaw.requestId)) || null
       : null;
-    const isSender = String(latestRaw?.senderUserId) === viewerId;
+    const payloadCandidates = resolveMessagePayloadCandidates(latestRaw, viewerId);
 
     return {
       ...contact,
@@ -318,9 +390,9 @@ async function attachLatestThreadMetadata({ contacts, viewerUserId }) {
                   createdAt: latestRequest.createdAt,
                 }
               : null,
-            encryptedPayload: isSender
-              ? latestRaw.cipherForSender
-              : latestRaw.cipherForRecipient,
+            encryptedPayload: payloadCandidates[0] || null,
+            encryptedPayloadCandidates: payloadCandidates,
+            plaintextFallback: latestRaw.plaintextFallback || "",
             createdAt: latestRaw.createdAt,
           }
         : null,
@@ -535,7 +607,7 @@ chatRouter.get("/threads/:threadId/history", protect, async (req, res, next) => 
     const messages = messagesRaw
       .reverse()
       .map((messageDoc) => {
-        const isSender = String(messageDoc.senderUserId) === viewerId;
+        const payloadCandidates = resolveMessagePayloadCandidates(messageDoc, viewerId);
         const attachedRequest = messageDoc.requestId
           ? requestById.get(String(messageDoc.requestId)) || null
           : null;
@@ -561,9 +633,9 @@ chatRouter.get("/threads/:threadId/history", protect, async (req, res, next) => 
                 createdAt: attachedRequest.createdAt,
               }
             : null,
-          encryptedPayload: isSender
-            ? messageDoc.cipherForSender
-            : messageDoc.cipherForRecipient,
+          encryptedPayload: payloadCandidates[0] || null,
+          encryptedPayloadCandidates: payloadCandidates,
+          plaintextFallback: messageDoc.plaintextFallback || "",
           createdAt: messageDoc.createdAt,
         };
       });
@@ -660,12 +732,19 @@ chatRouter.post("/threads/:threadId/messages", protect, async (req, res, next) =
 
     const senderPayload = req.body?.payloadForSender;
     const recipientPayload = req.body?.payloadForRecipient;
+    const plaintextFallbackRaw = String(req.body?.plaintextFallback || "");
+    const plaintextFallback = plaintextFallbackRaw.trim();
 
     if (!validEncryptedPayload(senderPayload) || !validEncryptedPayload(recipientPayload)) {
       res.status(400);
       throw new Error(
         "payloadForSender and payloadForRecipient must include ciphertext, iv, and wrappedKey."
       );
+    }
+
+    if (plaintextFallback.length > MAX_CHAT_PLAINTEXT_FALLBACK_LENGTH) {
+      res.status(400);
+      throw new Error("plaintextFallback cannot exceed 4000 characters.");
     }
 
     let createdRequest = null;
@@ -740,6 +819,7 @@ chatRouter.post("/threads/:threadId/messages", protect, async (req, res, next) =
           iv: String(recipientPayload.iv).trim(),
           wrappedKey: String(recipientPayload.wrappedKey).trim(),
         },
+        plaintextFallback: plaintextFallback || undefined,
       });
     } catch (createMessageErr) {
       if (createdRequest?._id) {
@@ -777,6 +857,160 @@ chatRouter.post("/threads/:threadId/messages", protect, async (req, res, next) =
     next(err);
   }
 });
+
+chatRouter.delete(
+  "/threads/:threadId/messages/:messageId",
+  protect,
+  async (req, res, next) => {
+    try {
+      const threadId = asObjectId(req.params.threadId);
+      const messageId = asObjectId(req.params.messageId);
+      if (!threadId || !messageId) {
+        res.status(400);
+        throw new Error("Invalid thread id or message id.");
+      }
+
+      const thread = await ChatThread.findById(threadId);
+      if (!thread) {
+        res.status(404);
+        throw new Error("Chat thread not found.");
+      }
+
+      if (!threadContainsUser(thread, req.user._id)) {
+        res.status(403);
+        throw new Error("You do not have access to this chat thread.");
+      }
+
+      const messageDoc = await ChatMessage.findOne({
+        _id: messageId,
+        threadId: thread._id,
+      }).lean();
+      if (!messageDoc) {
+        res.status(404);
+        throw new Error("Message not found.");
+      }
+
+      if (String(messageDoc.senderUserId) !== String(req.user._id)) {
+        res.status(403);
+        throw new Error("Only the original sender can unsend this message.");
+      }
+
+      if (String(messageDoc.messageType || "").trim().toLowerCase() === "request") {
+        const requestId = asObjectId(messageDoc.requestId);
+        if (requestId) {
+          const requestDoc = await ChatRequest.findById(requestId);
+          if (requestDoc) {
+            const status = String(requestDoc.status || "").trim().toLowerCase();
+            if (status === "paid") {
+              res.status(400);
+              throw new Error("Paid requests cannot be unsent.");
+            }
+            if (status === "processing") {
+              res.status(409);
+              throw new Error("Request is processing and cannot be unsent.");
+            }
+            if (status !== "cancelled") {
+              requestDoc.status = "cancelled";
+              requestDoc.cancelledAt = new Date();
+              requestDoc.cancelledByUserId = req.user._id;
+              await requestDoc.save();
+            }
+          }
+        }
+      }
+
+      await ChatMessage.deleteOne({
+        _id: messageId,
+        threadId: thread._id,
+        senderUserId: req.user._id,
+      });
+
+      const latestRemainingMessage = await ChatMessage.findOne({ threadId: thread._id })
+        .sort({ createdAt: -1 })
+        .select("createdAt")
+        .lean();
+
+      thread.lastMessageAt =
+        latestRemainingMessage?.createdAt || thread.createdAt || new Date();
+      await thread.save();
+
+      res.json({
+        ok: true,
+        threadId: thread._id,
+        messageId,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+chatRouter.post(
+  "/threads/:threadId/messages/:messageId/plaintext",
+  protect,
+  async (req, res, next) => {
+    try {
+      const threadId = asObjectId(req.params.threadId);
+      const messageId = asObjectId(req.params.messageId);
+      if (!threadId || !messageId) {
+        res.status(400);
+        throw new Error("Invalid thread id or message id.");
+      }
+
+      const thread = await ChatThread.findById(threadId);
+      if (!thread) {
+        res.status(404);
+        throw new Error("Chat thread not found.");
+      }
+
+      if (!threadContainsUser(thread, req.user._id)) {
+        res.status(403);
+        throw new Error("You do not have access to this chat thread.");
+      }
+
+      const plaintextFallback = String(req.body?.plaintextFallback || "").trim();
+      if (!plaintextFallback) {
+        res.status(400);
+        throw new Error("plaintextFallback is required.");
+      }
+
+      if (plaintextFallback.length > MAX_CHAT_PLAINTEXT_FALLBACK_LENGTH) {
+        res.status(400);
+        throw new Error("plaintextFallback cannot exceed 4000 characters.");
+      }
+
+      const messageDoc = await ChatMessage.findOne({
+        _id: messageId,
+        threadId: thread._id,
+      });
+      if (!messageDoc) {
+        res.status(404);
+        throw new Error("Message not found.");
+      }
+
+      const existingFallback = String(messageDoc.plaintextFallback || "").trim();
+      if (existingFallback) {
+        res.json({
+          ok: true,
+          cached: false,
+          reason: "already_cached",
+        });
+        return;
+      }
+
+      messageDoc.plaintextFallback = plaintextFallback;
+      await messageDoc.save();
+
+      res.json({
+        ok: true,
+        cached: true,
+        messageId: messageDoc._id,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
   let txDoc = null;
@@ -1013,16 +1247,6 @@ chatRouter.post(
       if (!lockedRequest) {
         res.status(409);
         throw new Error("Request is no longer pending.");
-      }
-
-      try {
-        await requireAndConsumePaymentCode({
-          user: req.user,
-          code: req.body?.verificationCode,
-        });
-      } catch (codeErr) {
-        res.status(codeErr?.statusCode || 400);
-        throw codeErr;
       }
 
       txDoc = await Transaction.create({

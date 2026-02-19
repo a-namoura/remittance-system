@@ -63,6 +63,11 @@ const chatMessageSchema = new mongoose.Schema(
       type: encryptedPayloadSchema,
       required: true,
     },
+    plaintextFallback: {
+      type: String,
+      trim: true,
+      maxlength: 4000,
+    },
   },
   { timestamps: true }
 );

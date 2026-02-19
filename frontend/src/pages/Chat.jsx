@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getCurrentUser } from "../services/authApi.js";
 import {
+  cacheChatMessagePlaintext,
   cancelChatRequest,
   getChatHistory,
   getChatPublicKey,
@@ -11,12 +12,12 @@ import {
   reportChatThread,
   sendChatTransfer,
   sendChatMessage,
+  unsendChatMessage,
   upsertChatPublicKey,
 } from "../services/chatApi.js";
 import { getAuthToken } from "../services/session.js";
 import {
   getWalletBalance,
-  sendPaymentVerificationCode,
 } from "../services/transactionApi.js";
 import {
   decryptChatPayload,
@@ -29,6 +30,7 @@ import {
   subscribeChatUnreadUpdates,
 } from "../services/chatUnread.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 function formatClock(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
@@ -149,6 +151,82 @@ function parseMessagePayload(messageType, plaintext) {
   };
 }
 
+function payloadFingerprint(payload) {
+  if (typeof payload === "string") {
+    return `str:${payload.trim()}`;
+  }
+
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const ciphertext = String(payload.ciphertext || "").trim();
+    const iv = String(payload.iv || "").trim();
+    const wrappedKey = String(payload.wrappedKey || "").trim();
+    if (ciphertext || iv || wrappedKey) {
+      return `enc:${ciphertext}|${iv}|${wrappedKey}`;
+    }
+    try {
+      return `obj:${JSON.stringify(payload)}`;
+    } catch {
+      return `obj:${Object.keys(payload).sort().join(",")}`;
+    }
+  }
+
+  return "";
+}
+
+function messagePayloadCandidates(message) {
+  const deduped = [];
+  const seen = new Set();
+
+  const append = (payload) => {
+    if (payload == null) return;
+    if (typeof payload === "string" && !payload.trim()) return;
+    if (
+      typeof payload !== "string" &&
+      (typeof payload !== "object" || Array.isArray(payload) || !Object.keys(payload).length)
+    ) {
+      return;
+    }
+
+    const fingerprint = payloadFingerprint(payload);
+    if (!fingerprint || seen.has(fingerprint)) return;
+    seen.add(fingerprint);
+    deduped.push(payload);
+  };
+
+  if (Array.isArray(message?.encryptedPayloadCandidates)) {
+    message.encryptedPayloadCandidates.forEach(append);
+  }
+  append(message?.encryptedPayload);
+
+  return deduped;
+}
+
+async function decryptPayloadFromMessage({
+  message,
+  privateKeyJwk,
+  privateKeyJwks,
+}) {
+  const candidates = messagePayloadCandidates(message);
+  if (!candidates.length) {
+    throw new Error("Encrypted payload is missing required fields.");
+  }
+
+  let lastError;
+  for (const payload of candidates) {
+    try {
+      return await decryptChatPayload({
+        payload,
+        privateKeyJwk,
+        privateKeyJwks,
+      });
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error("Unable to decrypt message payload.");
+}
+
 function requestStatusLabel(status) {
   const normalized = String(status || "").trim().toLowerCase();
   if (normalized === "paid") return "Paid";
@@ -181,6 +259,13 @@ function getFriendLastActivityAt(friend) {
 
 const CHAT_SYNC_INTERVAL_MS = 3000;
 const CHAT_SYNC_RETRY_MS = 1200;
+const TIMELINE_BOTTOM_THRESHOLD_PX = 80;
+
+function isNearTimelineBottom(node) {
+  if (!node) return true;
+  const distanceFromBottom = node.scrollHeight - node.clientHeight - node.scrollTop;
+  return distanceFromBottom <= TIMELINE_BOTTOM_THRESHOLD_PX;
+}
 
 export default function Chat() {
   const [searchParams] = useSearchParams();
@@ -232,6 +317,7 @@ export default function Chat() {
   const [sendingRequest, setSendingRequest] = useState(false);
   const [composerMode, setComposerMode] = useState("message");
   const [composerActionsOpen, setComposerActionsOpen] = useState(false);
+  const [messageActionBusyId, setMessageActionBusyId] = useState("");
 
   const [peerPublicKeys, setPeerPublicKeys] = useState({});
   const [reporting, setReporting] = useState(false);
@@ -244,10 +330,6 @@ export default function Chat() {
   const [requestModalError, setRequestModalError] = useState("");
   const [requestModalInfo, setRequestModalInfo] = useState("");
   const [requestModalLoading, setRequestModalLoading] = useState(false);
-  const [paymentCodeSending, setPaymentCodeSending] = useState(false);
-  const [paymentCodeChannel, setPaymentCodeChannel] = useState("email");
-  const [paymentCodeDestination, setPaymentCodeDestination] = useState("");
-  const [paymentCode, setPaymentCode] = useState("");
 
   const timelineRef = useRef(null);
   const composerActionsRef = useRef(null);
@@ -257,6 +339,9 @@ export default function Chat() {
   const friendSyncTimerRef = useRef(null);
   const friendSyncBusyRef = useRef(false);
   const friendPreviewByMessageRef = useRef({});
+  const plaintextCacheAttemptedRef = useRef(new Set());
+  const timelineStickToBottomRef = useRef(true);
+  const forceTimelineScrollRef = useRef(false);
   const unreadDividerSeedRef = useRef({
     peerUserId: "",
     seenMessageId: "",
@@ -423,7 +508,7 @@ export default function Chat() {
       return numericBalance;
     } catch (err) {
       setWalletBalance(null);
-      setWalletBalanceError(err.message || "Failed to load wallet balance.");
+      setWalletBalanceError(getUserErrorMessage(err, "Failed to load wallet balance."));
       return null;
     } finally {
       setWalletBalanceLoading(false);
@@ -457,7 +542,7 @@ export default function Chat() {
         setFriends(friendResponse?.friends || []);
       } catch (err) {
         if (isCancelled) return;
-        setFriendsError(err.message || "Failed to load chat.");
+        setFriendsError(getUserErrorMessage(err, "Failed to load chat."));
       } finally {
         if (!isCancelled) {
           setFriendsLoading(false);
@@ -474,6 +559,7 @@ export default function Chat() {
 
   useEffect(() => {
     friendPreviewByMessageRef.current = {};
+    plaintextCacheAttemptedRef.current = new Set();
     setFriendPreviewByPeer({});
     unreadDividerSeedRef.current = {
       peerUserId: "",
@@ -598,7 +684,7 @@ export default function Chat() {
         });
       } catch (err) {
         if (isCancelled) return;
-        setIdentityError(err.message || "Failed to initialize encrypted chat.");
+        setIdentityError(getUserErrorMessage(err, "Failed to initialize encrypted chat."));
       }
     }
 
@@ -640,6 +726,7 @@ export default function Chat() {
 
   useEffect(() => {
     setComposerActionsOpen(false);
+    setMessageActionBusyId("");
   }, [activeFriendId]);
 
   useEffect(() => {
@@ -734,8 +821,8 @@ export default function Chat() {
               : "Payment request";
         } else {
           try {
-            const plaintext = await decryptChatPayload({
-              payload: latestMessage.encryptedPayload,
+            const plaintext = await decryptPayloadFromMessage({
+              message: latestMessage,
               privateKeyJwk: identity.privateKeyJwk,
               privateKeyJwks: identity.privateKeyJwks,
             });
@@ -747,6 +834,22 @@ export default function Chat() {
               preview = String(decoded.text || "").trim() || "Message";
             }
           } catch {
+            const fallbackPlaintext = String(latestMessage?.plaintextFallback || "").trim();
+            if (fallbackPlaintext) {
+              const decoded = parseMessagePayload(
+                latestMessage.messageType,
+                fallbackPlaintext
+              );
+              if (decoded.kind === "request") {
+                const amount = String(decoded.amountEth || "").trim();
+                preview = amount ? `Request ${amount} ETH` : "Payment request";
+              } else {
+                preview = String(decoded.text || "").trim() || "Message";
+              }
+              friendPreviewByMessageRef.current[latestMessageId] = preview;
+              updates[peerId] = preview;
+              continue;
+            }
             preview =
               latestMessage.messageType === "request"
                 ? "Payment request"
@@ -802,6 +905,32 @@ export default function Chat() {
     return key;
   }
 
+  const persistMessagePlaintextFallback = useCallback(
+    async ({ threadId, messageId, plaintext }) => {
+      const normalizedThreadId = String(threadId || "").trim();
+      const normalizedMessageId = String(messageId || "").trim();
+      const normalizedPlaintext = String(plaintext || "").trim();
+      const token = getAuthToken();
+      if (!token || !normalizedThreadId || !normalizedMessageId || !normalizedPlaintext) return;
+      if (normalizedMessageId.startsWith("local-")) return;
+      if (plaintextCacheAttemptedRef.current.has(normalizedMessageId)) return;
+
+      plaintextCacheAttemptedRef.current.add(normalizedMessageId);
+      try {
+        await cacheChatMessagePlaintext({
+          token,
+          threadId: normalizedThreadId,
+          messageId: normalizedMessageId,
+          plaintextFallback: normalizedPlaintext,
+          trackRequest: false,
+        });
+      } catch {
+        plaintextCacheAttemptedRef.current.delete(normalizedMessageId);
+      }
+    },
+    []
+  );
+
   const loadHistory = useCallback(
     async ({
       threadId,
@@ -812,7 +941,8 @@ export default function Chat() {
     }) => {
       const token = getAuthToken();
       const normalizedThreadId = String(threadId || "").trim();
-      if (!token || !normalizedThreadId || !identityValue?.privateKeyJwk) return;
+      if (!token || !normalizedThreadId) return;
+      const viewerId = String(me?.id || "").trim();
       const loadSeq = ++historyLoadSeqRef.current;
 
       try {
@@ -833,10 +963,15 @@ export default function Chat() {
         const decryptedMessages = await Promise.all(
           (history?.messages || []).map(async (message) => {
             try {
-              const plaintext = await decryptChatPayload({
-                payload: message.encryptedPayload,
-                privateKeyJwk: identityValue.privateKeyJwk,
-                privateKeyJwks: identityValue.privateKeyJwks,
+              const plaintext = await decryptPayloadFromMessage({
+                message,
+                privateKeyJwk: identityValue?.privateKeyJwk,
+                privateKeyJwks: identityValue?.privateKeyJwks,
+              });
+              void persistMessagePlaintextFallback({
+                threadId: normalizedThreadId,
+                messageId: message?.id,
+                plaintext,
               });
 
               return {
@@ -844,46 +979,84 @@ export default function Chat() {
                 decoded: parseMessagePayload(message.messageType, plaintext),
               };
             } catch {
+              const isSender =
+                viewerId &&
+                String(message?.senderUserId || "").trim() === viewerId;
+              const fallbackPlaintext = String(message?.plaintextFallback || "").trim();
+              if (fallbackPlaintext) {
+                return {
+                  ...message,
+                  decoded: parseMessagePayload(message.messageType, fallbackPlaintext),
+                };
+              }
+              if (message?.messageType !== "request") {
+                return {
+                  ...message,
+                  decoded: isSender
+                    ? {
+                        kind: "failed",
+                        text: "This message failed to decrypt on your device.",
+                      }
+                    : {
+                        kind: "unavailable",
+                        text: "Message unavailable.",
+                      },
+                };
+              }
+
+              const fallbackAmount = message?.request?.amount;
+              const fallbackNote = String(message?.request?.note || "").trim();
+              const hasFallbackDetails =
+                (fallbackAmount != null && fallbackAmount !== "") || Boolean(fallbackNote);
+
+              if (!hasFallbackDetails) {
+                return {
+                  ...message,
+                  decoded: isSender
+                    ? {
+                        kind: "failed_request",
+                        text: "This payment request failed to decrypt on your device.",
+                      }
+                    : {
+                        kind: "request_unavailable",
+                        text: "Request unavailable.",
+                      },
+                };
+              }
+
               return {
                 ...message,
-                decoded:
-                  message?.messageType === "request"
-                    ? {
-                        kind: "request",
-                        amountEth: String(message?.request?.amount || ""),
-                        note: String(message?.request?.note || "Request details unavailable."),
-                      }
-                    : { kind: "text", text: "Encrypted message unavailable." },
+                decoded: {
+                  kind: "request",
+                  amountEth: String(fallbackAmount || ""),
+                  note: fallbackNote,
+                },
               };
             }
           })
         );
+        const visibleMessages = decryptedMessages.filter(Boolean);
 
         if (loadSeq !== historyLoadSeqRef.current) return;
-        setMessages(decryptedMessages);
+        setMessages(visibleMessages);
         setPayments(history?.payments || []);
         setTimelineInfo(history?.privacyNotice || "");
       } catch (err) {
         if (loadSeq !== historyLoadSeqRef.current) return;
-        setTimelineError(err.message || "Failed to load chat timeline.");
+        setTimelineError(getUserErrorMessage(err, "Failed to load chat timeline."));
       } finally {
         if (!silent && loadSeq === historyLoadSeqRef.current) {
           setTimelineLoading(false);
         }
       }
     },
-    []
+    [me?.id, persistMessagePlaintextFallback]
   );
 
   const openFriendThread = useCallback(async (friend) => {
     const token = getAuthToken();
     if (!token) {
       setTimelineError("You must be logged in.");
-      return;
-    }
-
-    if (!identity?.privateKeyJwk) {
-      setTimelineError("Encrypted chat is not ready yet.");
       return;
     }
 
@@ -940,7 +1113,7 @@ export default function Chat() {
         });
       }
     } catch (err) {
-      setTimelineError(err.message || "Failed to open chat thread.");
+      setTimelineError(getUserErrorMessage(err, "Failed to open chat thread."));
     }
   }, [identity, loadHistory, me?.id]);
 
@@ -965,7 +1138,7 @@ export default function Chat() {
       setRequestedFriendHandled(true);
       return;
     }
-    if (friendsLoading || !identity?.privateKeyJwk) return;
+    if (friendsLoading) return;
     if (!requestedFriend) {
       setRequestedFriendHandled(true);
       setTimelineError("Requested friend is not in your chat-ready contacts.");
@@ -989,7 +1162,7 @@ export default function Chat() {
   ]);
 
   useEffect(() => {
-    if (!activeThreadId || !identity?.privateKeyJwk) return undefined;
+    if (!activeThreadId) return undefined;
     let isCancelled = false;
 
     async function syncHistory() {
@@ -1030,7 +1203,12 @@ export default function Chat() {
   }, [activeThreadId, identity, loadHistory]);
 
   useEffect(() => {
-    if (!activeThreadId || !identity?.privateKeyJwk) return undefined;
+    timelineStickToBottomRef.current = true;
+    forceTimelineScrollRef.current = true;
+  }, [activeThreadId]);
+
+  useEffect(() => {
+    if (!activeThreadId) return undefined;
 
     const syncNow = () => {
       if (historySyncBusyRef.current) return;
@@ -1061,10 +1239,20 @@ export default function Chat() {
     };
   }, [activeThreadId, identity, loadHistory]);
 
+  const handleTimelineScroll = useCallback(() => {
+    const node = timelineRef.current;
+    if (!node) return;
+    timelineStickToBottomRef.current = isNearTimelineBottom(node);
+  }, []);
+
   useEffect(() => {
     const node = timelineRef.current;
     if (!node) return;
+    const shouldScroll = forceTimelineScrollRef.current || timelineStickToBottomRef.current;
+    if (!shouldScroll) return;
     node.scrollTop = node.scrollHeight;
+    timelineStickToBottomRef.current = true;
+    forceTimelineScrollRef.current = false;
   }, [timeline, activeThreadId]);
 
   async function sendEncryptedPayload({
@@ -1102,6 +1290,7 @@ export default function Chat() {
         messageType,
         payloadForSender: encrypted.payloadForSender,
         payloadForRecipient: encrypted.payloadForRecipient,
+        plaintextFallback: plaintext,
         requestAmount: requestAmountValue,
         requestNote: requestNoteValue,
         trackRequest: false,
@@ -1115,7 +1304,7 @@ export default function Chat() {
       });
       return true;
     } catch (err) {
-      setTimelineError(err.message || "Failed to send message.");
+      setTimelineError(getUserErrorMessage(err, "Failed to send message."));
       return false;
     }
   }
@@ -1126,6 +1315,7 @@ export default function Chat() {
     const text = chatInput.trim();
     if (!text) return;
 
+    forceTimelineScrollRef.current = true;
     const localMessageId = createLocalMessageId();
     setMessages((current) => [
       ...current,
@@ -1165,6 +1355,50 @@ export default function Chat() {
     setChatInput("");
   }
 
+  async function handleUnsendFailedMessage(message) {
+    const token = getAuthToken();
+    if (!token) {
+      setTimelineError("You must be logged in.");
+      return;
+    }
+
+    const threadId = String(activeThread?.id || "").trim();
+    const messageId = String(message?.id || "").trim();
+    if (!threadId || !messageId) {
+      setTimelineError("Unable to unsend this message.");
+      return;
+    }
+
+    setMessageActionBusyId(messageId);
+    try {
+      await unsendChatMessage({
+        token,
+        threadId,
+        messageId,
+        trackRequest: false,
+      });
+
+      setMessages((current) =>
+        current.filter((currentMessage) => String(currentMessage?.id || "") !== messageId)
+      );
+      setTimelineInfo("Message unsent.");
+
+      if (identity?.privateKeyJwk) {
+        await loadHistory({
+          threadId,
+          identityValue: identity,
+          silent: true,
+          trackRequest: false,
+          clearError: false,
+        });
+      }
+    } catch (err) {
+      setTimelineError(getUserErrorMessage(err, "Failed to unsend message."));
+    } finally {
+      setMessageActionBusyId((current) => (current === messageId ? "" : current));
+    }
+  }
+
   async function handleSendRequest(event) {
     event.preventDefault();
     if (transferBlockReason) {
@@ -1177,6 +1411,7 @@ export default function Chat() {
       return;
     }
     const trimmedNote = requestNote.trim();
+    forceTimelineScrollRef.current = true;
     const localMessageId = createLocalMessageId();
     setMessages((current) => [
       ...current,
@@ -1290,6 +1525,7 @@ export default function Chat() {
       setSendNote("");
       setComposerMode("message");
       setTimelineInfo("Payment sent.");
+      forceTimelineScrollRef.current = true;
       await loadHistory({
         threadId: activeThread.id,
         identityValue: identity,
@@ -1298,7 +1534,7 @@ export default function Chat() {
       });
       await refreshWalletBalance();
     } catch (err) {
-      setTimelineError(err.message || "Failed to send payment.");
+      setTimelineError(getUserErrorMessage(err, "Failed to send payment."));
     } finally {
       setSendingTransfer(false);
     }
@@ -1322,7 +1558,7 @@ export default function Chat() {
       });
       setTimelineInfo("Chat report submitted.");
     } catch (err) {
-      setTimelineError(err.message || "Failed to submit report.");
+      setTimelineError(getUserErrorMessage(err, "Failed to submit report."));
     } finally {
       setReporting(false);
     }
@@ -1337,6 +1573,7 @@ export default function Chat() {
     setTimelineError("");
     setComposerMode("message");
     setComposerActionsOpen(false);
+    setMessageActionBusyId("");
     closeRequestModal();
   }
 
@@ -1345,9 +1582,6 @@ export default function Chat() {
     setRequestModalError("");
     setRequestModalInfo("");
     setRequestModalLoading(false);
-    setPaymentCodeSending(false);
-    setPaymentCodeDestination("");
-    setPaymentCode("");
   }
 
   function openRequestModal(requestData) {
@@ -1361,36 +1595,7 @@ export default function Chat() {
     });
     setRequestModalError("");
     setRequestModalInfo("");
-    setPaymentCode("");
-    setPaymentCodeDestination("");
-    setPaymentCodeChannel("email");
     refreshWalletBalance();
-  }
-
-  async function handleSendPaymentCode() {
-    const token = getAuthToken();
-    if (!token) {
-      setRequestModalError("You must be logged in.");
-      return;
-    }
-
-    try {
-      setPaymentCodeSending(true);
-      setRequestModalError("");
-      setRequestModalInfo("");
-      const response = await sendPaymentVerificationCode({
-        token,
-        verificationChannel: paymentCodeChannel,
-      });
-      setPaymentCodeDestination(String(response?.destination || "").trim());
-      setRequestModalInfo(
-        `Verification code sent via ${response?.verificationChannel || paymentCodeChannel}.`
-      );
-    } catch (err) {
-      setRequestModalError(err.message || "Failed to send verification code.");
-    } finally {
-      setPaymentCodeSending(false);
-    }
   }
 
   async function handlePayRequestFromModal() {
@@ -1414,12 +1619,6 @@ export default function Chat() {
       return;
     }
 
-    const normalizedCode = String(paymentCode || "").trim();
-    if (normalizedCode.length < 6) {
-      setRequestModalError("Enter the 6-digit verification code to continue.");
-      return;
-    }
-
     const token = getAuthToken();
     if (!token) {
       setRequestModalError("You must be logged in.");
@@ -1434,7 +1633,6 @@ export default function Chat() {
         token,
         threadId: activeThread.id,
         requestId: requestModal.id,
-        verificationCode: normalizedCode,
       });
       setRequestModal((current) =>
         current
@@ -1444,8 +1642,6 @@ export default function Chat() {
             }
           : current
       );
-      setPaymentCode("");
-      setPaymentCodeDestination("");
       setRequestModalInfo("Payment sent successfully.");
       await loadHistory({
         threadId: activeThread.id,
@@ -1454,7 +1650,7 @@ export default function Chat() {
       });
       await refreshWalletBalance();
     } catch (err) {
-      setRequestModalError(err.message || "Failed to send payment for request.");
+      setRequestModalError(getUserErrorMessage(err, "Failed to send payment for request."));
     } finally {
       setRequestModalLoading(false);
     }
@@ -1492,7 +1688,7 @@ export default function Chat() {
         silent: true,
       });
     } catch (err) {
-      setRequestModalError(err.message || "Failed to cancel request.");
+      setRequestModalError(getUserErrorMessage(err, "Failed to cancel request."));
     } finally {
       setRequestModalLoading(false);
     }
@@ -1756,6 +1952,7 @@ export default function Chat() {
 
                 <div
                   ref={timelineRef}
+                  onScroll={handleTimelineScroll}
                   className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-white px-4 py-4 sm:px-6"
                 >
                   {timelineLoading && timeline.length === 0 ? (
@@ -1796,7 +1993,7 @@ export default function Chat() {
                                     isSent ? "text-purple-700" : "text-gray-700"
                                   }`}
                                 >
-                                  {isSent ? "\u2197 You sent" : "\u2198 You received"}
+                                  {isSent ? "You sent" : "You received"}
                                 </p>
                                 <p
                                   className={`mt-1 text-2xl font-semibold leading-none ${
@@ -1825,6 +2022,13 @@ export default function Chat() {
                       const isSendingMessage =
                         String(message.deliveryStatus || "").trim().toLowerCase() === "sending";
                       const decoded = message.decoded || { kind: "text", text: "" };
+                      const isFailedOutgoing = decoded.kind === "failed" && isMine;
+                      const isFailedOutgoingRequest =
+                        decoded.kind === "failed_request" && isMine;
+                      const isFailedOutgoingAny = isFailedOutgoing || isFailedOutgoingRequest;
+                      const isUnavailableRequest = decoded.kind === "request_unavailable";
+                      const isMessageActionBusy =
+                        String(messageActionBusyId || "") === String(message?.id || "");
                       const requestMeta = message.request || null;
                       const requestStatus = String(requestMeta?.status || "pending")
                         .trim()
@@ -1882,7 +2086,9 @@ export default function Chat() {
                                   : undefined
                               }
                               className={`max-w-[76%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
-                                isMine
+                                isFailedOutgoingAny
+                                  ? "border border-red-200 bg-red-50 text-red-700"
+                                  : isMine
                                   ? "bg-purple-600 text-white"
                                   : "border border-gray-200 bg-gray-100 text-gray-900"
                               } ${
@@ -1944,15 +2150,55 @@ export default function Chat() {
                                     ) : null}
                                   </div>
                                 </div>
+                              ) : isFailedOutgoingAny ? (
+                                <div>
+                                  <p className="font-medium">
+                                    {decoded.text ||
+                                      (isFailedOutgoingRequest
+                                        ? "This payment request failed to decrypt."
+                                        : "This message failed to decrypt.")}
+                                  </p>
+                                  <p className="mt-1 text-[12px] text-red-600">
+                                    You can unsend this failed message.
+                                  </p>
+                                  <div className="mt-2 flex items-center justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleUnsendFailedMessage(message);
+                                      }}
+                                      disabled={isMessageActionBusy}
+                                      className="rounded-full border border-red-300 bg-red-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                                    >
+                                      Unsend
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : isUnavailableRequest ? (
+                                <div>
+                                  <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">
+                                    Payment request
+                                  </p>
+                                  <p className="mt-1 text-sm text-gray-600">
+                                    {decoded.text || "Request unavailable."}
+                                  </p>
+                                </div>
                               ) : (
                                 <p className="whitespace-pre-wrap break-words">{decoded.text}</p>
                               )}
                               <p
                                 className={`mt-2 text-[11px] ${
-                                  isMine ? "text-purple-100" : "text-gray-500"
+                                  isFailedOutgoingAny
+                                    ? "text-red-600"
+                                    : isMine
+                                    ? "text-purple-100"
+                                    : "text-gray-500"
                                 }`}
                               >
-                                {isSendingMessage ? (
+                                {isFailedOutgoingAny ? (
+                                  `Failed | ${formatClock(message.createdAt)}`
+                                ) : isSendingMessage ? (
                                   <span className="inline-flex items-center gap-1.5">
                                     <svg
                                       aria-hidden="true"
@@ -2298,44 +2544,6 @@ export default function Chat() {
             {!requestModal.isRequester &&
             String(requestModal.status || "").trim().toLowerCase() === "pending" ? (
               <div className="mt-3 space-y-2">
-                <div className="grid gap-2 sm:grid-cols-[1fr,auto]">
-                  <select
-                    value={paymentCodeChannel}
-                    onChange={(event) => setPaymentCodeChannel(event.target.value)}
-                    className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-gray-400 focus:outline-none"
-                  >
-                    <option value="email">Email</option>
-                    {String(me?.phoneNumber || "").trim() ? (
-                      <option value="phone">Phone</option>
-                    ) : null}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleSendPaymentCode}
-                    disabled={paymentCodeSending}
-                    className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                  >
-                    {paymentCodeSending ? "Sending code..." : "Send code"}
-                  </button>
-                </div>
-
-                {paymentCodeDestination ? (
-                  <p className="text-xs text-gray-600">
-                    Code sent to <span className="font-semibold">{paymentCodeDestination}</span>
-                  </p>
-                ) : null}
-
-                <input
-                  type="text"
-                  value={paymentCode}
-                  onChange={(event) =>
-                    setPaymentCode(String(event.target.value || "").replace(/\D/g, ""))
-                  }
-                  maxLength={6}
-                  placeholder="6-digit verification code"
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm tracking-[0.2em] text-gray-900 focus:border-gray-400 focus:outline-none"
-                />
-
                 <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                   {walletBalanceLoading ? (
                     <p className="text-xs text-gray-500">Checking balance...</p>
@@ -2384,8 +2592,7 @@ export default function Chat() {
                     requestModalLoading ||
                     walletBalanceLoading ||
                     !Number.isFinite(walletBalance) ||
-                    Number(requestModal.amount) > Number(walletBalance) ||
-                    String(paymentCode || "").trim().length < 6
+                    Number(requestModal.amount) > Number(walletBalance)
                   }
                   className="rounded-full bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
                 >

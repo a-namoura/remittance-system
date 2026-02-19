@@ -74,6 +74,7 @@ export async function sendChatMessage({
   messageType,
   payloadForSender,
   payloadForRecipient,
+  plaintextFallback,
   requestAmount,
   requestNote,
   trackRequest = true,
@@ -93,9 +94,61 @@ export async function sendChatMessage({
         messageType,
         payloadForSender,
         payloadForRecipient,
+        plaintextFallback,
         requestAmount,
         requestNote,
       },
+      trackRequest,
+    }
+  );
+}
+
+export async function cacheChatMessagePlaintext({
+  token,
+  threadId,
+  messageId,
+  plaintextFallback,
+  trackRequest = true,
+} = {}) {
+  const normalizedThreadId = String(threadId || "").trim();
+  const normalizedMessageId = String(messageId || "").trim();
+  const normalizedPlaintext = String(plaintextFallback || "").trim();
+  if (!normalizedThreadId || !normalizedMessageId || !normalizedPlaintext) {
+    throw new Error("threadId, messageId and plaintextFallback are required");
+  }
+
+  return apiRequest(
+    `/api/chats/threads/${encodeURIComponent(
+      normalizedThreadId
+    )}/messages/${encodeURIComponent(normalizedMessageId)}/plaintext`,
+    {
+      method: "POST",
+      token,
+      body: { plaintextFallback: normalizedPlaintext },
+      trackRequest,
+    }
+  );
+}
+
+export async function unsendChatMessage({
+  token,
+  threadId,
+  messageId,
+  trackRequest = true,
+} = {}) {
+  const normalizedThreadId = String(threadId || "").trim();
+  const normalizedMessageId = String(messageId || "").trim();
+  if (!normalizedThreadId || !normalizedMessageId) {
+    throw new Error("threadId and messageId are required");
+  }
+
+  return apiRequest(
+    `/api/chats/threads/${encodeURIComponent(
+      normalizedThreadId
+    )}/messages/${encodeURIComponent(normalizedMessageId)}`,
+    {
+      method: "DELETE",
+      token,
       trackRequest,
     }
   );
@@ -131,7 +184,6 @@ export async function payChatRequest({
   token,
   threadId,
   requestId,
-  verificationCode,
 } = {}) {
   const normalizedThreadId = String(threadId || "").trim();
   const normalizedRequestId = String(requestId || "").trim();
@@ -146,7 +198,6 @@ export async function payChatRequest({
     {
       method: "POST",
       token,
-      body: { verificationCode },
     }
   );
 }
