@@ -2,6 +2,7 @@
 import { clearAuthToken, getAuthToken } from "./session.js";
 import { emitRequestEvent } from "./requestEvents.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 const API_URL =
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
@@ -99,7 +100,10 @@ export async function apiRequest(
         clearAuthToken();
       }
 
-      const message = data.message || `Request failed (${response.status})`;
+      const message = getUserErrorMessage(
+        data?.message,
+        `Request failed (${response.status})`
+      );
       const error = new Error(message);
       error.status = response.status;
       error.data = data;
@@ -139,7 +143,7 @@ export async function apiRequest(
         requestId,
         path: normalizePath(path),
         method: String(method || "GET").toUpperCase(),
-        message: error?.message || "Network request failed.",
+        message: getUserErrorMessage(error, "Network request failed."),
         status: error?.status,
       });
     }

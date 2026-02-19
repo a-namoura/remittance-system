@@ -6,6 +6,7 @@ import { formatDateOnly, formatDateTime } from "../utils/datetime.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 function StatCard({ label, value, sub }) {
   return (
     <div className="rounded-2xl border bg-white p-4">
@@ -69,7 +70,7 @@ export default function Admin() {
         setUsers(usersRes.users || []);
       } catch (err) {
         if (isCancelled) return;
-        setError(err.message || "Failed to load admin dashboard.");
+        setError(getUserErrorMessage(err, "Failed to load admin dashboard."));
       } finally {
         if (!isCancelled) {
           setLoading(false);
@@ -129,7 +130,7 @@ export default function Admin() {
         };
       });
     } catch (err) {
-      setUsersError(err.message || "Failed to update user status.");
+      setUsersError(getUserErrorMessage(err, "Failed to update user status."));
     } finally {
       setTogglingUserId(null);
     }

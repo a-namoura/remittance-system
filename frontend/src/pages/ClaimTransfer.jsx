@@ -6,6 +6,7 @@ import {
 } from "../services/transactionApi.js";
 import { getAuthToken } from "../services/session.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 export default function ClaimTransfer() {
   const [searchParams] = useSearchParams();
   const token = String(searchParams.get("token") || "").trim();
@@ -40,7 +41,7 @@ export default function ClaimTransfer() {
       } catch (err) {
         if (isCancelled) return;
         setStatus("invalid");
-        setError(err.message || "Unable to load transfer link.");
+        setError(getUserErrorMessage(err, "Unable to load transfer link."));
       } finally {
         if (!isCancelled) {
           setLoading(false);
@@ -77,7 +78,7 @@ export default function ClaimTransfer() {
       );
       setStatus("claimed");
     } catch (err) {
-      setError(err.message || "Failed to claim transfer.");
+      setError(getUserErrorMessage(err, "Failed to claim transfer."));
     } finally {
       setClaiming(false);
     }

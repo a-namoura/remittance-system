@@ -10,6 +10,7 @@ import {
   isPasswordPolicySatisfied,
 } from "../utils/passwordPolicy.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 const STEPS = {
   ACCOUNT: "account",
   PASSWORD: "password",
@@ -330,7 +331,7 @@ export default function Register() {
       setShowPassword(false);
       setCooldown(RESEND_DELAY);
     } catch (err) {
-      setError(err.message || "Failed to send code.");
+      setError(getUserErrorMessage(err, "Failed to send code."));
     } finally {
       setLoading(false);
     }
@@ -363,7 +364,7 @@ export default function Register() {
       setInfo("Email verified successfully. Now create your password.");
       setStep(STEPS.PASSWORD);
     } catch (err) {
-      setError(err.message || "Verification failed.");
+      setError(getUserErrorMessage(err, "Verification failed."));
     } finally {
       setLoading(false);
     }
@@ -555,7 +556,7 @@ export default function Register() {
 
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      setError(err.message || "Registration failed.");
+      setError(getUserErrorMessage(err, "Registration failed."));
     } finally {
       setLoading(false);
     }

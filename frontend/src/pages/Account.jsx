@@ -9,6 +9,7 @@ import {
   writeWalletState,
 } from "../services/session.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 function badgeClass(ok) {
   return ok ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700";
 }
@@ -155,7 +156,7 @@ export default function Account() {
         }
       } catch (err) {
         if (isCancelled) return;
-        setError(err.message || "Failed to load account.");
+        setError(getUserErrorMessage(err, "Failed to load account."));
       } finally {
         if (!isCancelled) {
           setLoading(false);
@@ -234,7 +235,7 @@ export default function Account() {
         setSelectedCurrency(nextSelectedCurrency);
       } catch (err) {
         if (!isCancelled) {
-          setBalanceError(err.message || "Failed to load account balance.");
+          setBalanceError(getUserErrorMessage(err, "Failed to load account balance."));
           setAccountBalances({});
           setAvailableCurrencies([]);
           setSelectedCurrency("");

@@ -3,6 +3,7 @@ import { getCurrentUser } from "../services/authApi.js";
 import { getAuthToken, readWalletState, writeWalletState } from "../services/session.js";
 import { copyText, getQrImageUrl } from "../utils/paylink.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 function buildRequestLink({ walletAddress, amountEth, note, username }) {
   const params = new URLSearchParams();
   params.set("request", "1");
@@ -54,7 +55,7 @@ export default function RequestMoney() {
         setMe(meResponse || null);
       } catch (err) {
         if (isCancelled) return;
-        setPageError(err.message || "Failed to load request page.");
+        setPageError(getUserErrorMessage(err, "Failed to load request page."));
       } finally {
         if (!isCancelled) {
           setPageLoading(false);

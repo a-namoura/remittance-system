@@ -3,6 +3,7 @@ import { apiRequest } from "../services/api.js";
 import { getAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 export default function AdminAuditLogs() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +30,7 @@ export default function AdminAuditLogs() {
         setLogs(data.logs || []);
       } catch (err) {
         if (isCancelled) return;
-        setError(err.message || "Failed to load audit logs.");
+        setError(getUserErrorMessage(err, "Failed to load audit logs."));
       } finally {
         if (!isCancelled) {
           setLoading(false);

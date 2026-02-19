@@ -6,6 +6,7 @@ import {
 } from "../services/walletApi.js";
 import { getAuthToken } from "../services/session.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 export default function ConnectWalletButton({
   connected,
   onLinked,
@@ -84,7 +85,7 @@ export default function ConnectWalletButton({
         onLinked(normalizedAddress);
       }
     } catch (err) {
-      setError(err.message || "Failed to connect wallet.");
+      setError(getUserErrorMessage(err, "Failed to connect wallet."));
     } finally {
       setLoading(false);
     }
@@ -108,7 +109,7 @@ export default function ConnectWalletButton({
         onDisconnected();
       }
     } catch (err) {
-      setError(err.message || "Failed to unlink wallet.");
+      setError(getUserErrorMessage(err, "Failed to unlink wallet."));
     } finally {
       setLoading(false);
     }

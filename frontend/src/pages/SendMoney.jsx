@@ -13,6 +13,7 @@ import { searchUsers } from "../services/userApi.js";
 import { isValidEvmAddress } from "../utils/security.js";
 import { copyText, getQrImageUrl, shortWallet } from "../utils/paylink.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 const PAYMENT_OPTIONS = [
   { id: "bank", label: "Bank" },
   { id: "card", label: "Card" },
@@ -296,7 +297,7 @@ export default function SendMoney() {
         setFriends(response.friends || []);
       } catch (err) {
         if (isCancelled) return;
-        setPageError(err.message || "Failed to load friends.");
+        setPageError(getUserErrorMessage(err, "Failed to load friends."));
       } finally {
         if (!isCancelled) {
           setLoadingFriends(false);
@@ -358,7 +359,7 @@ export default function SendMoney() {
       } catch (err) {
         if (isCancelled) return;
         setAvailableBalance(null);
-        setBalanceError(err.message || "Failed to load wallet balance.");
+        setBalanceError(getUserErrorMessage(err, "Failed to load wallet balance."));
       } finally {
         if (!isCancelled) {
           setBalanceLoading(false);
@@ -424,7 +425,7 @@ export default function SendMoney() {
       } catch (err) {
         if (isCancelled) return;
         setAccounts([]);
-        setAccountError(err.message || "Failed to load search results.");
+        setAccountError(getUserErrorMessage(err, "Failed to load search results."));
       } finally {
         if (!isCancelled) {
           setLoadingAccounts(false);
@@ -510,7 +511,7 @@ export default function SendMoney() {
       setMethodSuccess(`${response.friend.label} added to friends.`);
       setIsSearchOpen(false);
     } catch (err) {
-      setMethodError(err.message || "Failed to add friend.");
+      setMethodError(getUserErrorMessage(err, "Failed to add friend."));
     } finally {
       setAddingFriendId("");
     }
@@ -676,7 +677,7 @@ export default function SendMoney() {
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
-      setMethodError(err.message || "Failed to send transaction.");
+      setMethodError(getUserErrorMessage(err, "Failed to send transaction."));
     } finally {
       setSending(false);
     }
@@ -723,7 +724,7 @@ export default function SendMoney() {
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
-      setMethodError(err.message || "Failed to send transaction.");
+      setMethodError(getUserErrorMessage(err, "Failed to send transaction."));
     } finally {
       setSending(false);
     }
@@ -786,7 +787,7 @@ export default function SendMoney() {
       setGeneratedLink(url);
       setMethodSuccess("Link created. Share it with the receiver to claim funds.");
     } catch (err) {
-      setMethodError(err.message || "Failed to generate link.");
+      setMethodError(getUserErrorMessage(err, "Failed to generate link."));
     } finally {
       setLinkLoading(false);
     }
@@ -851,7 +852,7 @@ export default function SendMoney() {
         );
       }
     } catch (err) {
-      setMethodError(err.message || "Failed to send verification code.");
+      setMethodError(getUserErrorMessage(err, "Failed to send verification code."));
     } finally {
       setCodeSending(false);
     }

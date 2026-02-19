@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { getCurrentUser } from "../services/authApi.js";
 import { getAuthToken } from "../services/session.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 export default function AdminRoute({ children }) {
   const token = getAuthToken();
   const [loading, setLoading] = useState(true);
@@ -38,7 +39,7 @@ export default function AdminRoute({ children }) {
       } catch (err) {
         if (isCancelled) return;
         setIsAdmin(false);
-        setError(err.message || "Failed to verify permissions.");
+        setError(getUserErrorMessage(err, "Failed to verify permissions."));
       } finally {
         if (!isCancelled) {
           setLoading(false);

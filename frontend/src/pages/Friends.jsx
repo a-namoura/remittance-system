@@ -6,6 +6,7 @@ import { searchUsers } from "../services/userApi.js";
 import { formatDateOnly } from "../utils/datetime.js";
 import { isValidEvmAddress } from "../utils/security.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 const MAX_FRIEND_NAME = 80;
 const MAX_FRIEND_USERNAME = 40;
 const MAX_FRIEND_NOTES = 280;
@@ -72,7 +73,7 @@ export default function Friends() {
         setFriends(data.friends || []);
       } catch (err) {
         if (isCancelled) return;
-        setError(err.message || "Failed to load friends.");
+        setError(getUserErrorMessage(err, "Failed to load friends."));
       } finally {
         if (!isCancelled) {
           setLoading(false);
@@ -101,7 +102,7 @@ export default function Friends() {
       await deleteFriend({ token, id: friendId });
       setFriends((prev) => prev.filter((friend) => String(friend.id) !== String(friendId)));
     } catch (err) {
-      setError(err.message || "Failed to remove friend.");
+      setError(getUserErrorMessage(err, "Failed to remove friend."));
     }
   }
 
@@ -186,7 +187,7 @@ export default function Friends() {
       }
       closeModal();
     } catch (err) {
-      setModalError(err.message || "Failed to save friend.");
+      setModalError(getUserErrorMessage(err, "Failed to save friend."));
     } finally {
       setSaving(false);
     }
@@ -237,7 +238,7 @@ export default function Friends() {
       } catch (err) {
         if (isCancelled) return;
         setAccountResults([]);
-        setAccountError(err.message || "Failed to search app accounts.");
+        setAccountError(getUserErrorMessage(err, "Failed to search app accounts."));
       } finally {
         if (!isCancelled) {
           setAccountLoading(false);

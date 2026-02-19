@@ -4,6 +4,7 @@ import { apiRequest } from "../services/api.js";
 import AuthCard from "../components/AuthCard.jsx";
 import { clearAuthToken, setAuthToken } from "../services/session.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 const STEPS = {
   CREDENTIALS: "credentials",
   CHANNEL: "channel",
@@ -144,7 +145,7 @@ export default function Login() {
       resetVerificationState();
       setStep(STEPS.CHANNEL);
     } catch (err) {
-      setError(err.message || "Login failed.");
+      setError(getUserErrorMessage(err, "Login failed."));
     } finally {
       setLoading(false);
     }
@@ -187,7 +188,7 @@ export default function Login() {
       setCooldown(RESEND_DELAY);
       setStep(STEPS.CODE);
     } catch (err) {
-      const message = err.message || "Login failed.";
+      const message = getUserErrorMessage(err, "Login failed.");
       if (message.toLowerCase().includes("no phone number")) {
         setAvailableChannels((prev) => ({ ...prev, phone: false }));
         setVerificationChannel(CHANNELS.EMAIL);
@@ -229,7 +230,7 @@ export default function Login() {
       setAuthToken(pendingToken);
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      setError(err.message || "Code verification failed.");
+      setError(getUserErrorMessage(err, "Code verification failed."));
     } finally {
       setLoading(false);
     }
@@ -249,7 +250,7 @@ export default function Login() {
       setDeliveryHint(res.destination || deliveryHint);
       setCooldown(RESEND_DELAY);
     } catch (err) {
-      setError(err.message || "Failed to resend code.");
+      setError(getUserErrorMessage(err, "Failed to resend code."));
     } finally {
       setLoading(false);
     }

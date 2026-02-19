@@ -6,6 +6,7 @@ import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx
 import { apiRequest } from "../services/api.js";
 import { getPasswordPolicyError } from "../utils/passwordPolicy.js";
 
+import { getUserErrorMessage } from "../utils/userError.js";
 const STEPS = {
   IDENTIFIER: "identifier",
   CHANNEL: "channel",
@@ -142,7 +143,7 @@ export default function ForgotPassword() {
       setCooldown(0);
       setStep(STEPS.CHANNEL);
     } catch (err) {
-      setError(err.message || "Could not find the account.");
+      setError(getUserErrorMessage(err, "Could not find the account."));
     } finally {
       setLoading(false);
     }
@@ -184,7 +185,7 @@ export default function ForgotPassword() {
       setCooldown(RESEND_DELAY);
       setStep(STEPS.CODE);
     } catch (err) {
-      const message = err.message || "Failed to send verification code.";
+      const message = getUserErrorMessage(err, "Failed to send verification code.");
       if (message.toLowerCase().includes("no phone number")) {
         setAvailableChannels((previous) => ({ ...previous, phone: false }));
         setVerificationChannel(CHANNELS.EMAIL);
@@ -228,7 +229,7 @@ export default function ForgotPassword() {
       setCooldown(0);
       setStep(STEPS.PASSWORD);
     } catch (err) {
-      setError(err.message || "Code verification failed.");
+      setError(getUserErrorMessage(err, "Code verification failed."));
     } finally {
       setLoading(false);
     }
@@ -252,7 +253,7 @@ export default function ForgotPassword() {
       setDeliveryHint(response.destination || deliveryHint);
       setCooldown(RESEND_DELAY);
     } catch (err) {
-      setError(err.message || "Failed to resend code.");
+      setError(getUserErrorMessage(err, "Failed to resend code."));
     } finally {
       setLoading(false);
     }
@@ -297,7 +298,7 @@ export default function ForgotPassword() {
 
       setTimeout(() => navigate("/login", { replace: true }), 1200);
     } catch (err) {
-      setError(err.message || "Failed to reset password.");
+      setError(getUserErrorMessage(err, "Failed to reset password."));
     } finally {
       setLoading(false);
     }
