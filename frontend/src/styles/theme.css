@@ -1,0 +1,421 @@
+@layer base {
+  /* Dark theme tokens for utility remapping on legacy light-first classes. */
+  .dark {
+    --rm-surface-0: 17 24 39;
+    --rm-surface-1: 30 41 59;
+    --rm-surface-2: 51 65 85;
+    --rm-surface-3: 71 85 105;
+    --rm-surface-4: 100 116 139;
+
+    --rm-text-strong: 241 245 249;
+    --rm-text-default: 203 213 225;
+    --rm-text-muted: 148 163 184;
+    --rm-text-subtle: 100 116 139;
+
+    --rm-border-soft: 51 65 85;
+    --rm-border-default: 71 85 105;
+    --rm-border-strong: 100 116 139;
+
+    --rm-ring-neutral: 71 85 105;
+    --rm-ring-accent: 99 102 241;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: rgb(var(--rm-text-muted) / 0.95) !important;
+  }
+
+  /* Neutral surfaces */
+  .dark :where(.bg-white) {
+    background-color: rgb(var(--rm-surface-0)) !important;
+  }
+
+  .dark :where(.bg-white\/95) {
+    background-color: rgb(var(--rm-surface-0) / 0.95) !important;
+  }
+
+  .dark :where(.bg-white\/90) {
+    background-color: rgb(var(--rm-surface-0) / 0.9) !important;
+  }
+
+  .dark :where(.bg-white\/85) {
+    background-color: rgb(var(--rm-surface-0) / 0.85) !important;
+  }
+
+  .dark :where(.bg-gray-50) {
+    background-color: rgb(var(--rm-surface-1) / 0.45) !important;
+  }
+
+  .dark :where(.bg-gray-50\/60) {
+    background-color: rgb(var(--rm-surface-1) / 0.6) !important;
+  }
+
+  .dark :where(.bg-gray-100) {
+    background-color: rgb(var(--rm-surface-2) / 0.7) !important;
+  }
+
+  .dark :where(.bg-gray-200) {
+    background-color: rgb(var(--rm-surface-3) / 0.75) !important;
+  }
+
+  .dark :where(.bg-gray-300) {
+    background-color: rgb(var(--rm-surface-4) / 0.7) !important;
+  }
+
+  .dark :where(.bg-gray-400) {
+    background-color: rgb(var(--rm-surface-4) / 0.9) !important;
+  }
+
+  /* Neutral text */
+  .dark :where(.text-gray-900) {
+    color: rgb(var(--rm-text-strong)) !important;
+  }
+
+  .dark :where(.text-gray-800) {
+    color: rgb(226 232 240) !important;
+  }
+
+  .dark :where(.text-gray-700) {
+    color: rgb(var(--rm-text-default)) !important;
+  }
+
+  .dark :where(.text-gray-600, .text-gray-500) {
+    color: rgb(var(--rm-text-muted)) !important;
+  }
+
+  .dark :where(.text-gray-400) {
+    color: rgb(var(--rm-text-subtle)) !important;
+  }
+
+  /* Neutral borders/dividers/rings */
+  .dark :where(.border) {
+    border-color: rgb(var(--rm-border-default) / 0.8) !important;
+  }
+
+  .dark :where(.border-white) {
+    border-color: rgb(var(--rm-border-default) / 0.7) !important;
+  }
+
+  .dark :where(.border-gray-100) {
+    border-color: rgb(var(--rm-border-soft) / 0.75) !important;
+  }
+
+  .dark :where(.border-gray-200) {
+    border-color: rgb(var(--rm-border-default) / 0.8) !important;
+  }
+
+  .dark :where(.border-gray-200\/70) {
+    border-color: rgb(var(--rm-border-default) / 0.72) !important;
+  }
+
+  .dark :where(.border-gray-300) {
+    border-color: rgb(var(--rm-border-strong) / 0.8) !important;
+  }
+
+  .dark :where(.border-gray-400) {
+    border-color: rgb(var(--rm-border-strong)) !important;
+  }
+
+  .dark :where(.divide-gray-100, .divide-gray-200) > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgb(var(--rm-border-soft) / 0.85) !important;
+  }
+
+  .dark :where(.ring-white) {
+    --tw-ring-color: rgb(var(--rm-ring-neutral) / 0.75) !important;
+  }
+
+  .dark :where(
+    .ring-indigo-100,
+    .ring-purple-200,
+    .ring-indigo-200,
+    .ring-sky-200,
+    .ring-emerald-200,
+    .ring-amber-200,
+    .ring-fuchsia-200
+  ) {
+    --tw-ring-color: rgb(var(--rm-ring-accent) / 0.3) !important;
+  }
+
+  /* Status and accent scales */
+  .dark :where(.bg-red-50) {
+    background-color: rgb(127 29 29 / 0.3) !important;
+  }
+
+  .dark :where(.bg-red-100) {
+    background-color: rgb(127 29 29 / 0.4) !important;
+  }
+
+  .dark :where(.border-red-100) {
+    border-color: rgb(153 27 27 / 0.5) !important;
+  }
+
+  .dark :where(.border-red-200) {
+    border-color: rgb(185 28 28 / 0.6) !important;
+  }
+
+  .dark :where(.border-red-300) {
+    border-color: rgb(220 38 38 / 0.55) !important;
+  }
+
+  .dark :where(.text-red-800, .text-red-700) {
+    color: rgb(252 165 165) !important;
+  }
+
+  .dark :where(.text-red-600) {
+    color: rgb(248 113 113) !important;
+  }
+
+  .dark :where(.bg-green-50) {
+    background-color: rgb(20 83 45 / 0.28) !important;
+  }
+
+  .dark :where(.bg-green-100) {
+    background-color: rgb(20 83 45 / 0.38) !important;
+  }
+
+  .dark :where(.border-green-100) {
+    border-color: rgb(21 128 61 / 0.45) !important;
+  }
+
+  .dark :where(.border-green-200) {
+    border-color: rgb(21 128 61 / 0.55) !important;
+  }
+
+  .dark :where(.text-green-800, .text-green-700, .text-green-600) {
+    color: rgb(134 239 172) !important;
+  }
+
+  .dark :where(.bg-blue-50) {
+    background-color: rgb(30 58 138 / 0.28) !important;
+  }
+
+  .dark :where(.bg-blue-100) {
+    background-color: rgb(30 58 138 / 0.38) !important;
+  }
+
+  .dark :where(.border-blue-200) {
+    border-color: rgb(37 99 235 / 0.55) !important;
+  }
+
+  .dark :where(.text-blue-700, .text-blue-600) {
+    color: rgb(147 197 253) !important;
+  }
+
+  .dark :where(.bg-purple-50) {
+    background-color: rgb(88 28 135 / 0.24) !important;
+  }
+
+  .dark :where(.bg-purple-100) {
+    background-color: rgb(88 28 135 / 0.34) !important;
+  }
+
+  .dark :where(.bg-purple-200) {
+    background-color: rgb(88 28 135 / 0.44) !important;
+  }
+
+  .dark :where(.border-purple-100) {
+    border-color: rgb(147 51 234 / 0.35) !important;
+  }
+
+  .dark :where(.border-purple-200) {
+    border-color: rgb(147 51 234 / 0.45) !important;
+  }
+
+  .dark :where(.border-purple-300) {
+    border-color: rgb(147 51 234 / 0.55) !important;
+  }
+
+  .dark :where(.border-purple-400) {
+    border-color: rgb(167 139 250 / 0.6) !important;
+  }
+
+  .dark :where(.border-purple-500, .border-purple-600) {
+    border-color: rgb(167 139 250 / 0.75) !important;
+  }
+
+  .dark :where(.text-purple-800, .text-purple-700, .text-purple-600, .text-purple-500) {
+    color: rgb(216 180 254) !important;
+  }
+
+  .dark :where(.bg-indigo-50) {
+    background-color: rgb(49 46 129 / 0.3) !important;
+  }
+
+  .dark :where(.bg-indigo-100) {
+    background-color: rgb(49 46 129 / 0.4) !important;
+  }
+
+  .dark :where(.border-indigo-200) {
+    border-color: rgb(79 70 229 / 0.5) !important;
+  }
+
+  .dark :where(.border-indigo-300) {
+    border-color: rgb(99 102 241 / 0.55) !important;
+  }
+
+  .dark :where(.text-indigo-800, .text-indigo-700) {
+    color: rgb(165 180 252) !important;
+  }
+
+  .dark :where(.bg-amber-50) {
+    background-color: rgb(120 53 15 / 0.3) !important;
+  }
+
+  .dark :where(.bg-amber-100) {
+    background-color: rgb(120 53 15 / 0.4) !important;
+  }
+
+  .dark :where(.border-amber-200) {
+    border-color: rgb(217 119 6 / 0.5) !important;
+  }
+
+  .dark :where(.border-amber-300) {
+    border-color: rgb(245 158 11 / 0.55) !important;
+  }
+
+  .dark :where(.text-amber-800, .text-amber-700, .text-amber-600) {
+    color: rgb(253 230 138) !important;
+  }
+
+  .dark :where(.bg-emerald-50) {
+    background-color: rgb(6 78 59 / 0.3) !important;
+  }
+
+  .dark :where(.bg-emerald-100) {
+    background-color: rgb(6 78 59 / 0.4) !important;
+  }
+
+  .dark :where(.border-emerald-200) {
+    border-color: rgb(5 150 105 / 0.5) !important;
+  }
+
+  .dark :where(.border-emerald-300) {
+    border-color: rgb(16 185 129 / 0.55) !important;
+  }
+
+  .dark :where(.text-emerald-800, .text-emerald-700) {
+    color: rgb(110 231 183) !important;
+  }
+
+  .dark :where(.bg-sky-50) {
+    background-color: rgb(12 74 110 / 0.3) !important;
+  }
+
+  .dark :where(.bg-sky-100) {
+    background-color: rgb(12 74 110 / 0.4) !important;
+  }
+
+  .dark :where(.border-sky-200) {
+    border-color: rgb(2 132 199 / 0.5) !important;
+  }
+
+  .dark :where(.border-sky-300) {
+    border-color: rgb(14 165 233 / 0.55) !important;
+  }
+
+  .dark :where(.text-sky-800, .text-sky-700) {
+    color: rgb(125 211 252) !important;
+  }
+
+  .dark :where(.bg-rose-100) {
+    background-color: rgb(136 19 55 / 0.36) !important;
+  }
+
+  .dark :where(.text-rose-700) {
+    color: rgb(253 164 175) !important;
+  }
+
+  .dark :where(.bg-violet-100) {
+    background-color: rgb(76 29 149 / 0.36) !important;
+  }
+
+  .dark :where(.text-violet-700) {
+    color: rgb(196 181 253) !important;
+  }
+
+  .dark :where(.bg-fuchsia-50) {
+    background-color: rgb(112 26 117 / 0.3) !important;
+  }
+
+  .dark :where(.bg-fuchsia-100) {
+    background-color: rgb(112 26 117 / 0.4) !important;
+  }
+
+  .dark :where(.border-fuchsia-200) {
+    border-color: rgb(192 38 211 / 0.5) !important;
+  }
+
+  .dark :where(.border-fuchsia-300) {
+    border-color: rgb(217 70 239 / 0.55) !important;
+  }
+
+  .dark :where(.text-fuchsia-800, .text-fuchsia-700) {
+    color: rgb(240 171 252) !important;
+  }
+
+  .dark :where(.bg-yellow-100) {
+    background-color: rgb(113 63 18 / 0.38) !important;
+  }
+
+  .dark :where(.text-yellow-800) {
+    color: rgb(253 224 71) !important;
+  }
+
+  /* Hover-state fallback for legacy light utilities */
+  .dark :where(.hover\:bg-gray-50:hover) {
+    background-color: rgb(var(--rm-surface-2) / 0.55) !important;
+  }
+
+  .dark :where(.hover\:bg-gray-100:hover) {
+    background-color: rgb(var(--rm-surface-3) / 0.65) !important;
+  }
+
+  .dark :where(.hover\:bg-gray-200:hover) {
+    background-color: rgb(var(--rm-surface-4) / 0.65) !important;
+  }
+
+  .dark :where(.hover\:bg-gray-50\/60:hover) {
+    background-color: rgb(var(--rm-surface-2) / 0.6) !important;
+  }
+
+  .dark :where(.hover\:bg-purple-50:hover) {
+    background-color: rgb(88 28 135 / 0.35) !important;
+  }
+
+  .dark :where(.hover\:bg-purple-100:hover) {
+    background-color: rgb(88 28 135 / 0.45) !important;
+  }
+
+  .dark :where(.hover\:bg-purple-200:hover) {
+    background-color: rgb(88 28 135 / 0.55) !important;
+  }
+
+  .dark :where(.hover\:bg-indigo-100:hover) {
+    background-color: rgb(49 46 129 / 0.5) !important;
+  }
+
+  .dark :where(.hover\:bg-blue-100:hover) {
+    background-color: rgb(30 58 138 / 0.45) !important;
+  }
+
+  .dark :where(.hover\:bg-red-50:hover) {
+    background-color: rgb(127 29 29 / 0.4) !important;
+  }
+
+  .dark :where(.hover\:bg-green-50:hover) {
+    background-color: rgb(20 83 45 / 0.38) !important;
+  }
+
+  .dark :where(.hover\:border-gray-200:hover) {
+    border-color: rgb(var(--rm-border-strong) / 0.8) !important;
+  }
+
+  .dark :where(.hover\:border-gray-300:hover) {
+    border-color: rgb(148 163 184 / 0.8) !important;
+  }
+
+  .dark :where(.hover\:border-purple-300:hover) {
+    border-color: rgb(167 139 250 / 0.7) !important;
+  }
+}
+

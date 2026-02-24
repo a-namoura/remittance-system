@@ -7,6 +7,7 @@ import {
   subscribeChatUnreadUpdates,
 } from "../services/chatUnread.js";
 import { clearSessionStorage, getAuthToken } from "../services/session.js";
+import ThemeToggle from "./ThemeToggle.jsx";
 
 function isActivePath(currentPath, targetPath) {
   if (targetPath === "/dashboard") {
@@ -294,88 +295,95 @@ export default function Navbar() {
             </Link>
           )}
 
-          {!loadingMe && !me && !isAuthPage && (
-            <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
+            <ThemeToggle />
+
+            {!loadingMe && !me && !isAuthPage && (
               <Link
                 to="/login"
                 className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
               >
                 Login
               </Link>
+            )}
+
+            {!loadingMe && !me && !isAuthPage && (
               <Link
                 to="/register"
                 className="rounded-full bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700"
               >
                 Register
               </Link>
-            </div>
-          )}
+            )}
 
-          {!loadingMe && me && (
-            <div className="flex shrink-0 items-center gap-2">
-              <Link
-                to="/chat"
-                aria-label={
-                  chatUnreadCount > 0
-                    ? `Open chat (${chatUnreadCount} unread)`
-                    : "Open chat"
-                }
-                title="Chat"
-                className={`relative inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition ${
-                  location.pathname.startsWith("/chat")
-                    ? "border-purple-600 bg-purple-600 text-white"
-                    : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"
-                }`}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+            {!loadingMe && me && (
+              <>
+                <Link
+                  to="/chat"
+                  aria-label={
+                    chatUnreadCount > 0
+                      ? `Open chat (${chatUnreadCount} unread)`
+                      : "Open chat"
+                  }
+                  title="Chat"
+                  className={`relative inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition ${
+                    location.pathname.startsWith("/chat")
+                      ? "border-purple-600 bg-purple-600 text-white"
+                      : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"
+                  }`}
                 >
-                  <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H9l-4.3 3.2A.5.5 0 0 1 4 18.8V6.5Z" />
-                  <path d="M8 8.5h8M8 11.5h5" />
-                </svg>
-                {chatUnreadCount > 0 ? (
-                  <>
-                    {pulseUnreadBadge ? (
-                      <span className="absolute -right-1 -top-1 inline-flex h-4 w-4 rounded-full bg-red-400 opacity-75 animate-ping" />
-                    ) : null}
-                    <span
-                      className={`absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-4 text-white transition-transform duration-150 ${
-                        pulseUnreadBadge ? "scale-110" : "scale-100"
-                      }`}
-                    >
-                      {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
-                    </span>
-                  </>
-                ) : null}
-              </Link>
-              <span
-                title={
-                  [me.firstName, me.lastName].filter(Boolean).join(" ").trim() ||
-                  me.username ||
-                  "User"
-                }
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-xs font-semibold text-white"
-              >
-                {profileInitials}
-              </span>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Logout
-              </button>
-            </div>
-          )}
+                  <svg
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H9l-4.3 3.2A.5.5 0 0 1 4 18.8V6.5Z" />
+                    <path d="M8 8.5h8M8 11.5h5" />
+                  </svg>
+                  {chatUnreadCount > 0 ? (
+                    <>
+                      {pulseUnreadBadge ? (
+                        <span className="absolute -right-1 -top-1 inline-flex h-4 w-4 rounded-full bg-red-400 opacity-75 animate-ping" />
+                      ) : null}
+                      <span
+                        className={`absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-4 text-white transition-transform duration-150 ${
+                          pulseUnreadBadge ? "scale-110" : "scale-100"
+                        }`}
+                      >
+                        {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                      </span>
+                    </>
+                  ) : null}
+                </Link>
+                <span
+                  title={
+                    [me.firstName, me.lastName].filter(Boolean).join(" ").trim() ||
+                    me.username ||
+                    "User"
+                  }
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-xs font-semibold text-white"
+                >
+                  {profileInitials}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Logout
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </header>
   );
 }
+
+

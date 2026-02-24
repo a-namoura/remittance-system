@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar.jsx";
+import ThemeToggle from "./components/ThemeToggle.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import GlobalRequestFeedback from "./components/GlobalRequestFeedback.jsx";
@@ -46,7 +47,14 @@ const ADMIN_ROUTES = [
 ];
 
 function PublicLayout({ children }) {
-  return <div className="min-h-screen bg-gray-50">{children}</div>;
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="fixed right-4 top-4 z-40">
+        <ThemeToggle />
+      </div>
+      {children}
+    </div>
+  );
 }
 
 function AuthenticatedLayout({ children }) {
@@ -111,3 +119,4 @@ export default function App() {
     </>
   );
 }
+
