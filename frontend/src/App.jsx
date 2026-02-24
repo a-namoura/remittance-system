@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
@@ -58,10 +59,29 @@ function PublicLayout({ children }) {
 }
 
 function AuthenticatedLayout({ children }) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("sidebar-collapsed") === "1";
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("sidebar-collapsed", sidebarCollapsed ? "1" : "0");
+  }, [sidebarCollapsed]);
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      {children}
+      <Navbar
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed((current) => !current)}
+      />
+      <main
+        className={`pt-28 transition-[padding] duration-200 md:pt-16 ${
+          sidebarCollapsed ? "md:pl-20" : "md:pl-64"
+        }`}
+      >
+        {children}
+      </main>
     </div>
   );
 }
