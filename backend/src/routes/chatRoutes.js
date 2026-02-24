@@ -258,7 +258,40 @@ async function resolveFriendContacts(userId) {
     });
   }
 
-  return contacts;
+  if (!contacts.length) return contacts;
+
+  const peerUserIds = [
+    ...new Set(
+      contacts
+        .map((contact) => String(contact.peerUserId || "").trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  const peerWalletDocs = peerUserIds.length
+    ? await Wallet.find({
+        userId: { $in: peerUserIds },
+        isVerified: true,
+      })
+        .select("userId address")
+        .lean()
+    : [];
+
+  const verifiedWalletByUserId = new Map();
+  for (const walletDoc of peerWalletDocs) {
+    const key = String(walletDoc.userId || "");
+    if (!key || verifiedWalletByUserId.has(key)) continue;
+    verifiedWalletByUserId.set(key, normalizeAddress(walletDoc.address));
+  }
+
+  return contacts.map((contact) => {
+    const peerUserId = String(contact.peerUserId || "").trim();
+    return {
+      ...contact,
+      peerWalletAddress:
+        verifiedWalletByUserId.get(peerUserId) || contact.peerWalletAddress || null,
+    };
+  });
 }
 
 async function resolveFriendContactByPeer(userId, peerUserId) {
