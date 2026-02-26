@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import { listFriends } from "../services/friendApi.js";
 import { getMyTransactions, getWalletBalance } from "../services/transactionApi.js";
 import {
   clearSessionStorage,
-  getAuthToken,
+  requireAuthToken,
   readWalletState,
   writeWalletState,
 } from "../services/session.js";
@@ -136,7 +137,7 @@ export default function Dashboard() {
     let isCancelled = false;
 
     async function loadDashboard() {
-      const token = getAuthToken();
+      const token = requireAuthToken();
       if (!token) {
         navigate("/login", { replace: true });
         return;
@@ -190,7 +191,7 @@ export default function Dashboard() {
     let isCancelled = false;
 
     async function loadFriends() {
-      const token = getAuthToken();
+      const token = requireAuthToken();
       if (!token) return;
 
       try {
@@ -215,7 +216,7 @@ export default function Dashboard() {
     let isCancelled = false;
 
     async function loadTransactions() {
-      const token = getAuthToken();
+      const token = requireAuthToken();
       if (!token) return;
 
       try {
@@ -252,7 +253,7 @@ export default function Dashboard() {
       }
 
       try {
-        const token = getAuthToken();
+        const token = requireAuthToken();
         if (!token) return;
 
         setBalanceLoading(true);
@@ -329,9 +330,7 @@ export default function Dashboard() {
 
   if (!me && !error) {
     return (
-      <div className="max-w-6xl mx-auto px-6 py-10 text-gray-600">
-        Loading dashboard...
-      </div>
+      <PageContainer className="text-gray-600">Loading dashboard...</PageContainer>
     );
   }
 
@@ -339,21 +338,13 @@ export default function Dashboard() {
   const hasDisplayBalance = Number.isFinite(displayBalance);
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8 pb-32 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">
-          Welcome{me ? `, ${me.username}` : ""}
-        </h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Manage your account, friends, and payment activity.
-        </p>
-      </div>
+    <PageContainer stack className="pb-32">
+      <PageHeader
+        title={`Welcome${me ? `, ${me.username}` : ""}`}
+        description="Manage your account, friends, and payment activity."
+      />
 
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      <PageError>{error}</PageError>
 
       <section className="grid gap-4 md:grid-cols-3">
         <Link
@@ -676,6 +667,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

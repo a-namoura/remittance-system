@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
 import { createFriend, deleteFriend, listFriends } from "../services/friendApi.js";
-import { getAuthToken } from "../services/session.js";
+import { requireAuthToken } from "../services/session.js";
 import { searchUsers } from "../services/userApi.js";
 import { formatDateOnly } from "../utils/datetime.js";
 import { isValidEvmAddress } from "../utils/security.js";
@@ -56,12 +57,15 @@ export default function Friends() {
     let isCancelled = false;
 
     async function loadFriends() {
-      const token = getAuthToken();
+      const token = requireAuthToken({
+        onMissing: () => {
+          if (!isCancelled) {
+            setError("You must be logged in.");
+            setLoading(false);
+          }
+        },
+      });
       if (!token) {
-        if (!isCancelled) {
-          setError("You must be logged in.");
-          setLoading(false);
-        }
         return;
       }
 
@@ -89,9 +93,10 @@ export default function Friends() {
   }, []);
 
   async function handleDeleteFriend(friendId) {
-    const token = getAuthToken();
+    const token = requireAuthToken({
+      onMissing: () => setError("You must be logged in."),
+    });
     if (!token) {
-      setError("You must be logged in.");
       return;
     }
 
@@ -166,9 +171,10 @@ export default function Friends() {
       return;
     }
 
-    const token = getAuthToken();
+    const token = requireAuthToken({
+      onMissing: () => setModalError("You must be logged in."),
+    });
     if (!token) {
-      setModalError("You must be logged in.");
       return;
     }
 
@@ -216,11 +222,14 @@ export default function Friends() {
     if (!isModalOpen) return undefined;
 
     let isCancelled = false;
-    const token = getAuthToken();
+    const token = requireAuthToken({
+      onMissing: () => {
+        setAccountResults([]);
+        setAccountError("You must be logged in.");
+      },
+    });
 
     if (!token) {
-      setAccountResults([]);
-      setAccountError("You must be logged in.");
       return undefined;
     }
 
@@ -253,29 +262,22 @@ export default function Friends() {
   }, [isModalOpen, accountQuery]);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Friends</h1>
-          <p className="mt-1 text-sm text-gray-600">
-            Manage your saved recipients and quickly reuse them while sending
-            money.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={openModal}
-          className="inline-flex h-10 items-center justify-center rounded-full bg-purple-600 px-4 text-sm font-semibold text-white hover:bg-purple-700"
-        >
-          Add friend
-        </button>
-      </div>
+    <PageContainer stack>
+      <PageHeader
+        title="Friends"
+        description="Manage your saved recipients and quickly reuse them while sending money."
+        actions={
+          <button
+            type="button"
+            onClick={openModal}
+            className="inline-flex h-10 items-center justify-center rounded-full bg-purple-600 px-4 text-sm font-semibold text-white hover:bg-purple-700"
+          >
+            Add friend
+          </button>
+        }
+      />
 
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      <PageError>{error}</PageError>
 
       <div className="rounded-2xl border bg-white p-4">
         <input
@@ -509,6 +511,6 @@ export default function Friends() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

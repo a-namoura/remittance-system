@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  PageContainer,
+  PageError,
+  PageHeader,
+  PageNotice,
+} from "../components/PageLayout.jsx";
 import { apiRequest } from "../services/api.js";
 import { getCurrentUser } from "../services/authApi.js";
 import { createFriend, listFriends } from "../services/friendApi.js";
@@ -8,7 +14,7 @@ import {
   sendPaymentVerificationCode,
   sendTransaction,
 } from "../services/transactionApi.js";
-import { getAuthToken, readWalletState, writeWalletState } from "../services/session.js";
+import { readWalletState, requireAuthToken, writeWalletState } from "../services/session.js";
 import { searchUsers } from "../services/userApi.js";
 import { isValidEvmAddress } from "../utils/security.js";
 import { copyText, getQrImageUrl, shortWallet } from "../utils/paylink.js";
@@ -279,7 +285,7 @@ export default function SendMoney() {
     let isCancelled = false;
 
     async function loadFriends() {
-      const token = getAuthToken();
+      const token = requireAuthToken();
       if (!token) {
         if (!isCancelled) {
           setPageError("You must be logged in.");
@@ -316,7 +322,7 @@ export default function SendMoney() {
     let isCancelled = false;
 
     async function loadMyBalance() {
-      const token = getAuthToken();
+      const token = requireAuthToken();
       if (!token) return;
 
       try {
@@ -407,7 +413,7 @@ export default function SendMoney() {
   useEffect(() => {
     let isCancelled = false;
 
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       setAccounts([]);
       setAccountError("You must be logged in.");
@@ -468,7 +474,7 @@ export default function SendMoney() {
   }
 
   async function handleAddFriendFromAccount(account) {
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       setPageError("You must be logged in.");
       return;
@@ -657,7 +663,7 @@ export default function SendMoney() {
       return;
     }
 
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       setMethodError("You must be logged in.");
       return;
@@ -704,7 +710,7 @@ export default function SendMoney() {
       return;
     }
 
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       setMethodError("You must be logged in.");
       return;
@@ -760,7 +766,7 @@ export default function SendMoney() {
       return;
     }
 
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       setMethodError("You must be logged in.");
       return;
@@ -826,7 +832,7 @@ export default function SendMoney() {
   }
 
   async function handleSendCode() {
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       setMethodError("You must be logged in.");
       return;
@@ -899,13 +905,14 @@ export default function SendMoney() {
     activeMethod === "address" && transferStep === "verification";
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
-      <section className="rounded-[2.2rem] border border-gray-200 bg-white p-5 shadow-sm sm:p-8">
-        <h1 className="text-4xl font-semibold tracking-tight text-gray-900">
-          New payment
-        </h1>
+    <PageContainer stack>
+      <PageHeader
+        title="New payment"
+        description="Select a recipient and method to send funds securely."
+      />
 
-        <div className="mt-5" ref={searchContainerRef}>
+      <section className="rounded-[2.2rem] border border-gray-200 bg-white p-5 shadow-sm sm:p-8">
+        <div ref={searchContainerRef}>
           <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 focus-within:border-purple-300 focus-within:ring-2 focus-within:ring-purple-200">
             <svg
               viewBox="0 0 24 24"
@@ -1049,23 +1056,11 @@ export default function SendMoney() {
 
         {(pageError || (!activeMethod && (methodError || methodSuccess))) && (
           <div className="mt-6 space-y-2">
-            {pageError && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {pageError}
-              </div>
-            )}
+            <PageError>{pageError}</PageError>
 
-            {methodError && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {methodError}
-              </div>
-            )}
+            <PageError>{methodError}</PageError>
 
-            {methodSuccess && (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                {methodSuccess}
-              </div>
-            )}
+            <PageNotice variant="success">{methodSuccess}</PageNotice>
           </div>
         )}
 
@@ -1141,17 +1136,11 @@ export default function SendMoney() {
               </button>
             </div>
 
-            {methodError && (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {methodError}
-              </div>
-            )}
+            <PageError className="mt-3">{methodError}</PageError>
 
-            {methodSuccess && (
-              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                {methodSuccess}
-              </div>
-            )}
+            <PageNotice className="mt-3" variant="success">
+              {methodSuccess}
+            </PageNotice>
 
             {!isAddressVerificationStep ? (
               <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
@@ -1269,7 +1258,7 @@ export default function SendMoney() {
                           <span className="font-mono text-gray-900">
                             {shortWallet(manualAddress) || manualAddress}
                           </span>
-                          <span className="mx-1 text-gray-300">•</span>
+                          <span className="mx-1 text-gray-300">â€¢</span>
                           <span className="font-semibold text-gray-900">{amountEth || "0"} ETH</span>
                         </p>
                         {!balanceLoading && Number.isFinite(availableBalance) ? (
@@ -1507,6 +1496,6 @@ export default function SendMoney() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

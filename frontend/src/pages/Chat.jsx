@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import {
+  PageContainer,
+  PageError,
+  PageHeader,
+  PageNotice,
+} from "../components/PageLayout.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import {
   cacheChatMessagePlaintext,
@@ -15,7 +21,7 @@ import {
   unsendChatMessage,
   upsertChatPublicKey,
 } from "../services/chatApi.js";
-import { getAuthToken } from "../services/session.js";
+import { requireAuthToken } from "../services/session.js";
 import {
   getWalletBalance,
 } from "../services/transactionApi.js";
@@ -485,7 +491,7 @@ export default function Chat() {
   }, [friends, me?.id, unreadStateVersion]);
 
   const refreshWalletBalance = useCallback(async () => {
-    const token = getAuthToken();
+    const token = requireAuthToken();
     const walletAddress = String(me?.wallet?.address || "").trim();
     const walletLinked = Boolean(me?.wallet?.linked && walletAddress);
 
@@ -519,7 +525,7 @@ export default function Chat() {
     let isCancelled = false;
 
     async function loadPageData() {
-      const token = getAuthToken();
+      const token = requireAuthToken();
       if (!token) {
         if (!isCancelled) {
           setFriendsError("You must be logged in.");
@@ -591,7 +597,7 @@ export default function Chat() {
 
       friendSyncBusyRef.current = true;
       try {
-        const token = getAuthToken();
+        const token = requireAuthToken();
         if (!token) return;
         const response = await listChatFriends({
           token,
@@ -632,7 +638,7 @@ export default function Chat() {
       if (friendSyncBusyRef.current) return;
       if (document.visibilityState === "hidden") return;
       try {
-        const token = getAuthToken();
+        const token = requireAuthToken();
         if (!token) return;
         const response = await listChatFriends({
           token,
@@ -669,7 +675,7 @@ export default function Chat() {
 
     async function setupIdentity() {
       if (!me?.id) return;
-      const token = getAuthToken();
+      const token = requireAuthToken();
       if (!token) return;
 
       try {
@@ -882,7 +888,7 @@ export default function Chat() {
     const cached = peerPublicKeys[String(peerUserId)];
     if (cached && !forceRefresh) return cached;
 
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       throw new Error("You must be logged in.");
     }
@@ -910,7 +916,7 @@ export default function Chat() {
       const normalizedThreadId = String(threadId || "").trim();
       const normalizedMessageId = String(messageId || "").trim();
       const normalizedPlaintext = String(plaintext || "").trim();
-      const token = getAuthToken();
+      const token = requireAuthToken();
       if (!token || !normalizedThreadId || !normalizedMessageId || !normalizedPlaintext) return;
       if (normalizedMessageId.startsWith("local-")) return;
       if (plaintextCacheAttemptedRef.current.has(normalizedMessageId)) return;
@@ -939,7 +945,7 @@ export default function Chat() {
       trackRequest = true,
       clearError = true,
     }) => {
-      const token = getAuthToken();
+      const token = requireAuthToken();
       const normalizedThreadId = String(threadId || "").trim();
       if (!token || !normalizedThreadId) return;
       const viewerId = String(me?.id || "").trim();
@@ -1054,7 +1060,7 @@ export default function Chat() {
   );
 
   const openFriendThread = useCallback(async (friend) => {
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       setTimelineError("You must be logged in.");
       return;
@@ -1261,7 +1267,7 @@ export default function Chat() {
     requestAmountValue,
     requestNoteValue,
   }) {
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       setTimelineError("You must be logged in.");
       return false;
@@ -1356,7 +1362,7 @@ export default function Chat() {
   }
 
   async function handleUnsendFailedMessage(message) {
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       setTimelineError("You must be logged in.");
       return;
@@ -1503,7 +1509,7 @@ export default function Chat() {
       return;
     }
 
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       setTimelineError("You must be logged in.");
       return;
@@ -1544,7 +1550,7 @@ export default function Chat() {
     if (!activeThread?.id || !activeFriend?.peerUserId) return;
     const reason = window.prompt("Report reason:");
     if (!reason) return;
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) return;
 
     try {
@@ -1619,7 +1625,7 @@ export default function Chat() {
       return;
     }
 
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       setRequestModalError("You must be logged in.");
       return;
@@ -1658,7 +1664,7 @@ export default function Chat() {
 
   async function handleCancelRequestFromModal() {
     if (!requestModal?.id || !activeThread?.id) return;
-    const token = getAuthToken();
+    const token = requireAuthToken();
     if (!token) {
       setRequestModalError("You must be logged in.");
       return;
@@ -1695,28 +1701,21 @@ export default function Chat() {
   }
 
   return (
-    <div className="mx-auto max-w-[92rem] px-4 py-8 sm:px-6 sm:py-10">
+    <PageContainer stack className="gap-3">
+      <PageHeader
+        title="Chat"
+        description="Message your contacts, track requests, and send payments in one place."
+      />
+
       {(friendsError || identityError || timelineError) && (
-        <div className="mb-3 space-y-2">
-          {friendsError && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {friendsError}
-            </div>
-          )}
-          {identityError && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {identityError}
-            </div>
-          )}
-          {timelineError && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {timelineError}
-            </div>
-          )}
+        <div className="space-y-2">
+          <PageError>{friendsError}</PageError>
+          <PageError>{identityError}</PageError>
+          <PageError>{timelineError}</PageError>
         </div>
       )}
 
-      <section className="rounded-[2rem] border border-gray-200 bg-white p-3 shadow-sm sm:p-4 md:h-[calc(100vh-9.5rem)]">
+      <section className="rounded-[2rem] border border-gray-200 bg-white p-3 shadow-sm sm:p-4 md:h-[calc(100vh-12.5rem)]">
         <div className="grid gap-3 md:h-full md:grid-cols-[minmax(300px,_0.85fr)_minmax(0,_1.45fr)]">
           <aside className="flex min-h-[36rem] flex-col rounded-3xl border border-gray-200 bg-gray-50 p-4 md:h-full md:min-h-0">
             <div>
@@ -1940,7 +1939,7 @@ export default function Chat() {
                         aria-label="Close chat"
                         title="Close chat"
                       >
-                        ×
+                        Ã—
                       </button>
                     </div>
                   </div>
@@ -2530,16 +2529,10 @@ export default function Chat() {
               </p>
             </div>
 
-            {requestModalInfo ? (
-              <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                {requestModalInfo}
-              </p>
-            ) : null}
-            {requestModalError ? (
-              <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {requestModalError}
-              </p>
-            ) : null}
+            <PageNotice className="mt-3" variant="success">
+              {requestModalInfo}
+            </PageNotice>
+            <PageError className="mt-3">{requestModalError}</PageError>
 
             {!requestModal.isRequester &&
             String(requestModal.status || "").trim().toLowerCase() === "pending" ? (
@@ -2611,6 +2604,6 @@ export default function Chat() {
           </div>
         </div>
       ) : null}
-    </div>
+    </PageContainer>
   );
 }

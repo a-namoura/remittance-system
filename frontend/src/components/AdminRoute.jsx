@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { getCurrentUser } from "../services/authApi.js";
-import { getAuthToken } from "../services/session.js";
+import { requireAuthToken } from "../services/session.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 export default function AdminRoute({ children }) {
-  const token = getAuthToken();
+  const token = requireAuthToken();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState("");

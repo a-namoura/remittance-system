@@ -1,6 +1,10 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAuthToken } from "../services/session.js";
+import {
+  FORM_PRIMARY_BUTTON_CLASS,
+  FORM_SECONDARY_BUTTON_CLASS,
+} from "../styles/formClasses.js";
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -40,14 +44,14 @@ export default function Landing() {
             <button
               type="button"
               onClick={() => navigate("/login")}
-              className="w-full inline-flex items-center justify-center rounded-full px-4 py-3 text-sm font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+              className={`inline-flex items-center justify-center transition-colors ${FORM_PRIMARY_BUTTON_CLASS}`}
             >
               Log in
             </button>
             <button
               type="button"
               onClick={() => navigate("/register")}
-              className="w-full inline-flex items-center justify-center rounded-full px-4 py-3 text-sm font-semibold border border-gray-200 bg-white text-gray-900 hover:bg-gray-50 transition-colors"
+              className={`inline-flex items-center justify-center transition-colors ${FORM_SECONDARY_BUTTON_CLASS}`}
             >
               Register
             </button>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
 import { getCurrentUser } from "../services/authApi.js";
-import { getAuthToken, readWalletState, writeWalletState } from "../services/session.js";
+import { readWalletState, requireAuthToken, writeWalletState } from "../services/session.js";
 import { copyText, getQrImageUrl } from "../utils/paylink.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
@@ -39,12 +40,15 @@ export default function RequestMoney() {
     let isCancelled = false;
 
     async function loadCurrentUser() {
-      const token = getAuthToken();
+      const token = requireAuthToken({
+        onMissing: () => {
+          if (!isCancelled) {
+            setPageError("You must be logged in.");
+            setPageLoading(false);
+          }
+        },
+      });
       if (!token) {
-        if (!isCancelled) {
-          setPageError("You must be logged in.");
-          setPageLoading(false);
-        }
         return;
       }
 
@@ -141,34 +145,24 @@ export default function RequestMoney() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+    <PageContainer stack>
+      <PageHeader
+        title="Request money"
+        description="Generate a secure request link and share it with the sender."
+      />
+
       <section className="rounded-[2.2rem] border border-gray-200 bg-white p-5 shadow-sm sm:p-8">
-        <h1 className="text-4xl font-semibold tracking-tight text-gray-900">
-          Request money
-        </h1>
-        <p className="mt-2 text-sm text-gray-600">
-          Generate a secure request link and share it with the sender.
-        </p>
+        <PageError className="mt-4">{pageError}</PageError>
 
-        {pageError && (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {pageError}
-          </div>
-        )}
-
-        {!pageLoading && !pageError && !canGenerateLink && (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        {!pageLoading && !pageError && !canGenerateLink ? (
+          <PageError className="mt-4">
             Link your wallet in Account before generating request links.
-          </div>
-        )}
+          </PageError>
+        ) : null}
 
-        {linkError && (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {linkError}
-          </div>
-        )}
+        <PageError className="mt-4">{linkError}</PageError>
 
-        <section className="mt-6 rounded-3xl border border-gray-200 bg-gray-50 p-5">
+        <section className="mt-4 rounded-3xl border border-gray-200 bg-gray-50 p-5">
           <h2 className="text-lg font-semibold text-gray-900">Generate request link</h2>
           <p className="mt-1 text-sm text-gray-600">
             The payer opens this link and sends funds to your linked wallet.
@@ -249,6 +243,6 @@ export default function RequestMoney() {
           )}
         </section>
       </section>
-    </div>
+    </PageContainer>
   );
 }

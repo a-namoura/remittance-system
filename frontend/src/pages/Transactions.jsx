@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
 import { getMyTransactions } from "../services/transactionApi.js";
-import { getAuthToken } from "../services/session.js";
+import { requireAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
@@ -53,13 +54,17 @@ export default function Transactions() {
     let isCancelled = false;
 
     async function loadTransactions() {
-      const token = getAuthToken();
+      const token = requireAuthToken({
+        message: "You are not logged in.",
+        onMissing: (message) => {
+          if (!isCancelled) {
+            setError(message);
+            setTransactions([]);
+            setTotal(0);
+          }
+        },
+      });
       if (!token) {
-        if (!isCancelled) {
-          setError("You are not logged in.");
-          setTransactions([]);
-          setTotal(0);
-        }
         return;
       }
 
@@ -133,18 +138,16 @@ export default function Transactions() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8 pb-28">
-      <section className="rounded-3xl border bg-white p-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Activity</h1>
-          <p className="mt-1 text-sm text-gray-600">
-            All your recent transactions in one place.
-          </p>
-        </div>
+    <PageContainer stack className="pb-28">
+      <PageHeader
+        title="Activity"
+        description="All your recent transactions in one place."
+      />
 
+      <section className="rounded-3xl border bg-white p-6">
         <form
           onSubmit={applyFilters}
-          className="mt-5 flex flex-wrap items-end gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4"
+          className="flex flex-wrap items-end gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4"
         >
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-600">
@@ -211,7 +214,7 @@ export default function Transactions() {
           </button>
         </form>
 
-        {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
+        <PageError className="mt-3">{error}</PageError>
 
         {loading ? (
           <div className="mt-6 text-sm text-gray-600">Loading transactions...</div>
@@ -352,6 +355,6 @@ export default function Transactions() {
           </div>
         )}
       </section>
-    </div>
+    </PageContainer>
   );
 }

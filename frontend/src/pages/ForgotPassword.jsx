@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AuthCard from "../components/AuthCard.jsx";
+import { PageLoading, PageNotice } from "../components/PageLayout.jsx";
 import PasswordStrengthIndicator from "../components/PasswordStrengthIndicator.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
 import { apiRequest } from "../services/api.js";
 import { getPasswordPolicyError } from "../utils/passwordPolicy.js";
+import {
+  FORM_CODE_INPUT_CLASS,
+  FORM_INPUT_BASE_CLASS,
+  FORM_MUTED_BUTTON_CLASS,
+  FORM_PRIMARY_BUTTON_DISABLED_CLASS,
+  formChannelButtonClass,
+} from "../styles/formClasses.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 const STEPS = {
@@ -20,13 +28,6 @@ const CHANNELS = {
 };
 
 const RESEND_DELAY = 30;
-
-const inputBaseClass =
-  "w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500";
-const primaryButtonClass =
-  "w-full rounded-full bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60";
-const mutedButtonClass =
-  "text-xs text-purple-600 font-medium hover:underline disabled:opacity-60";
 
 function normalizeDigits(value) {
   return String(value || "").replace(/\D/g, "");
@@ -306,24 +307,15 @@ export default function ForgotPassword() {
 
   return (
     <AuthCard title="Forgot Password" subtitle={subtitle} onBack={handleBack}>
-      {loading && (
-        <div className="mb-3 flex items-center gap-2 text-xs text-gray-500">
-          <span className="inline-block h-3 w-3 rounded-full border-2 border-purple-500 border-t-transparent animate-spin" />
-          <span>Processing...</span>
-        </div>
-      )}
+      {loading ? <PageLoading className="mb-3">Processing...</PageLoading> : null}
 
-      {error && (
-        <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      <PageNotice variant="error" className="mb-3">
+        {error}
+      </PageNotice>
 
-      {info && (
-        <div className="mb-3 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          {info}
-        </div>
-      )}
+      <PageNotice variant="success" className="mb-3">
+        {info}
+      </PageNotice>
 
       {step === STEPS.IDENTIFIER && (
         <form onSubmit={submitIdentifier} className="space-y-4">
@@ -333,7 +325,7 @@ export default function ForgotPassword() {
             </label>
             <input
               type="text"
-              className={inputBaseClass}
+              className={FORM_INPUT_BASE_CLASS}
               placeholder="username / you@example.com / +123..."
               value={identifier}
               maxLength={120}
@@ -346,7 +338,7 @@ export default function ForgotPassword() {
           <button
             type="submit"
             disabled={loading}
-            className={primaryButtonClass}
+            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
           >
             Continue
           </button>
@@ -363,24 +355,19 @@ export default function ForgotPassword() {
               <button
                 type="button"
                 disabled={phoneDisabled}
-                className={`flex-1 rounded-full border px-3 py-2 text-xs font-medium ${
-                  phoneDisabled
-                    ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-                    : verificationChannel === CHANNELS.PHONE
-                      ? "border-purple-600 bg-purple-50 text-purple-700"
-                      : "border-gray-300 text-gray-600 hover:bg-gray-50"
-                }`}
+                className={formChannelButtonClass({
+                  disabled: phoneDisabled,
+                  selected: verificationChannel === CHANNELS.PHONE,
+                })}
                 onClick={() => setVerificationChannel(CHANNELS.PHONE)}
               >
                 Phone number
               </button>
               <button
                 type="button"
-                className={`flex-1 rounded-full border px-3 py-2 text-xs font-medium ${
-                  verificationChannel === CHANNELS.EMAIL
-                    ? "border-purple-600 bg-purple-50 text-purple-700"
-                    : "border-gray-300 text-gray-600 hover:bg-gray-50"
-                }`}
+                className={formChannelButtonClass({
+                  selected: verificationChannel === CHANNELS.EMAIL,
+                })}
                 onClick={() => setVerificationChannel(CHANNELS.EMAIL)}
               >
                 Email
@@ -396,7 +383,7 @@ export default function ForgotPassword() {
           <button
             type="submit"
             disabled={loading}
-            className={primaryButtonClass}
+            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
           >
             Send verification code
           </button>
@@ -418,7 +405,7 @@ export default function ForgotPassword() {
               onChange={(event) =>
                 setCode(normalizeDigits(event.target.value).slice(0, 6))
               }
-              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-center font-mono text-sm tracking-[0.3em] focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className={FORM_CODE_INPUT_CLASS}
             />
             <p className="mt-2 text-xs text-gray-500">
               Enter the code sent to{" "}
@@ -435,7 +422,7 @@ export default function ForgotPassword() {
           <button
             type="submit"
             disabled={loading}
-            className={primaryButtonClass}
+            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
           >
             Verify code
           </button>
@@ -445,7 +432,7 @@ export default function ForgotPassword() {
               type="button"
               disabled={cooldown > 0 || loading}
               onClick={resendCode}
-              className={mutedButtonClass}
+              className={FORM_MUTED_BUTTON_CLASS}
             >
               {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
             </button>
@@ -462,7 +449,7 @@ export default function ForgotPassword() {
             <div className="relative">
               <input
                 type={showNewPassword ? "text" : "password"}
-                className={`${inputBaseClass} pr-10`}
+                className={`${FORM_INPUT_BASE_CLASS} pr-10`}
                 placeholder="********"
                 value={newPassword}
                 autoComplete="new-password"
@@ -485,7 +472,7 @@ export default function ForgotPassword() {
             <div className="relative">
               <input
                 type={showConfirmPassword ? "text" : "password"}
-                className={`${inputBaseClass} pr-10`}
+                className={`${FORM_INPUT_BASE_CLASS} pr-10`}
                 placeholder="********"
                 value={confirmPassword}
                 autoComplete="new-password"
@@ -503,7 +490,7 @@ export default function ForgotPassword() {
           <button
             type="submit"
             disabled={loading}
-            className={primaryButtonClass}
+            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
           >
             Update password
           </button>

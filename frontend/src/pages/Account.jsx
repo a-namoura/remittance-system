@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import ConnectWalletButton from "../components/ConnectWalletButton.jsx";
+import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import { getWalletBalance } from "../services/transactionApi.js";
 import {
   clearWalletState,
-  getAuthToken,
+  requireAuthToken,
   readWalletState,
   writeWalletState,
 } from "../services/session.js";
@@ -112,12 +113,15 @@ export default function Account() {
     let isCancelled = false;
 
     async function loadAccount() {
-      const token = getAuthToken();
+      const token = requireAuthToken({
+        onMissing: () => {
+          if (!isCancelled) {
+            setError("You must be logged in.");
+            setLoading(false);
+          }
+        },
+      });
       if (!token) {
-        if (!isCancelled) {
-          setError("You must be logged in.");
-          setLoading(false);
-        }
         return;
       }
 
@@ -187,7 +191,7 @@ export default function Account() {
       }
 
       try {
-        const token = getAuthToken();
+        const token = requireAuthToken();
         if (!token) return;
 
         setBalanceLoading(true);
@@ -256,9 +260,7 @@ export default function Account() {
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto px-6 py-10 text-sm text-gray-600">
-        Loading account...
-      </div>
+      <PageContainer className="text-sm text-gray-600">Loading account...</PageContainer>
     );
   }
 
@@ -266,19 +268,13 @@ export default function Account() {
   const hasBalanceValue = Number.isFinite(balanceValue);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Account</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Manage your linked account and view balance.
-        </p>
-      </div>
+    <PageContainer stack>
+      <PageHeader
+        title="Account"
+        description="Manage your linked account and view balance."
+      />
 
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      <PageError>{error}</PageError>
 
       <section className="grid gap-4 md:grid-cols-2">
         <div className="rounded-2xl border bg-white p-6 space-y-4">
@@ -382,6 +378,6 @@ export default function Account() {
           </article>
         ))}
       </section>
-    </div>
+    </PageContainer>
   );
 }

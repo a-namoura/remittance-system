@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
+  PageContainer,
+  PageError,
+  PageHeader,
+  PageLoading,
+  PageNotice,
+} from "../components/PageLayout.jsx";
+import {
   claimTransferLink,
   resolveTransferLink,
 } from "../services/transactionApi.js";
-import { getAuthToken } from "../services/session.js";
+import { requireAuthToken } from "../services/session.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 export default function ClaimTransfer() {
@@ -57,9 +64,11 @@ export default function ClaimTransfer() {
   }, [token]);
 
   async function handleClaim() {
-    const authToken = getAuthToken();
+    const authToken = requireAuthToken({
+      message: "Please login before claiming this transfer.",
+      onMissing: (message) => setError(message),
+    });
     if (!authToken) {
-      setError("Please login before claiming this transfer.");
       return;
     }
 
@@ -86,30 +95,23 @@ export default function ClaimTransfer() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-xl px-6 py-16">
-        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
-          Loading transfer...
-        </div>
-      </div>
+      <PageContainer className="max-w-xl pt-16">
+        <PageLoading className="text-sm">Loading transfer...</PageLoading>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="mx-auto max-w-xl px-6 py-16">
+    <PageContainer stack className="max-w-xl pt-16">
+      <PageHeader
+        title="Claim transfer"
+        description="Review the transfer details and claim funds into your account."
+      />
+
       <section className="space-y-4 rounded-2xl border bg-white p-6">
-        <h1 className="text-2xl font-semibold text-gray-900">Claim transfer</h1>
+        <PageError>{error}</PageError>
 
-        {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        {claimSuccess && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {claimSuccess}
-          </div>
-        )}
+        <PageNotice variant="success">{claimSuccess}</PageNotice>
 
         {status === "invalid" && (
           <p className="text-sm text-gray-700">
@@ -164,6 +166,6 @@ export default function ClaimTransfer() {
           </Link>
         </div>
       </section>
-    </div>
+    </PageContainer>
   );
 }

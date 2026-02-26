@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
 import { getTransactionById } from "../services/transactionApi.js";
-import { getAuthToken } from "../services/session.js";
+import { requireAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
@@ -36,12 +37,16 @@ export default function TransactionDetails() {
     let isCancelled = false;
 
     async function loadTransaction() {
-      const token = getAuthToken();
+      const token = requireAuthToken({
+        message: "You are not logged in.",
+        onMissing: (message) => {
+          if (!isCancelled) {
+            setError(message);
+            setLoading(false);
+          }
+        },
+      });
       if (!token) {
-        if (!isCancelled) {
-          setError("You are not logged in.");
-          setLoading(false);
-        }
         return;
       }
 
@@ -100,7 +105,7 @@ export default function TransactionDetails() {
   );
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
+    <PageContainer stack>
       <button
         type="button"
         onClick={() => navigate("/transactions")}
@@ -121,20 +126,14 @@ export default function TransactionDetails() {
         Back to Activity
       </button>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">
-        Transaction Details
-      </h1>
-      <p className="text-sm text-gray-600">
-        View the full record for a single transaction.
-      </p>
+      <PageHeader
+        title="Transaction Details"
+        description="View the full record for a single transaction."
+      />
 
       {loading && <p className="text-sm text-gray-500 mt-4">Loading transaction...</p>}
 
-      {error && !loading && (
-        <div className="mt-4 rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {!loading ? <PageError className="mt-4">{error}</PageError> : null}
 
       {!loading && !error && !transaction && (
         <div className="mt-4 text-sm text-gray-500">No transaction found.</div>
@@ -248,6 +247,6 @@ export default function TransactionDetails() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -6,7 +6,7 @@ import {
   countUnreadConversations,
   subscribeChatUnreadUpdates,
 } from "../services/chatUnread.js";
-import { clearSessionStorage, getAuthToken } from "../services/session.js";
+import { clearSessionStorage, requireAuthToken } from "../services/session.js";
 import ThemeToggle from "./ThemeToggle.jsx";
 
 const NAVBAR_CHAT_SYNC_MS = 3000;
@@ -288,7 +288,7 @@ export default function Navbar({
     let isCancelled = false;
 
     async function loadCurrentUser() {
-      const token = getAuthToken();
+      const token = requireAuthToken();
       if (!token) {
         if (!isCancelled) {
           setMe(null);
@@ -334,7 +334,7 @@ export default function Navbar({
       unreadSyncBusyRef.current = true;
 
       try {
-        const token = getAuthToken();
+        const token = requireAuthToken();
         if (!token || !me?.id) {
           if (!isCancelled) {
             setChatUnreadCount(0);
@@ -434,7 +434,7 @@ export default function Navbar({
   );
 
   async function handleLogout() {
-    const token = getAuthToken();
+    const token = requireAuthToken();
 
     try {
       if (token) {

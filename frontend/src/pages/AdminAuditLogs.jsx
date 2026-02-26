@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
 import { apiRequest } from "../services/api.js";
-import { getAuthToken } from "../services/session.js";
+import { requireAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
@@ -13,12 +14,16 @@ export default function AdminAuditLogs() {
     let isCancelled = false;
 
     async function loadAuditLogs() {
-      const token = getAuthToken();
+      const token = requireAuthToken({
+        message: "You must be logged in as an admin to view this page.",
+        onMissing: (message) => {
+          if (!isCancelled) {
+            setError(message);
+            setLoading(false);
+          }
+        },
+      });
       if (!token) {
-        if (!isCancelled) {
-          setError("You must be logged in as an admin to view this page.");
-          setLoading(false);
-        }
         return;
       }
 
@@ -46,18 +51,13 @@ export default function AdminAuditLogs() {
   }, []);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10 space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Audit Logs</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          Trace key actions such as login, logout, payment sends, and admin
-          access.
-        </p>
-      </div>
+    <PageContainer stack className="gap-4">
+      <PageHeader
+        title="Audit Logs"
+        description="Trace key actions such as login, logout, payment sends, and admin access."
+      />
 
-      {error && (
-        <div className="p-3 rounded bg-red-100 text-red-700 text-sm">{error}</div>
-      )}
+      <PageError>{error}</PageError>
 
       <div className="bg-white border rounded-xl divide-y">
         {loading && !error && (
@@ -87,6 +87,6 @@ export default function AdminAuditLogs() {
           </div>
         ))}
       </div>
-    </div>
+    </PageContainer>
   );
 }

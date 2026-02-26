@@ -4,7 +4,7 @@ import {
   linkWalletToUser,
   unlinkWalletFromUser,
 } from "../services/walletApi.js";
-import { getAuthToken } from "../services/session.js";
+import { requireAuthToken } from "../services/session.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 export default function ConnectWalletButton({
@@ -49,7 +49,7 @@ export default function ConnectWalletButton({
       setStatus("");
       setLoading(true);
 
-      const token = getAuthToken();
+      const token = requireAuthToken();
       if (!token) {
         throw new Error("You must be logged in to link a wallet.");
       }
@@ -97,7 +97,7 @@ export default function ConnectWalletButton({
       setStatus("");
       setLoading(true);
 
-      const token = getAuthToken();
+      const token = requireAuthToken();
       if (!token) {
         throw new Error("You must be logged in to unlink a wallet.");
       }

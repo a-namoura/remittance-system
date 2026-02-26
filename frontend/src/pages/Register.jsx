@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AuthCard from "../components/AuthCard.jsx";
+import { PageLoading, PageNotice } from "../components/PageLayout.jsx";
 import PasswordStrengthIndicator from "../components/PasswordStrengthIndicator.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
 import { apiRequest } from "../services/api.js";
@@ -9,6 +10,13 @@ import {
   getPasswordPolicyError,
   isPasswordPolicySatisfied,
 } from "../utils/passwordPolicy.js";
+import {
+  FORM_CODE_INPUT_CLASS,
+  FORM_INPUT_BASE_CLASS,
+  FORM_PRIMARY_BUTTON_CLASS,
+  FORM_PRIMARY_BUTTON_DISABLED_CLASS,
+  FORM_SELECT_BASE_CLASS,
+} from "../styles/formClasses.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 const STEPS = {
@@ -49,14 +57,6 @@ const STEP_SUBTITLES = {
     "Tell us your name and basic details so we can verify your identity.",
   [STEPS.KYC]: "Questions about your employment and source of funds.",
 };
-
-const inputBaseClass =
-  "w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500";
-const selectBaseClass =
-  "w-full rounded-xl border border-gray-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500";
-const primaryButtonClass =
-  "w-full rounded-full bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-purple-700";
-const primaryButtonDisabledClass = `${primaryButtonClass} disabled:opacity-60`;
 
 function generateLocalCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -584,24 +584,17 @@ export default function Register() {
         ))}
       </div>
 
-      {loading && (
-        <div className="mb-3 flex items-center gap-2 text-xs text-gray-500">
-          <span className="inline-block h-3 w-3 rounded-full border-2 border-purple-500 border-t-transparent animate-spin" />
-          <span>Processing...</span>
-        </div>
-      )}
+      {loading ? <PageLoading className="mb-3">Processing...</PageLoading> : null}
 
-      {error && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      <PageNotice variant="error" className="mb-4">
+        {error}
+      </PageNotice>
 
-      {info && step === STEPS.PASSWORD && (
-        <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+      {step === STEPS.PASSWORD ? (
+        <PageNotice variant="success" className="mb-4">
           {info}
-        </div>
-      )}
+        </PageNotice>
+      ) : null}
 
       {step === STEPS.ACCOUNT && (
         <form onSubmit={handleAccountSubmit} className="space-y-4">
@@ -611,7 +604,7 @@ export default function Register() {
             </label>
             <input
               type="email"
-              className={inputBaseClass}
+              className={FORM_INPUT_BASE_CLASS}
               placeholder="you@example.com"
               value={email}
               maxLength={120}
@@ -629,7 +622,7 @@ export default function Register() {
             <button
               type="submit"
               disabled={loading}
-              className={primaryButtonDisabledClass}
+              className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
             >
               Send code
             </button>
@@ -644,7 +637,7 @@ export default function Register() {
                 <input
                   type="text"
                   inputMode="numeric"
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-center tracking-[0.3em] font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  className={FORM_CODE_INPUT_CLASS}
                   placeholder="******"
                   maxLength={6}
                   value={emailCode}
@@ -707,7 +700,7 @@ export default function Register() {
           <button
             type="submit"
             disabled={loading || !emailVerified}
-            className={primaryButtonDisabledClass}
+            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
           >
             Continue
           </button>
@@ -723,7 +716,7 @@ export default function Register() {
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
-                className={`${inputBaseClass} pr-10`}
+                className={`${FORM_INPUT_BASE_CLASS} pr-10`}
                 placeholder="********"
                 value={password}
                 autoComplete="new-password"
@@ -744,7 +737,7 @@ export default function Register() {
             disabled={!canContinueFromPassword}
             className={
               canContinueFromPassword
-                ? primaryButtonClass
+                ? FORM_PRIMARY_BUTTON_CLASS
                 : "w-full rounded-full bg-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-500 cursor-not-allowed"
             }
           >
@@ -833,7 +826,7 @@ export default function Register() {
             </div>
           </div>
 
-          <button type="submit" className={primaryButtonClass}>
+          <button type="submit" className={FORM_PRIMARY_BUTTON_CLASS}>
             Send SMS code
           </button>
 
@@ -859,7 +852,7 @@ export default function Register() {
             <input
               type="text"
               inputMode="numeric"
-              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-center tracking-[0.3em] font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              className={FORM_CODE_INPUT_CLASS}
               placeholder="******"
               maxLength={6}
               value={phoneCode}
@@ -889,7 +882,7 @@ export default function Register() {
           </div>
 
           {!phoneVerified && (
-            <button type="submit" className={primaryButtonClass}>
+            <button type="submit" className={FORM_PRIMARY_BUTTON_CLASS}>
               Verify number
             </button>
           )}
@@ -916,7 +909,7 @@ export default function Register() {
               </label>
               <input
                 type="text"
-                className={inputBaseClass}
+                className={FORM_INPUT_BASE_CLASS}
                 value={firstName}
                 maxLength={60}
                 autoComplete="given-name"
@@ -929,7 +922,7 @@ export default function Register() {
               </label>
               <input
                 type="text"
-                className={inputBaseClass}
+                className={FORM_INPUT_BASE_CLASS}
                 value={lastName}
                 maxLength={60}
                 autoComplete="family-name"
@@ -944,7 +937,7 @@ export default function Register() {
             </label>
             <input
               type="text"
-              className={inputBaseClass}
+              className={FORM_INPUT_BASE_CLASS}
               placeholder="yourname"
               value={username}
               maxLength={40}
@@ -961,7 +954,7 @@ export default function Register() {
             </label>
             <input
               type="date"
-              className={inputBaseClass}
+              className={FORM_INPUT_BASE_CLASS}
               value={dob}
               max={DOB_MAX}
               onChange={(e) => setDob(e.target.value)}
@@ -971,7 +964,7 @@ export default function Register() {
             </p>
           </div>
 
-          <button type="submit" className={primaryButtonClass}>
+          <button type="submit" className={FORM_PRIMARY_BUTTON_CLASS}>
             Continue
           </button>
         </form>
@@ -984,7 +977,7 @@ export default function Register() {
               Employment status
             </label>
             <select
-              className={selectBaseClass}
+              className={FORM_SELECT_BASE_CLASS}
               value={employmentStatus}
               onChange={(e) => setEmploymentStatus(e.target.value)}
             >
@@ -1003,7 +996,7 @@ export default function Register() {
               Main source of funds
             </label>
             <select
-              className={selectBaseClass}
+              className={FORM_SELECT_BASE_CLASS}
               value={sourceOfFunds}
               onChange={(e) => setSourceOfFunds(e.target.value)}
             >
@@ -1024,7 +1017,7 @@ export default function Register() {
               Estimated monthly deposits / withdrawals
             </label>
             <select
-              className={selectBaseClass}
+              className={FORM_SELECT_BASE_CLASS}
               value={monthlyVolume}
               onChange={(e) => setMonthlyVolume(e.target.value)}
             >
@@ -1067,7 +1060,7 @@ export default function Register() {
           <button
             type="submit"
             disabled={!canSubmitKyc}
-            className={primaryButtonDisabledClass}
+            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
           >
             {loading ? "Creating account..." : "Create account"}
           </button>

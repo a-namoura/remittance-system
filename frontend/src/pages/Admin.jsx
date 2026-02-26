@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
 import { apiRequest } from "../services/api.js";
-import { getAuthToken } from "../services/session.js";
+import { requireAuthToken } from "../services/session.js";
 import { formatDateOnly, formatDateTime } from "../utils/datetime.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
@@ -45,12 +46,16 @@ export default function Admin() {
     let isCancelled = false;
 
     async function loadAdminData() {
-      const token = getAuthToken();
+      const token = requireAuthToken({
+        message: "You must be logged in as an admin to view this page.",
+        onMissing: (message) => {
+          if (!isCancelled) {
+            setError(message);
+            setLoading(false);
+          }
+        },
+      });
       if (!token) {
-        if (!isCancelled) {
-          setError("You must be logged in as an admin to view this page.");
-          setLoading(false);
-        }
         return;
       }
 
@@ -86,9 +91,11 @@ export default function Admin() {
   }, []);
 
   async function handleToggleUser(user) {
-    const token = getAuthToken();
+    const token = requireAuthToken({
+      message: "You must be logged in as an admin.",
+      onMissing: (message) => setUsersError(message),
+    });
     if (!token) {
-      setUsersError("You must be logged in as an admin.");
       return;
     }
 
@@ -137,29 +144,21 @@ export default function Admin() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-10 space-y-8">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            System-level overview of users, transactions, and security events.
-          </p>
-        </div>
-        <div className="flex gap-2">
+    <PageContainer stack className="gap-8">
+      <PageHeader
+        title="Admin Dashboard"
+        description="System-level overview of users, transactions, and security events."
+        actions={
           <Link
             to="/admin/audit-logs"
             className="inline-flex items-center rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
           >
             View audit logs
           </Link>
-        </div>
-      </div>
+        }
+      />
 
-      {error && (
-        <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      <PageError>{error}</PageError>
 
       <section className="space-y-4">
         <h2 className="text-sm font-semibold text-gray-800">Overview</h2>
@@ -378,6 +377,6 @@ export default function Admin() {
           </div>
         )}
       </section>
-    </div>
+    </PageContainer>
   );
 }

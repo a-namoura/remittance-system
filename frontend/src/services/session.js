@@ -50,6 +50,19 @@ export function getAuthToken() {
   return normalized || null;
 }
 
+export function requireAuthToken({
+  onMissing = null,
+  message = "You must be logged in.",
+} = {}) {
+  const token = getAuthToken();
+  if (token) return token;
+
+  if (typeof onMissing === "function") {
+    onMissing(String(message || "You must be logged in."));
+  }
+  return null;
+}
+
 export function setAuthToken(token) {
   const normalized = String(token || "").trim();
   if (!normalized) {
