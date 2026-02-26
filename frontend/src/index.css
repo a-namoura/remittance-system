@@ -11,3 +11,14 @@ a,
 [role="button"] {
   cursor: pointer;
 }
+
+.app-auth-main {
+  --app-page-max-width: 110rem;
+}
+
+.app-auth-main > * {
+  width: 100%;
+  max-width: var(--app-page-max-width);
+  margin-left: auto;
+  margin-right: auto;
+}

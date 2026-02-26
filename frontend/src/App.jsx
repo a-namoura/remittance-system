@@ -76,8 +76,8 @@ function AuthenticatedLayout({ children }) {
         onToggleSidebar={() => setSidebarCollapsed((current) => !current)}
       />
       <main
-        className={`pt-28 transition-[padding] duration-200 md:pt-16 ${
-          sidebarCollapsed ? "md:pl-20" : "md:pl-64"
+        className={`app-auth-main pt-28 transition-[padding] duration-200 md:pt-16 ${
+          sidebarCollapsed ? "md:pl-20" : "md:pl-48"
         }`}
       >
         {children}
