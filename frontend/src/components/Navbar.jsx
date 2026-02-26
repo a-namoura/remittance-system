@@ -454,16 +454,16 @@ export default function Navbar({
     me?.username ||
     "Member";
 
-  const desktopLeftOffset = sidebarCollapsed ? "md:left-20" : "md:left-64";
+  const desktopLeftOffset = sidebarCollapsed ? "md:left-20" : "md:left-48";
 
   return (
     <>
       <aside
         className={`fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-gray-200 bg-white/95 backdrop-blur transition-[width] duration-200 md:flex ${
-          sidebarCollapsed ? "w-20" : "w-64"
+          sidebarCollapsed ? "w-20" : "w-48"
         }`}
       >
-        <div className="flex h-16 items-center justify-center border-b border-gray-200">
+        <div className="flex h-16 items-center justify-start border-b border-gray-200 pl-4">
           <button
             type="button"
             onClick={onToggleSidebar}
