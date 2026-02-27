@@ -49,7 +49,7 @@ const ADMIN_ROUTES = [
 
 function PublicLayout({ children }) {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="app-shell">
       <div className="fixed right-4 top-4 z-40">
         <ThemeToggle />
       </div>
@@ -70,7 +70,7 @@ function AuthenticatedLayout({ children }) {
   }, [sidebarCollapsed]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="app-shell">
       <Navbar
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={() => setSidebarCollapsed((current) => !current)}

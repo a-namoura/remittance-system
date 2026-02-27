@@ -73,7 +73,7 @@ export default function ThemeToggle({ className = "" }) {
       onClick={handleToggle}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 ${className}`}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 dark:border-gray-300 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800 ${className}`}
     >
       {isDark ? (
         <svg
