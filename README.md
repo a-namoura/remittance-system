@@ -124,8 +124,3 @@ After deployment, update shared artifacts in `blockchain/`:
 - `blockchain/deployment.json`
 
 The backend reads the ABI from `blockchain/Remittance.abi.json`.
-
-## Related Docs
-
-- `frontend/README.md`
-- `contracts/README.md`
