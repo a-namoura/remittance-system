@@ -1,18 +1,84 @@
-# React + Vite
+# Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite client for the remittance system.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- React 19
+- React Router
+- Tailwind CSS
+- ethers.js (wallet and chain interactions)
 
-## React Compiler
+## Prerequisites
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+- Node.js 20+
+- npm 10+
+- Running backend API (default: `http://localhost:5000`)
 
-Note: This will impact Vite dev & build performances.
+## Setup
 
-## Expanding the ESLint configuration
+```bash
+cd frontend
+npm ci
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Create `.env` from `.env.example`, then start dev server:
+
+```bash
+npm run dev
+```
+
+App runs on `http://localhost:5173` by default.
+
+## Environment Variables
+
+Variables currently used by the frontend source:
+
+- `VITE_API_BASE_URL`: optional primary API base URL
+- `VITE_API_URL`: fallback API base URL (defaults to `http://localhost:5000`)
+- `VITE_API_TIMEOUT_MS`: request timeout in milliseconds (default `15000`)
+- `VITE_EXPLORER_BASE_URL`: explorer base URL for tx links (example: `https://testnet.bscscan.com`)
+- `VITE_COUNTRIES_API`: optional countries endpoint used in registration flow
+- `VITE_FLAG_BASE_URL`: optional flag image base URL for registration UI
+- `VITE_REGISTER_CODE_TTL_SECONDS`: local registration-code TTL display (default `30`)
+
+Note: variables such as `VITE_REM_CONTRACT_ADDRESS` in `.env.example` are not currently referenced by `src/`.
+
+## Available Scripts
+
+Run development server:
+
+```bash
+npm run dev
+```
+
+Build production bundle:
+
+```bash
+npm run build
+```
+
+Preview production bundle locally:
+
+```bash
+npm run preview
+```
+
+Run ESLint:
+
+```bash
+npm run lint
+```
+
+## App Routing Overview
+
+Public pages include:
+
+- `/`
+- `/login`
+- `/register`
+- `/forgot-password`
+- `/claim-transfer`
+
+Authenticated pages include dashboard, account, friends, send/request money, chat, and transactions.
+Admin pages include `/admin` and `/admin/audit-logs`.
