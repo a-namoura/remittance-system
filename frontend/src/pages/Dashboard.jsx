@@ -15,6 +15,7 @@ import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
+const BALANCE_REFRESH_INTERVAL_MS = 15 * 1000;
 const QUICK_PLUS_ACTIONS = [
   {
     id: "buy",
@@ -121,7 +122,8 @@ export default function Dashboard() {
   const [accountAddress, setAccountAddress] = useState("");
   const [accountBalances, setAccountBalances] = useState({});
   const [availableCurrencies, setAvailableCurrencies] = useState([]);
-  const [selectedCurrency, setSelectedCurrency] = useState("");
+  const [nativeCurrency, setNativeCurrency] = useState("ETH");
+  const [fiatBalanceUsd, setFiatBalanceUsd] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
 
@@ -154,7 +156,6 @@ export default function Dashboard() {
           setAccountAddress("");
           setAccountBalances({});
           setAvailableCurrencies([]);
-          setSelectedCurrency("");
           return;
         }
 
@@ -246,7 +247,8 @@ export default function Dashboard() {
           setBalanceLoading(false);
           setAccountBalances({});
           setAvailableCurrencies([]);
-          setSelectedCurrency("");
+          setNativeCurrency("ETH");
+          setFiatBalanceUsd(null);
           setBalanceError("");
         }
         return;
@@ -280,31 +282,40 @@ export default function Dashboard() {
           String(result?.currency || result?.nativeCurrency || currencies[0] || "ETH")
             .trim()
             .toUpperCase();
+        const nextNativeCurrency = String(result?.nativeCurrency || fallbackCurrency || "ETH")
+          .trim()
+          .toUpperCase();
 
         const nextCurrencies = currencies.length > 0 ? currencies : [fallbackCurrency];
-        const nextSelectedCurrency = nextCurrencies.includes(selectedCurrency)
-          ? selectedCurrency
+        const balanceCurrency = nextCurrencies.includes(nextNativeCurrency)
+          ? nextNativeCurrency
           : fallbackCurrency;
 
-        const nextBalance = Number(balances[nextSelectedCurrency]);
+        const nextBalance = Number(balances[balanceCurrency]);
+        const nextFiatBalanceUsd = Number(result?.fiatEquivalentUsd);
 
         if (!Number.isFinite(nextBalance)) {
           setAccountBalances({});
           setAvailableCurrencies(nextCurrencies);
-          setSelectedCurrency(nextSelectedCurrency);
+          setNativeCurrency(nextNativeCurrency);
+          setFiatBalanceUsd(null);
           setBalanceError("Failed to load account balance.");
           return;
         }
 
         setAccountBalances(balances);
         setAvailableCurrencies(nextCurrencies);
-        setSelectedCurrency(nextSelectedCurrency);
+        setNativeCurrency(nextNativeCurrency);
+        setFiatBalanceUsd(
+          Number.isFinite(nextFiatBalanceUsd) ? nextFiatBalanceUsd : null
+        );
       } catch (err) {
         if (!isCancelled) {
           setBalanceError(getUserErrorMessage(err, "Failed to load account balance."));
           setAccountBalances({});
           setAvailableCurrencies([]);
-          setSelectedCurrency("");
+          setNativeCurrency("ETH");
+          setFiatBalanceUsd(null);
         }
       } finally {
         if (!isCancelled) {
@@ -314,9 +325,11 @@ export default function Dashboard() {
     }
 
     fetchAccountBalance();
+    const refreshId = setInterval(fetchAccountBalance, BALANCE_REFRESH_INTERVAL_MS);
 
     return () => {
       isCancelled = true;
+      clearInterval(refreshId);
     };
   }, [accountLinked, accountAddress]);
 
@@ -334,8 +347,9 @@ export default function Dashboard() {
     );
   }
 
-  const displayBalance = Number(accountBalances[selectedCurrency]);
+  const displayBalance = Number(accountBalances[nativeCurrency]);
   const hasDisplayBalance = Number.isFinite(displayBalance);
+  const hasFiatBalance = Number.isFinite(fiatBalanceUsd);
 
   return (
     <PageContainer stack className="pb-32">
@@ -371,14 +385,22 @@ export default function Dashboard() {
             {accountLinked && accountAddress ? (
               <>
                 <div className="text-xs">
-                  Currency: {selectedCurrency || availableCurrencies[0] || "-"}
+                  Currency: {nativeCurrency || availableCurrencies[0] || "ETH"}
                 </div>
                 <div>
-                  Balance:{" "}
+                  {nativeCurrency || "ETH"} balance:{" "}
                   {balanceLoading
                     ? "Loading..."
                     : hasDisplayBalance
-                      ? `${displayBalance.toFixed(4)} ${selectedCurrency}`
+                      ? `${displayBalance.toFixed(4)} ${nativeCurrency}`
+                      : "-"}
+                </div>
+                <div>
+                  Fiat equivalent:{" "}
+                  {balanceLoading
+                    ? "Loading..."
+                    : hasFiatBalance
+                      ? `~ ${fiatBalanceUsd.toFixed(2)} USD`
                       : "-"}
                 </div>
                 {balanceError && (

@@ -571,6 +571,11 @@ transactionRouter.get("/balance", protect, async (req, res, next) => {
 
     const responseCurrency = requestedCurrency || nativeCurrency;
     let responseBalance = Number(balances[responseCurrency]);
+    const rateUsdPerNative = getUsdRateBySymbol(nativeCurrency);
+    const fiatEquivalentUsd =
+      Number.isFinite(rateUsdPerNative) && rateUsdPerNative > 0
+        ? nativeBalance * rateUsdPerNative
+        : null;
 
     if (!Number.isFinite(responseBalance)) {
       const converted = convertFromNativeCurrency(nativeBalance, responseCurrency);
@@ -586,7 +591,11 @@ transactionRouter.get("/balance", protect, async (req, res, next) => {
       wallet,
       balance: responseBalance,
       currency: responseCurrency,
+      nativeBalance,
       nativeCurrency,
+      fiatEquivalentUsd,
+      fiatCurrency: "USD",
+      rateUsdPerNative,
       balances,
       availableCurrencies,
     });
