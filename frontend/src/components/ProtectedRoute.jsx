@@ -3,6 +3,6 @@ import { requireAuthToken } from "../services/session.js";
 
 export default function ProtectedRoute({ children }) {
   const token = requireAuthToken();
-  if (!token) return <Navigate to="/login" replace />;
+  if (!token) return <Navigate to="/" replace />;
   return children;
 }

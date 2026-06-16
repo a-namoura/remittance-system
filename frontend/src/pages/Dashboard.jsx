@@ -139,7 +139,7 @@ export default function Dashboard() {
     async function loadDashboard() {
       const token = requireAuthToken();
       if (!token) {
-        navigate("/login", { replace: true });
+        navigate("/", { replace: true });
         return;
       }
 
@@ -175,7 +175,7 @@ export default function Dashboard() {
 
         if (err.status === 401 || err.status === 403) {
           clearSessionStorage();
-          navigate("/login", { replace: true });
+          navigate("/", { replace: true });
         }
       }
     }

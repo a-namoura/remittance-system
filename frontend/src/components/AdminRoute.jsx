@@ -55,7 +55,7 @@ export default function AdminRoute({ children }) {
   }, [token]);
 
   if (!token) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   if (loading) {
