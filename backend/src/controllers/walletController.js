@@ -55,6 +55,7 @@ export async function linkWallet(req, res) {
 
   return res.json({
     ok: true,
+    message: "Wallet successfully verified and linked to your account.",
     wallet: {
       address: doc.address,
       isVerified: doc.isVerified,

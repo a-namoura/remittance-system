@@ -7,6 +7,18 @@ import {
 import { requireAuthToken } from "../services/session.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
+
+function getMetaMaskProvider() {
+  if (typeof window === "undefined") return null;
+  const ethereum = window.ethereum;
+  if (!ethereum) return null;
+  if (ethereum.isMetaMask) return ethereum;
+  if (Array.isArray(ethereum.providers)) {
+    return ethereum.providers.find((provider) => provider?.isMetaMask) || null;
+  }
+  return null;
+}
+
 export default function ConnectWalletButton({
   connected,
   onLinked,
@@ -17,7 +29,8 @@ export default function ConnectWalletButton({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!window.ethereum) return;
+    const ethereum = getMetaMaskProvider();
+    if (!ethereum?.on) return;
 
     const handleAccountsChanged = (accounts) => {
       if (!accounts || accounts.length === 0) {
@@ -36,10 +49,12 @@ export default function ConnectWalletButton({
       }
     };
 
-    window.ethereum.on("accountsChanged", handleAccountsChanged);
+    ethereum.on("accountsChanged", handleAccountsChanged);
 
     return () => {
-      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
+      if (ethereum.removeListener) {
+        ethereum.removeListener("accountsChanged", handleAccountsChanged);
+      }
     };
   }, [connected, onDisconnected]);
 
@@ -54,11 +69,12 @@ export default function ConnectWalletButton({
         throw new Error("You must be logged in to link a wallet.");
       }
 
-      if (!window.ethereum) {
-        throw new Error("No Ethereum wallet detected. Please install MetaMask.");
+      const ethereum = getMetaMaskProvider();
+      if (!ethereum) {
+        throw new Error("MetaMask is not available. Please install or enable MetaMask.");
       }
 
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new ethers.BrowserProvider(ethereum);
       const accounts = await provider.send("eth_requestAccounts", []);
       if (!accounts || accounts.length === 0) {
         throw new Error("No account returned from wallet.");
@@ -80,7 +96,9 @@ export default function ConnectWalletButton({
         signature,
       });
 
-      setStatus(res.message || "Wallet linked and verified.");
+      setStatus(
+        res.message || "Wallet successfully verified and linked to your account."
+      );
       if (typeof onLinked === "function") {
         onLinked(normalizedAddress);
       }
