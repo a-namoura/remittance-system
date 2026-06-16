@@ -220,7 +220,7 @@ export default function Transactions() {
           <div className="mt-6 text-sm text-gray-600">Loading transactions...</div>
         ) : transactions.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-dashed border-gray-200 p-8 text-center">
-            <p className="text-lg font-medium text-gray-900">No transactions yet</p>
+            <p className="text-lg font-medium text-gray-900">No transactions found</p>
             <p className="mt-1 text-sm text-gray-600">
               Funding and payments will be shown here.
             </p>
