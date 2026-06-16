@@ -16,13 +16,19 @@ export async function linkWallet(req, res) {
   try {
     recovered = ethers.verifyMessage(message, signature);
   } catch (e) {
-    return res.status(400).json({ message: "Invalid signature format" });
+    return res.status(400).json({
+      message:
+        "Wallet ownership verification failed. The signature format is invalid.",
+    });
   }
 
   if (recovered.toLowerCase() !== address.toLowerCase()) {
     return res
-      .status(401)
-      .json({ message: "Signature does not match address" });
+      .status(400)
+      .json({
+        message:
+          "Wallet ownership verification failed. The signed message does not match the selected wallet address.",
+      });
   }
 
   const userId = req.user._id;
