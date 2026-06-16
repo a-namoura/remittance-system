@@ -1,11 +1,19 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { connectDB } from "./config/db.js";
 import { apiRouter } from "./routes/index.js";
 import { notFound, errorHandler } from "./middleware/errorHandler.js";
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({
+  path: path.resolve(__dirname, "../.env"),
+  override: process.env.NODE_ENV !== "production",
+});
 
 const app = express();
 
