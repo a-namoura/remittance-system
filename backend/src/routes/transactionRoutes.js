@@ -1,6 +1,5 @@
 import express from "express";
 import crypto from "crypto";
-import { getAddress, isAddress } from "ethers";
 import { protect } from "../middleware/authMiddleware.js";
 import {
   sendRemittance,
@@ -79,93 +78,6 @@ function getUserDisplayName(userDoc) {
   if (fullName) return fullName;
   const username = String(userDoc.username || "").trim();
   return username || null;
-}
-
-function escapeRegex(value) {
-  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function createHttpError(message, statusCode = 400) {
-  const err = new Error(message);
-  err.statusCode = statusCode;
-  return err;
-}
-
-function getReceiverInput(body = {}) {
-  return String(
-    body.receiver ?? body.receiverIdentifier ?? body.receiverWallet ?? ""
-  ).trim();
-}
-
-async function resolveTransferReceiver(rawReceiver) {
-  const receiver = String(rawReceiver || "").trim();
-  if (!receiver) {
-    throw createHttpError("receiver and amountEth are required.", 400);
-  }
-
-  if (isAddress(receiver)) {
-    const normalizedWallet = getAddress(receiver).toLowerCase();
-    const receiverWalletDoc = await Wallet.findOne({
-      address: normalizedWallet,
-      isVerified: true,
-    })
-      .select("userId")
-      .lean();
-
-    return {
-      receiverWallet: normalizedWallet,
-      receiverUserId: receiverWalletDoc?.userId || null,
-    };
-  }
-
-  if (/^0x/i.test(receiver)) {
-    throw createHttpError(
-      "Receiver must be a valid wallet address or registered username/email.",
-      400
-    );
-  }
-
-  const identifier = receiver.startsWith("@") ? receiver.slice(1).trim() : receiver;
-  if (!identifier) {
-    throw createHttpError("Receiver identifier is required.", 400);
-  }
-
-  const userQuery = identifier.includes("@")
-    ? { email: identifier.toLowerCase() }
-    : { username: new RegExp(`^${escapeRegex(identifier)}$`, "i") };
-
-  const receiverUserDoc = await User.findOne({
-    ...userQuery,
-    isDisabled: { $ne: true },
-  })
-    .select("_id")
-    .lean();
-
-  if (!receiverUserDoc) {
-    throw createHttpError(
-      "No registered user was found for that receiver identifier.",
-      404
-    );
-  }
-
-  const receiverWalletDoc = await Wallet.findOne({
-    userId: receiverUserDoc._id,
-    isVerified: true,
-  })
-    .select("address userId")
-    .lean();
-
-  if (!receiverWalletDoc?.address) {
-    throw createHttpError(
-      "Receiver account does not have a linked and verified wallet.",
-      400
-    );
-  }
-
-  return {
-    receiverWallet: String(receiverWalletDoc.address || "").trim().toLowerCase(),
-    receiverUserId: receiverUserDoc._id,
-  };
 }
 
 async function loadUsersById(userIds = []) {
@@ -507,13 +419,12 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
   let txDoc;
 
   try {
-    const { amountEth, verificationCode } = req.body;
-    const receiverInput = getReceiverInput(req.body);
+    const { receiverWallet, amountEth, verificationCode } = req.body;
     const assetSymbol = normalizeTransferAssetSymbol(req.body?.assetSymbol);
 
-    if (!receiverInput || !amountEth) {
+    if (!receiverWallet || !amountEth) {
       res.status(400);
-      throw new Error("receiver and amountEth are required.");
+      throw new Error("receiverWallet and amountEth are required.");
     }
 
     if (assetSymbol !== DEFAULT_ASSET_SYMBOL) {
@@ -541,9 +452,6 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       );
     }
 
-    const { receiverWallet: normalizedReceiverWallet, receiverUserId } =
-      await resolveTransferReceiver(receiverInput);
-
     try {
       await requireAndConsumePaymentCode({
         user: req.user,
@@ -552,6 +460,22 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
     } catch (codeErr) {
       res.status(codeErr?.statusCode || 400);
       throw codeErr;
+    }
+
+    const normalizedReceiverWallet = String(receiverWallet || "")
+      .trim()
+      .toLowerCase();
+
+    let receiverUserId = null;
+    if (normalizedReceiverWallet) {
+      const receiverWalletDoc = await Wallet.findOne({
+        address: normalizedReceiverWallet,
+        isVerified: true,
+      })
+        .select("userId")
+        .lean();
+
+      receiverUserId = receiverWalletDoc?.userId || null;
     }
 
     // Create DB record first with pending status
@@ -582,8 +506,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
           txId: txDoc._id.toString(),
           amountEth: amountNumber,
           senderWallet: walletDoc.address,
-          receiver: receiverInput,
-          receiverWallet: normalizedReceiverWallet,
+          receiverWallet,
           txHash: result.txHash,
         },
         req,
@@ -602,10 +525,6 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       },
     });
   } catch (err) {
-    if (err?.statusCode && (!res.statusCode || res.statusCode === 200)) {
-      res.status(err.statusCode);
-    }
-
     // If blockchain call failed, mark the transaction as failed
     if (txDoc) {
       txDoc.status = "failed";
