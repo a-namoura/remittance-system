@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import AuthCard from "../components/AuthCard.jsx";
 import { PageLoading, PageNotice } from "../components/PageLayout.jsx";
 import PasswordStrengthIndicator from "../components/PasswordStrengthIndicator.jsx";
@@ -48,6 +48,7 @@ function getStepSubtitle(step) {
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [step, setStep] = useState(STEPS.IDENTIFIER);
   const [identifier, setIdentifier] = useState("");
@@ -78,6 +79,23 @@ export default function ForgotPassword() {
   const phoneDisabled = !availableChannels.phone;
 
   useEffect(() => {
+    const tokenFromLink = String(searchParams.get("resetToken") || "").trim();
+    if (!tokenFromLink) return;
+
+    setPendingToken("");
+    setResetToken(tokenFromLink);
+    setCode("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setCooldown(0);
+    setError("");
+    setInfo("Set a new password to complete account recovery.");
+    setStep(STEPS.PASSWORD);
+  }, [searchParams]);
+
+  useEffect(() => {
     if (cooldown <= 0) return;
     const timer = setTimeout(() => setCooldown((value) => value - 1), 1000);
     return () => clearTimeout(timer);
@@ -103,6 +121,12 @@ export default function ForgotPassword() {
 
     if (step === STEPS.CODE) {
       setStep(STEPS.CHANNEL);
+      return;
+    }
+
+    if (step === STEPS.PASSWORD && !pendingToken) {
+      setResetToken("");
+      setStep(STEPS.IDENTIFIER);
       return;
     }
 
@@ -181,6 +205,20 @@ export default function ForgotPassword() {
       setDeliveryHint(response.destination || "");
       if (response.verificationChannel) {
         setVerificationChannel(response.verificationChannel);
+      }
+      if (response.resetLinkSent) {
+        setPendingToken("");
+        setResetToken("");
+        setDeliveryHint(response.destination || "");
+        setCode("");
+        setCooldown(0);
+        setInfo(
+          `Password reset link sent to ${
+            response.destination || "your registered email"
+          }.`
+        );
+        setStep(STEPS.IDENTIFIER);
+        return;
       }
       setCode("");
       setCooldown(RESEND_DELAY);
@@ -385,7 +423,9 @@ export default function ForgotPassword() {
             disabled={loading}
             className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
           >
-            Send verification code
+            {verificationChannel === CHANNELS.EMAIL
+              ? "Send password reset link"
+              : "Send verification code"}
           </button>
         </form>
       )}

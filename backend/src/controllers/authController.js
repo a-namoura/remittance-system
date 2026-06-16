@@ -1,8 +1,12 @@
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 import { User } from "../models/User.js";
 import { logAudit } from "../utils/audit.js";
-import { sendLoginCodeEmail } from "../utils/email.js";
+import {
+  sendLoginCodeEmail,
+  sendPasswordResetLinkEmail,
+} from "../utils/email.js";
 
 const AUTH_METHODS = {
   IDENTIFIER: "identifier",
@@ -16,11 +20,11 @@ const VERIFICATION_CHANNELS = {
 const REGISTER_CODE_TTL_MS = 30 * 1000;
 const LOGIN_CODE_TTL_MS = 2 * 60 * 1000;
 const PASSWORD_RESET_CHALLENGE_TTL = "15m";
-const PASSWORD_RESET_VERIFIED_TTL = "10m";
-const PASSWORD_MIN_LENGTH = 10;
+const PASSWORD_RESET_LINK_TTL_MS = 15 * 60 * 1000;
+const PASSWORD_MIN_LENGTH = 8;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TOKEN_PURPOSES = {
   PASSWORD_RESET_CHALLENGE: "password_reset_challenge",
-  PASSWORD_RESET_VERIFIED: "password_reset_verified",
 };
 
 function getJwtSecret() {
@@ -63,6 +67,48 @@ function verifyPurposeToken(rawToken, expectedPurpose) {
   }
 
   return decoded;
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+  return EMAIL_PATTERN.test(String(value || "").trim());
+}
+
+function hashPasswordResetToken(token) {
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
+}
+
+function createPasswordResetToken(user) {
+  const token = crypto.randomBytes(32).toString("hex");
+  user.passwordResetTokenHash = hashPasswordResetToken(token);
+  user.passwordResetExpiresAt = new Date(Date.now() + PASSWORD_RESET_LINK_TTL_MS);
+  return token;
+}
+
+function clearPasswordResetToken(user) {
+  user.passwordResetTokenHash = undefined;
+  user.passwordResetExpiresAt = undefined;
+}
+
+function getFrontendOrigin() {
+  const configured =
+    process.env.FRONTEND_URL ||
+    process.env.CLIENT_URL ||
+    process.env.APP_URL ||
+    (process.env.WALLET_LINK_DOMAIN
+      ? `http://${process.env.WALLET_LINK_DOMAIN}`
+      : "");
+
+  return String(configured || "http://localhost:5173").replace(/\/+$/, "");
+}
+
+function buildPasswordResetUrl(token) {
+  return `${getFrontendOrigin()}/forgot-password?resetToken=${encodeURIComponent(
+    token
+  )}`;
 }
 
 function generateCode() {
@@ -184,9 +230,6 @@ function getPasswordPolicyError(password) {
   if (normalizedPassword.length < PASSWORD_MIN_LENGTH) {
     missing.push(`at least ${PASSWORD_MIN_LENGTH} characters`);
   }
-  if (!/[a-z]/.test(normalizedPassword)) {
-    missing.push("one lowercase letter");
-  }
   if (!/[A-Z]/.test(normalizedPassword)) {
     missing.push("one uppercase letter");
   }
@@ -251,9 +294,9 @@ export async function sendRegisterCode(req, res) {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: "Email is required" });
 
-  const normalizedEmail = String(email).toLowerCase().trim();
-  if (!normalizedEmail.includes("@")) {
-    return res.status(400).json({ message: "Invalid email" });
+  const normalizedEmail = normalizeEmail(email);
+  if (!isValidEmail(normalizedEmail)) {
+    return res.status(400).json({ message: "Invalid email format" });
   }
 
   const existing = await User.findOne({ email: normalizedEmail });
@@ -334,8 +377,12 @@ export async function register(req, res) {
     return res.status(400).json({ message: "Missing required fields" });
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = normalizeEmail(email);
   const normalizedUsername = username.trim();
+
+  if (!isValidEmail(normalizedEmail)) {
+    return res.status(400).json({ message: "Invalid email format" });
+  }
 
   const registerPasswordError = getPasswordPolicyError(password);
   if (registerPasswordError) {
@@ -392,7 +439,9 @@ export async function loginOptions(req, res) {
 
   const user = await User.findOne(query).select("+passwordHash");
   if (!user) return res.status(401).json({ message: "Invalid credentials" });
-  if (user.isDisabled) return res.status(403).json({ message: "Disabled" });
+  if (user.isDisabled) {
+    return res.status(403).json({ message: "Account is disabled." });
+  }
 
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ message: "Invalid credentials" });
@@ -430,7 +479,9 @@ export async function login(req, res) {
 
   const user = await User.findOne(query).select("+passwordHash");
   if (!user) return res.status(401).json({ message: "Invalid credentials" });
-  if (user.isDisabled) return res.status(403).json({ message: "Disabled" });
+  if (user.isDisabled) {
+    return res.status(403).json({ message: "Account is disabled." });
+  }
 
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ message: "Invalid credentials" });
@@ -559,7 +610,9 @@ export async function forgotPasswordStart(req, res) {
   }
 
   const verificationChannel = normalizeVerificationChannel(rawVerificationChannel);
-  const user = await User.findOne(query).select("+loginCode +loginCodeExpiresAt");
+  const user = await User.findOne(query).select(
+    "+loginCode +loginCodeExpiresAt +passwordResetTokenHash +passwordResetExpiresAt"
+  );
 
   if (!user) {
     return res.status(404).json({ message: "Account not found." });
@@ -574,6 +627,41 @@ export async function forgotPasswordStart(req, res) {
     return res
       .status(400)
       .json({ message: "No phone number found for this account" });
+  }
+
+  if (verificationChannel === VERIFICATION_CHANNELS.EMAIL) {
+    const resetToken = createPasswordResetToken(user);
+    clearLoginCode(user);
+    await user.save();
+
+    const resetUrl = buildPasswordResetUrl(resetToken);
+    try {
+      await sendPasswordResetLinkEmail({ to: user.email, resetUrl });
+    } catch (err) {
+      clearPasswordResetToken(user);
+      await user.save();
+
+      return res
+        .status(err.statusCode || 400)
+        .json({ message: err.message || "Failed to send password reset link" });
+    }
+
+    await logAudit({
+      user,
+      action: "PASSWORD_RESET_LINK_SENT",
+      metadata: {
+        verificationChannel,
+      },
+      req,
+    });
+
+    return res.json({
+      ok: true,
+      resetLinkSent: true,
+      expiresInMinutes: 15,
+      verificationChannel,
+      destination: maskEmail(user.email),
+    });
   }
 
   const code = generateCode();
@@ -632,7 +720,7 @@ export async function forgotPasswordResend(req, res) {
   }
 
   const user = await User.findById(decoded.userId).select(
-    "+loginCode +loginCodeExpiresAt"
+    "+loginCode +loginCodeExpiresAt +passwordResetTokenHash +passwordResetExpiresAt"
   );
 
   if (!user) {
@@ -728,14 +816,9 @@ export async function forgotPasswordVerify(req, res) {
     return res.status(400).json({ message: "Invalid code" });
   }
 
+  const resetToken = createPasswordResetToken(user);
   clearLoginCode(user);
   await user.save();
-
-  const resetToken = signPurposeToken(
-    user._id,
-    TOKEN_PURPOSES.PASSWORD_RESET_VERIFIED,
-    PASSWORD_RESET_VERIFIED_TTL
-  );
 
   await logAudit({ user, action: "PASSWORD_RESET_VERIFIED", req });
 
@@ -747,17 +830,10 @@ export async function forgotPasswordVerify(req, res) {
 
 export async function forgotPasswordReset(req, res) {
   const { resetToken, newPassword } = req.body || {};
+  const normalizedResetToken = String(resetToken || "").trim();
 
-  let decoded;
-  try {
-    decoded = verifyPurposeToken(
-      resetToken,
-      TOKEN_PURPOSES.PASSWORD_RESET_VERIFIED
-    );
-  } catch (err) {
-    return res
-      .status(err.statusCode || 401)
-      .json({ message: err.message || "Invalid or expired token" });
+  if (!normalizedResetToken) {
+    return res.status(400).json({ message: "Token is required" });
   }
 
   const resetPasswordError = getPasswordPolicyError(newPassword);
@@ -765,12 +841,23 @@ export async function forgotPasswordReset(req, res) {
     return res.status(400).json({ message: resetPasswordError });
   }
 
-  const user = await User.findById(decoded.userId).select(
-    "+passwordHash +loginCode +loginCodeExpiresAt"
+  const user = await User.findOne({
+    passwordResetTokenHash: hashPasswordResetToken(normalizedResetToken),
+  }).select(
+    "+passwordHash +loginCode +loginCodeExpiresAt +passwordResetTokenHash +passwordResetExpiresAt"
   );
 
   if (!user) {
-    return res.status(404).json({ message: "Account not found." });
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
+
+  if (
+    !user.passwordResetExpiresAt ||
+    Date.now() > user.passwordResetExpiresAt.getTime()
+  ) {
+    clearPasswordResetToken(user);
+    await user.save();
+    return res.status(401).json({ message: "Invalid or expired token" });
   }
 
   if (user.isDisabled) {
@@ -786,6 +873,7 @@ export async function forgotPasswordReset(req, res) {
 
   user.passwordHash = await bcrypt.hash(newPassword, 10);
   clearLoginCode(user);
+  clearPasswordResetToken(user);
   await user.save();
 
   await logAudit({ user, action: "PASSWORD_RESET_COMPLETED", req });

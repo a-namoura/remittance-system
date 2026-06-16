@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
+      match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Invalid email format"],
     },
     passwordHash: {
       type: String,
@@ -50,6 +51,14 @@ const userSchema = new mongoose.Schema(
     paymentCodeChannel: {
       type: String,
       enum: ["email", "phone"],
+      select: false,
+    },
+    passwordResetTokenHash: {
+      type: String,
+      select: false,
+    },
+    passwordResetExpiresAt: {
+      type: Date,
       select: false,
     },
     firstName: {

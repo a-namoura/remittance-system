@@ -91,6 +91,31 @@ export async function sendLoginCodeEmail({ to, code }) {
   });
 }
 
+export async function sendPasswordResetLinkEmail({ to, resetUrl }) {
+  const normalizedTo = String(to || "").trim();
+  const normalizedResetUrl = String(resetUrl || "").trim();
+  if (!normalizedTo || !normalizedResetUrl) return;
+
+  const messageText = [
+    "Use the link below to reset your password.",
+    "",
+    normalizedResetUrl,
+    "",
+    "This link expires in 15 minutes and can be used only once.",
+  ].join("\n");
+
+  if (process.env.NODE_ENV === "production") {
+    await sendSendGridEmail({
+      to: normalizedTo,
+      subject: "Reset your password",
+      text: messageText,
+    });
+    return;
+  }
+
+  console.log(`Password reset link for ${normalizedTo}: ${normalizedResetUrl}`);
+}
+
 export async function sendPaymentCodeEmail({ to, code }) {
   await sendCodeEmail({
     to,
