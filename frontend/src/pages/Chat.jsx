@@ -322,6 +322,7 @@ export default function Chat() {
   const [sendingTransfer, setSendingTransfer] = useState(false);
   const [sendingRequest, setSendingRequest] = useState(false);
   const [composerMode, setComposerMode] = useState("message");
+  const [sendTransferStep, setSendTransferStep] = useState("details");
   const [composerActionsOpen, setComposerActionsOpen] = useState(false);
   const [messageActionBusyId, setMessageActionBusyId] = useState("");
 
@@ -464,6 +465,7 @@ export default function Chat() {
     : "";
   const isSendComposer = composerMode === "send";
   const isRequestComposer = composerMode === "request";
+  const isSendTransferSummaryStep = isSendComposer && sendTransferStep === "summary";
 
   const friendUnreadByPeer = useMemo(() => {
     void unreadStateVersion;
@@ -1138,6 +1140,7 @@ export default function Chat() {
     if (requestedFriendHandled) return;
     if (!hasRequestedFriend) {
       if (requestedComposerMode) {
+        setSendTransferStep("details");
         setComposerMode(requestedComposerMode);
         setComposerActionsOpen(false);
       }
@@ -1152,6 +1155,7 @@ export default function Chat() {
     }
 
     if (requestedComposerMode) {
+      setSendTransferStep("details");
       setComposerMode(requestedComposerMode);
       setComposerActionsOpen(false);
     }
@@ -1468,46 +1472,74 @@ export default function Chat() {
     );
     setRequestAmount("");
     setRequestNote("");
+    setSendTransferStep("details");
     setComposerMode("message");
     setTimelineInfo("Request sent.");
   }
 
-  async function handleSendTransfer(event) {
-    event.preventDefault();
-
+  function validateSendTransferDraft() {
     if (transferBlockReason) {
       setTimelineError(transferBlockReason);
-      return;
+      return null;
     }
 
     if (!activeThread?.id || !activeFriend?.peerUserId) {
       setTimelineError("Select a friend before sending funds.");
-      return;
+      return null;
     }
 
     const amount = Number(sendAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setTimelineError("Send amount must be a positive number.");
-      return;
+      return null;
     }
 
     const normalizedNote = String(sendNote || "").trim();
     if (normalizedNote.length > 280) {
       setTimelineError("Send note cannot exceed 280 characters.");
-      return;
+      return null;
     }
 
     if (!Number.isFinite(walletBalance)) {
       setTimelineError(walletBalanceError || "Unable to verify your balance.");
-      return;
+      return null;
     }
 
     if (amount > walletBalance) {
       setTimelineError(
         `Insufficient balance. Available: ${walletBalance.toFixed(4)} ETH.`
       );
-      return;
+      return null;
     }
+
+    return { amount, normalizedNote };
+  }
+
+  function handleReviewSendTransfer(event) {
+    event.preventDefault();
+
+    const draft = validateSendTransferDraft();
+    if (!draft) return;
+
+    setTimelineError("");
+    setTimelineInfo("");
+    setSendTransferStep("summary");
+  }
+
+  function cancelSendTransferSummary() {
+    setSendTransferStep("details");
+    setSendAmount("");
+    setSendNote("");
+    setComposerMode("message");
+    setTimelineError("");
+    setTimelineInfo("");
+  }
+
+  async function handleSendTransfer(event) {
+    event.preventDefault();
+
+    const draft = validateSendTransferDraft();
+    if (!draft) return;
 
     const token = requireAuthToken();
     if (!token) {
@@ -1522,13 +1554,14 @@ export default function Chat() {
       await sendChatTransfer({
         token,
         threadId: activeThread.id,
-        amountEth: amount,
-        note: normalizedNote || undefined,
+        amountEth: draft.amount,
+        note: draft.normalizedNote || undefined,
         trackRequest: false,
       });
 
       setSendAmount("");
       setSendNote("");
+      setSendTransferStep("details");
       setComposerMode("message");
       setTimelineInfo("Payment sent.");
       forceTimelineScrollRef.current = true;
@@ -1577,6 +1610,7 @@ export default function Chat() {
     setPayments([]);
     setTimelineInfo("");
     setTimelineError("");
+    setSendTransferStep("details");
     setComposerMode("message");
     setComposerActionsOpen(false);
     setMessageActionBusyId("");
@@ -2245,6 +2279,7 @@ export default function Chat() {
                         <button
                           type="button"
                           onClick={() => {
+                            setSendTransferStep("details");
                             setComposerMode("request");
                             setComposerActionsOpen(false);
                           }}
@@ -2260,6 +2295,7 @@ export default function Chat() {
                         <button
                           type="button"
                           onClick={() => {
+                            setSendTransferStep("details");
                             setComposerMode("send");
                             setComposerActionsOpen(false);
                           }}
@@ -2379,11 +2415,18 @@ export default function Chat() {
           <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-gray-900">
-                {isSendComposer ? "Send payment" : "Request payment"}
+                {isSendTransferSummaryStep
+                  ? "Transaction summary"
+                  : isSendComposer
+                  ? "Send payment"
+                  : "Request payment"}
               </h3>
               <button
                 type="button"
-                onClick={() => setComposerMode("message")}
+                onClick={() => {
+                  setSendTransferStep("details");
+                  setComposerMode("message");
+                }}
                 className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
               >
                 Close
@@ -2426,82 +2469,149 @@ export default function Chat() {
             ) : null}
 
             <form
-              onSubmit={isSendComposer ? handleSendTransfer : handleSendRequest}
+              onSubmit={
+                isSendComposer
+                  ? isSendTransferSummaryStep
+                    ? handleSendTransfer
+                    : handleReviewSendTransfer
+                  : handleSendRequest
+              }
               className="mt-3 space-y-3"
             >
-              <input
-                type="number"
-                min="0"
-                step="0.0001"
-                required
-                value={isSendComposer ? sendAmount : requestAmount}
-                onChange={(event) => {
-                  if (isSendComposer) {
-                    setSendAmount(event.target.value);
-                    return;
-                  }
-                  setRequestAmount(event.target.value);
-                }}
-                placeholder="Amount ETH"
-                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-purple-400"
-              />
+              {isSendTransferSummaryStep ? (
+                <>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
+                      Transaction summary
+                    </p>
+                    <div className="mt-2 grid gap-2 text-sm">
+                      <div>
+                        <p className="text-xs text-gray-500">Receiver</p>
+                        <p className="font-semibold text-gray-900">
+                          {activeFriend?.peerDisplayName || activeFriend?.label || "Friend"}
+                        </p>
+                        <p className="break-all font-mono text-xs text-gray-600">
+                          {peerWalletAddress}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Total amount</p>
+                        <p className="font-semibold text-gray-900">
+                          {formatAmount(sendAmount)} ETH
+                        </p>
+                      </div>
+                      {String(sendNote || "").trim() ? (
+                        <div>
+                          <p className="text-xs text-gray-500">Note</p>
+                          <p className="whitespace-pre-wrap text-gray-700">
+                            {String(sendNote || "").trim()}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
 
-              <input
-                type="text"
-                value={isSendComposer ? sendNote : requestNote}
-                onChange={(event) => {
-                  if (isSendComposer) {
-                    setSendNote(event.target.value);
-                    return;
-                  }
-                  setRequestNote(event.target.value);
-                }}
-                placeholder={isSendComposer ? "Send note (optional)" : "Request note (optional)"}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-purple-400"
-              />
-
-              {isSendComposer &&
-              Number.isFinite(walletBalance) &&
-              Number(sendAmount || 0) > Number(walletBalance) ? (
-                <p className="text-xs font-medium text-red-600">
-                  Amount exceeds your available balance.
-                </p>
-              ) : null}
-
-              <div className="grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setComposerMode("message")}
-                  className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={
-                    isSendComposer
-                      ? sendingTransfer ||
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={cancelSendTransferSummary}
+                      className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel transfer
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={
+                        sendingTransfer ||
                         Boolean(transferBlockReason) ||
                         !activeThread?.id ||
                         !sendAmount.trim() ||
                         !identity?.publicKeyJwk
-                      : sendingRequest ||
-                        Boolean(transferBlockReason) ||
-                        !activeThread?.id ||
-                        !requestAmount.trim() ||
-                        !identity?.publicKeyJwk
-                  }
-                  className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-                >
-                  {isSendComposer
-                    ? sendingTransfer
-                      ? "Sending..."
-                      : "Send now"
-                    : sendingRequest
-                    ? "Requesting..."
-                    : "Request"}
-                </button>
-              </div>
+                      }
+                      className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                    >
+                      {sendingTransfer ? "Sending..." : "Confirm and send"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    required
+                    value={isSendComposer ? sendAmount : requestAmount}
+                    onChange={(event) => {
+                      if (isSendComposer) {
+                        setSendAmount(event.target.value);
+                        return;
+                      }
+                      setRequestAmount(event.target.value);
+                    }}
+                    placeholder="Amount ETH"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-purple-400"
+                  />
+
+                  <input
+                    type="text"
+                    value={isSendComposer ? sendNote : requestNote}
+                    onChange={(event) => {
+                      if (isSendComposer) {
+                        setSendNote(event.target.value);
+                        return;
+                      }
+                      setRequestNote(event.target.value);
+                    }}
+                    placeholder={isSendComposer ? "Send note (optional)" : "Request note (optional)"}
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-purple-400"
+                  />
+
+                  {isSendComposer &&
+                  Number.isFinite(walletBalance) &&
+                  Number(sendAmount || 0) > Number(walletBalance) ? (
+                    <p className="text-xs font-medium text-red-600">
+                      Amount exceeds your available balance.
+                    </p>
+                  ) : null}
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSendTransferStep("details");
+                        setComposerMode("message");
+                      }}
+                      className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={
+                        isSendComposer
+                          ? sendingTransfer ||
+                            Boolean(transferBlockReason) ||
+                            !activeThread?.id ||
+                            !sendAmount.trim() ||
+                            !identity?.publicKeyJwk
+                          : sendingRequest ||
+                            Boolean(transferBlockReason) ||
+                            !activeThread?.id ||
+                            !requestAmount.trim() ||
+                            !identity?.publicKeyJwk
+                      }
+                      className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                    >
+                      {isSendComposer
+                        ? "Review transfer"
+                        : sendingRequest
+                        ? "Requesting..."
+                        : "Request"}
+                    </button>
+                  </div>
+                </>
+              )}
             </form>
           </div>
         </div>
@@ -2510,14 +2620,26 @@ export default function Chat() {
       {requestModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
           <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
-            <h3 className="text-base font-semibold text-gray-900">Request details</h3>
+            <h3 className="text-base font-semibold text-gray-900">
+              {!requestModal.isRequester &&
+              String(requestModal.status || "").trim().toLowerCase() === "pending"
+                ? "Transaction summary"
+                : "Request details"}
+            </h3>
 
             <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-              <p className="text-xs uppercase tracking-[0.12em] text-gray-500">Friend</p>
+              <p className="text-xs uppercase tracking-[0.12em] text-gray-500">
+                {!requestModal.isRequester &&
+                String(requestModal.status || "").trim().toLowerCase() === "pending"
+                  ? "Receiver"
+                  : "Friend"}
+              </p>
               <p className="mt-1 text-sm font-semibold text-gray-900">
                 {requestModal.friendName || activeFriend?.peerDisplayName || activeFriend?.label}
               </p>
-              <p className="mt-2 text-xs uppercase tracking-[0.12em] text-gray-500">Amount</p>
+              <p className="mt-2 text-xs uppercase tracking-[0.12em] text-gray-500">
+                Total amount
+              </p>
               <p className="mt-1 text-lg font-semibold text-gray-900">
                 {formatAmount(requestModal.amount)} ETH
               </p>
@@ -2589,7 +2711,7 @@ export default function Chat() {
                   }
                   className="rounded-full bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
                 >
-                  {requestModalLoading ? "Sending..." : "Send"}
+                  {requestModalLoading ? "Sending..." : "Confirm and send"}
                 </button>
               ) : null}
 

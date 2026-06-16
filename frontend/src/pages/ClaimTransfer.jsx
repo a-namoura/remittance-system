@@ -7,11 +7,12 @@ import {
   PageLoading,
   PageNotice,
 } from "../components/PageLayout.jsx";
+import { getCurrentUser } from "../services/authApi.js";
 import {
   claimTransferLink,
   resolveTransferLink,
 } from "../services/transactionApi.js";
-import { requireAuthToken } from "../services/session.js";
+import { getAuthToken, requireAuthToken } from "../services/session.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 export default function ClaimTransfer() {
@@ -24,9 +25,29 @@ export default function ClaimTransfer() {
   const [error, setError] = useState("");
   const [claiming, setClaiming] = useState(false);
   const [claimSuccess, setClaimSuccess] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
     let isCancelled = false;
+
+    async function loadCurrentUser() {
+      const authToken = getAuthToken();
+      if (!authToken) {
+        setCurrentUser(null);
+        return;
+      }
+
+      try {
+        const user = await getCurrentUser({ token: authToken });
+        if (!isCancelled) {
+          setCurrentUser(user || null);
+        }
+      } catch {
+        if (!isCancelled) {
+          setCurrentUser(null);
+        }
+      }
+    }
 
     async function loadPreview() {
       if (!token) {
@@ -56,6 +77,7 @@ export default function ClaimTransfer() {
       }
     }
 
+    loadCurrentUser();
     loadPreview();
 
     return () => {
@@ -101,6 +123,8 @@ export default function ClaimTransfer() {
     );
   }
 
+  const receiverWallet = String(currentUser?.wallet?.address || "").trim();
+
   return (
     <PageContainer stack className="max-w-xl pt-16">
       <PageHeader
@@ -134,7 +158,18 @@ export default function ClaimTransfer() {
         {status === "active" && (
           <>
             <div className="space-y-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <p className="text-xs uppercase tracking-wide text-gray-500">Amount</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Transaction summary
+              </p>
+              <p className="mt-3 text-xs uppercase tracking-wide text-gray-500">
+                Receiver
+              </p>
+              <p className="break-all font-mono text-sm text-gray-900">
+                {receiverWallet || "Your linked wallet after login"}
+              </p>
+              <p className="mt-3 text-xs uppercase tracking-wide text-gray-500">
+                Total amount
+              </p>
               <p className="text-lg font-semibold text-gray-900">
                 {preview?.amount}{" "}
                 {String(preview?.assetSymbol || "ETH").trim().toUpperCase() || "ETH"}
@@ -149,22 +184,32 @@ export default function ClaimTransfer() {
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={handleClaim}
-              disabled={claiming}
-              className="w-full rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:bg-gray-400"
-            >
-              {claiming ? "Claiming..." : "Claim now"}
-            </button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Link
+                to="/dashboard"
+                className="rounded-xl border border-gray-300 px-4 py-2 text-center text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel transfer
+              </Link>
+              <button
+                type="button"
+                onClick={handleClaim}
+                disabled={claiming}
+                className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:bg-gray-400"
+              >
+                {claiming ? "Claiming..." : "Confirm and claim"}
+              </button>
+            </div>
           </>
         )}
 
-        <div className="pt-2">
-          <Link to="/dashboard" className="text-sm font-medium text-blue-700 hover:underline">
-            Back to dashboard
-          </Link>
-        </div>
+        {status !== "active" && (
+          <div className="pt-2">
+            <Link to="/dashboard" className="text-sm font-medium text-blue-700 hover:underline">
+              Back to dashboard
+            </Link>
+          </div>
+        )}
       </section>
     </PageContainer>
   );

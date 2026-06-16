@@ -569,6 +569,10 @@ export default function SendMoney() {
     resetMethodState();
   }
 
+  function cancelTransferSummary() {
+    closeMethod();
+  }
+
   function validateAddressTransferDetails() {
     const destination = String(manualAddress || "").trim();
     if (!isValidEvmAddress(destination)) {
@@ -1202,7 +1206,9 @@ export default function SendMoney() {
             {activeMethod === "address" && (
               <>
                 <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-                  {transferStep === "details" ? "Step 1 of 2: Details" : "Step 2 of 2: Verification"}
+                  {transferStep === "details"
+                    ? "Step 1 of 2: Details"
+                    : "Step 2 of 2: Summary and verification"}
                 </p>
 
                 {transferStep === "details" ? (
@@ -1250,17 +1256,22 @@ export default function SendMoney() {
                 ) : (
                   <form onSubmit={handleSendByAddress} className="mt-3 space-y-2.5">
                     <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-                          Transfer summary
+                          Transaction summary
                         </p>
-                        <p className="mt-1 truncate text-xs text-gray-700">
-                          <span className="font-mono text-gray-900">
-                            {shortWallet(manualAddress) || manualAddress}
-                          </span>
-                          <span className="mx-1 text-gray-300">â€¢</span>
-                          <span className="font-semibold text-gray-900">{amountEth || "0"} ETH</span>
-                        </p>
+                        <div className="mt-2 grid gap-2 text-xs">
+                          <div>
+                            <p className="text-gray-500">Receiver</p>
+                            <p className="break-all font-mono text-gray-900">
+                              {manualAddress}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500">Total amount</p>
+                            <p className="font-semibold text-gray-900">{amountEth || "0"} ETH</p>
+                          </div>
+                        </div>
                         {!balanceLoading && Number.isFinite(availableBalance) ? (
                           <p className="mt-1 text-[11px] text-gray-500">
                             Balance:{" "}
@@ -1339,10 +1350,10 @@ export default function SendMoney() {
 
                     <button
                       type="button"
-                      onClick={() => setTransferStep("details")}
-                      className="text-xs font-medium text-gray-600 hover:text-gray-800 hover:underline"
+                      onClick={cancelTransferSummary}
+                      className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline"
                     >
-                      Back to details
+                      Cancel transfer
                     </button>
                   </form>
                 )}
