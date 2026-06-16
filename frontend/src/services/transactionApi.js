@@ -49,16 +49,19 @@ export async function sendPaymentVerificationCode({
 
 export async function sendTransaction({
   token,
+  receiver,
   receiverWallet,
   amountEth,
   verificationCode,
   assetSymbol,
 } = {}) {
+  const normalizedReceiver = String(receiver ?? receiverWallet ?? "").trim();
+
   return apiRequest("/api/transactions/send", {
     method: "POST",
     token,
     body: {
-      receiverWallet,
+      receiver: normalizedReceiver,
       amountEth,
       verificationCode,
       assetSymbol,

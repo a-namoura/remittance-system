@@ -23,7 +23,7 @@ import { getUserErrorMessage } from "../utils/userError.js";
 const PAYMENT_OPTIONS = [
   { id: "bank", label: "Bank" },
   { id: "card", label: "Card" },
-  { id: "address", label: "Address" },
+  { id: "address", label: "Address/User" },
   { id: "link", label: "Link" },
   { id: "qr", label: "QR" },
 ];
@@ -186,9 +186,22 @@ function displayRecipient(recipient) {
 function methodTitle(method) {
   if (method === "bank") return "Bank transfer";
   if (method === "card") return "Card transfer";
-  if (method === "address") return "Transfer to wallet address";
+  if (method === "address") return "Transfer to address or user";
   if (method === "link") return "Create payment link";
   return "Create payment QR";
+}
+
+function isIncompleteWalletAddress(value) {
+  const normalized = String(value || "").trim();
+  return /^0x/i.test(normalized) && !isValidEvmAddress(normalized);
+}
+
+function formatManualReceiver(value) {
+  const normalized = String(value || "").trim();
+  if (isValidEvmAddress(normalized)) {
+    return shortWallet(normalized) || normalized;
+  }
+  return normalized;
 }
 
 function buildChatSendLink(friend) {
@@ -392,7 +405,7 @@ export default function SendMoney() {
 
   useEffect(() => {
     if (requestPrefillDone) return;
-    if (!requestToParam || !isValidEvmAddress(requestToParam)) return;
+    if (!requestToParam || isIncompleteWalletAddress(requestToParam)) return;
 
     setRequestPrefillDone(true);
     setActiveMethod("address");
@@ -571,8 +584,13 @@ export default function SendMoney() {
 
   function validateAddressTransferDetails() {
     const destination = String(manualAddress || "").trim();
-    if (!isValidEvmAddress(destination)) {
-      setMethodError("Enter a valid destination wallet address.");
+    if (!destination) {
+      setMethodError("Enter a wallet address, username, or email.");
+      return null;
+    }
+
+    if (isIncompleteWalletAddress(destination)) {
+      setMethodError("Enter a valid wallet address, username, or email.");
       return null;
     }
 
@@ -673,7 +691,7 @@ export default function SendMoney() {
       setSending(true);
       const result = await sendTransaction({
         token,
-        receiverWallet: wallet,
+        receiver: wallet,
         amountEth: amount,
         verificationCode: normalizedCode,
       });
@@ -720,7 +738,7 @@ export default function SendMoney() {
       setSending(true);
       const result = await sendTransaction({
         token,
-        receiverWallet: details.destination,
+        receiver: details.destination,
         amountEth: details.amount,
         verificationCode: normalizedCode,
       });
@@ -897,8 +915,11 @@ export default function SendMoney() {
     parsedAmount > availableBalance;
   const canProceedWithBalance =
     !balanceLoading && Number.isFinite(availableBalance) && !exceedsBalance;
-  const hasValidManualAddress = isValidEvmAddress(String(manualAddress || "").trim());
-  const addressDetailsReady = hasValidManualAddress && hasPositiveAmount;
+  const manualReceiver = String(manualAddress || "").trim();
+  const hasManualReceiver = Boolean(manualReceiver);
+  const hasInvalidManualWallet = isIncompleteWalletAddress(manualReceiver);
+  const addressDetailsReady =
+    hasManualReceiver && !hasInvalidManualWallet && hasPositiveAmount;
   const canRequestAddressVerification = addressDetailsReady && canProceedWithBalance;
   const canUsePhoneVerification = Boolean(String(me?.phoneNumber || "").trim());
   const isAddressVerificationStep =
@@ -1150,10 +1171,10 @@ export default function SendMoney() {
                       Destination
                     </p>
                     <p className="text-sm font-semibold text-gray-900">
-                      Manual wallet address
+                      Wallet address or user identifier
                     </p>
                     <p className="text-xs text-gray-600">
-                      Enter a destination address below.
+                      Enter a wallet address, username, or email below.
                     </p>
                   </>
                 ) : (
@@ -1215,7 +1236,7 @@ export default function SendMoney() {
                         setVerificationCode("");
                         setVerificationDestination("");
                       }}
-                      placeholder="Destination wallet address (0x...)"
+                      placeholder="Wallet address, username, or email"
                       className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-mono text-gray-900 focus:border-gray-400 focus:outline-none"
                     />
 
@@ -1235,7 +1256,7 @@ export default function SendMoney() {
 
                     {!addressDetailsReady ? (
                       <p className="text-xs text-gray-500">
-                        Enter destination address and amount to continue to verification.
+                        Enter a receiver and amount to continue to verification.
                       </p>
                     ) : null}
 
@@ -1256,7 +1277,7 @@ export default function SendMoney() {
                         </p>
                         <p className="mt-1 truncate text-xs text-gray-700">
                           <span className="font-mono text-gray-900">
-                            {shortWallet(manualAddress) || manualAddress}
+                            {formatManualReceiver(manualAddress)}
                           </span>
                           <span className="mx-1 text-gray-300">â€¢</span>
                           <span className="font-semibold text-gray-900">{amountEth || "0"} ETH</span>
