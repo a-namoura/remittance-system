@@ -1939,7 +1939,7 @@ export default function Chat() {
                         aria-label="Close chat"
                         title="Close chat"
                       >
-                        Ã—
+                        &times;
                       </button>
                     </div>
                   </div>
