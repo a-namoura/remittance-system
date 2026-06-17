@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiRequest } from "../services/api.js";
 import AuthCard from "../components/AuthCard.jsx";
-import { PageLoading, PageNotice } from "../components/PageLayout.jsx";
+import { FieldError, PageLoading, PageNotice } from "../components/PageLayout.jsx";
 import { clearAuthToken, setAuthToken } from "../services/session.js";
 import {
   FORM_CODE_INPUT_CLASS,
@@ -62,6 +62,12 @@ export default function Login() {
 
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({
+    identifier: "",
+    password: "",
+    verificationChannel: "",
+    code: "",
+  });
   const [loading, setLoading] = useState(false);
 
   const subtitle = useMemo(() => getStepSubtitle(step), [step]);
@@ -87,6 +93,12 @@ export default function Login() {
   function resetMessages() {
     setError("");
     setInfo("");
+    setFieldErrors({
+      identifier: "",
+      password: "",
+      verificationChannel: "",
+      code: "",
+    });
   }
 
   function handleBack() {
@@ -112,13 +124,22 @@ export default function Login() {
     resetMessages();
 
     const normalizedIdentifier = identifier.trim();
+    const nextFieldErrors = {
+      identifier: "",
+      password: "",
+      verificationChannel: "",
+      code: "",
+    };
     if (!normalizedIdentifier) {
-      setError("Email or username is required.");
-      return;
+      nextFieldErrors.identifier = "Email or username is required.";
     }
 
     if (!password) {
-      setError("Password is required.");
+      nextFieldErrors.password = "Password is required.";
+    }
+
+    setFieldErrors(nextFieldErrors);
+    if (nextFieldErrors.identifier || nextFieldErrors.password) {
       return;
     }
 
@@ -146,7 +167,10 @@ export default function Login() {
       resetVerificationState();
       setStep(STEPS.CHANNEL);
     } catch (err) {
-      setError(getUserErrorMessage(err, "Login failed."));
+      setFieldErrors((current) => ({
+        ...current,
+        password: getUserErrorMessage(err, "Login failed."),
+      }));
     } finally {
       setLoading(false);
     }
@@ -158,7 +182,11 @@ export default function Login() {
 
     const normalizedIdentifier = identifier.trim();
     if (!normalizedIdentifier || !password) {
-      setError("Email or username and password are required.");
+      setFieldErrors((current) => ({
+        ...current,
+        identifier: !normalizedIdentifier ? "Email or username is required." : "",
+        password: !password ? "Password is required." : "",
+      }));
       setStep(STEPS.CREDENTIALS);
       return;
     }
@@ -167,7 +195,10 @@ export default function Login() {
       verificationChannel === CHANNELS.PHONE &&
       !availableChannels.phone
     ) {
-      setError("No phone number found for this account.");
+      setFieldErrors((current) => ({
+        ...current,
+        verificationChannel: "No phone number found for this account.",
+      }));
       return;
     }
 
@@ -197,7 +228,10 @@ export default function Login() {
         return;
       }
 
-      setError(message);
+      setFieldErrors((current) => ({
+        ...current,
+        password: message,
+      }));
       setStep(STEPS.CREDENTIALS);
     } finally {
       setLoading(false);
@@ -209,14 +243,20 @@ export default function Login() {
     resetMessages();
 
     if (!pendingToken) {
-      setError("Session expired. Please sign in again.");
+      setFieldErrors((current) => ({
+        ...current,
+        password: "Session expired. Please sign in again.",
+      }));
       setStep(STEPS.CREDENTIALS);
       return;
     }
 
     const trimmedCode = normalizeDigits(code).slice(0, 6);
     if (!trimmedCode) {
-      setError("Verification code is required.");
+      setFieldErrors((current) => ({
+        ...current,
+        code: "Verification code is required.",
+      }));
       return;
     }
 
@@ -231,7 +271,10 @@ export default function Login() {
       setAuthToken(pendingToken);
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      setError(getUserErrorMessage(err, "Code verification failed."));
+      setFieldErrors((current) => ({
+        ...current,
+        code: getUserErrorMessage(err, "Code verification failed."),
+      }));
     } finally {
       setLoading(false);
     }
@@ -289,8 +332,12 @@ export default function Login() {
               autoCapitalize="none"
               autoCorrect="off"
               autoComplete="username"
-              onChange={(e) => setIdentifier(e.target.value)}
+              onChange={(e) => {
+                setIdentifier(e.target.value);
+                setFieldErrors((current) => ({ ...current, identifier: "" }));
+              }}
             />
+            <FieldError>{fieldErrors.identifier}</FieldError>
           </div>
 
           <div>
@@ -303,8 +350,12 @@ export default function Login() {
               type="password"
               value={password}
               autoComplete="current-password"
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setFieldErrors((current) => ({ ...current, password: "" }));
+              }}
             />
+            <FieldError>{fieldErrors.password}</FieldError>
             <div className="mt-2 flex justify-end">
               <button
                 type="button"
@@ -359,6 +410,7 @@ export default function Login() {
                 No phone number found for this account.
               </p>
             )}
+            <FieldError>{fieldErrors.verificationChannel}</FieldError>
           </div>
 
           <button
@@ -384,10 +436,14 @@ export default function Login() {
               maxLength={6}
               autoComplete="one-time-code"
               onChange={(e) =>
-                setCode(normalizeDigits(e.target.value).slice(0, 6))
+                {
+                  setCode(normalizeDigits(e.target.value).slice(0, 6));
+                  setFieldErrors((current) => ({ ...current, code: "" }));
+                }
               }
               className={FORM_CODE_INPUT_CLASS}
             />
+            <FieldError>{fieldErrors.code}</FieldError>
             <p className="mt-2 text-xs text-gray-500">
               Enter the code sent to{" "}
               <span className="font-medium">

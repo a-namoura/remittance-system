@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
+import {
+  FieldError,
+  PageContainer,
+  PageError,
+  PageHeader,
+} from "../components/PageLayout.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import { readWalletState, requireAuthToken, writeWalletState } from "../services/session.js";
 import { copyText, getQrImageUrl } from "../utils/paylink.js";
@@ -34,6 +39,7 @@ export default function RequestMoney() {
   const [linkNote, setLinkNote] = useState("");
   const [generatedLink, setGeneratedLink] = useState("");
   const [linkError, setLinkError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({ amount: "" });
   const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
@@ -91,12 +97,16 @@ export default function RequestMoney() {
 
   function handleGenerateLink() {
     const amount = Number(linkAmount);
+    const nextFieldErrors = { amount: "" };
     if (!Number.isFinite(amount) || amount <= 0) {
-      setLinkError("Request amount must be a positive number.");
+      nextFieldErrors.amount = "Request amount must be a positive number.";
+      setFieldErrors(nextFieldErrors);
+      setLinkError("");
       setGeneratedLink("");
       return;
     }
 
+    setFieldErrors(nextFieldErrors);
     if (!canGenerateLink) {
       setLinkError("Link your wallet first to generate request links.");
       setGeneratedLink("");
@@ -178,10 +188,14 @@ export default function RequestMoney() {
                 min="0"
                 step="0.0001"
                 value={linkAmount}
-                onChange={(event) => setLinkAmount(event.target.value)}
+                onChange={(event) => {
+                  setLinkAmount(event.target.value);
+                  setFieldErrors((current) => ({ ...current, amount: "" }));
+                }}
                 placeholder="0.00"
                 className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-400 focus:outline-none"
               />
+              <FieldError>{fieldErrors.amount}</FieldError>
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">

@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AuthCard from "../components/AuthCard.jsx";
-import { PageLoading, PageNotice } from "../components/PageLayout.jsx";
+import { FieldError, PageLoading, PageNotice } from "../components/PageLayout.jsx";
 import PasswordStrengthIndicator from "../components/PasswordStrengthIndicator.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
 import { apiRequest } from "../services/api.js";
 import { clearAuthToken, setAuthToken } from "../services/session.js";
-import {
-  getPasswordPolicyError,
-  isPasswordPolicySatisfied,
-} from "../utils/passwordPolicy.js";
+import { getPasswordPolicyError } from "../utils/passwordPolicy.js";
 import {
   FORM_CODE_INPUT_CLASS,
   FORM_INPUT_BASE_CLASS,
@@ -86,6 +83,22 @@ function isUnder17(dobStr) {
 
 const DOB_MAX = getDobMaxValue();
 const TOTAL_STEPS = 5;
+const EMPTY_FIELD_ERRORS = {
+  email: "",
+  emailCode: "",
+  password: "",
+  phone: "",
+  phoneCode: "",
+  firstName: "",
+  lastName: "",
+  username: "",
+  dob: "",
+  employmentStatus: "",
+  sourceOfFunds: "",
+  monthlyVolume: "",
+  agreeGuidelines: "",
+  agreeAccuracy: "",
+};
 const CODE_TTL_LABEL =
   CODE_TTL_SECONDS >= 60 && CODE_TTL_SECONDS % 60 === 0
     ? `${CODE_TTL_SECONDS / 60} minute${
@@ -138,6 +151,7 @@ export default function Register() {
 
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [fieldErrors, setFieldErrors] = useState(EMPTY_FIELD_ERRORS);
   const [loading, setLoading] = useState(false);
 
   const [cooldown, setCooldown] = useState(0);
@@ -249,6 +263,14 @@ export default function Register() {
     setInfo("");
   }
 
+  function clearFieldError(field) {
+    setFieldErrors((current) => ({ ...current, [field]: "" }));
+  }
+
+  function clearFieldErrors() {
+    setFieldErrors(EMPTY_FIELD_ERRORS);
+  }
+
   function resetPhoneVerification({ clearPhone = false } = {}) {
     if (clearPhone) setPhone("");
     setExpectedPhoneCode("");
@@ -270,6 +292,7 @@ export default function Register() {
   function handleBack() {
     setError("");
     setInfo("");
+    clearFieldErrors();
 
     switch (step) {
       case STEPS.ACCOUNT:
@@ -306,14 +329,21 @@ export default function Register() {
   async function handleSendRegisterCode() {
     setError("");
     setInfo("");
+    clearFieldErrors();
 
     const trimmed = email.trim();
     if (!trimmed) {
-      setError("Email address is required.");
+      setFieldErrors((current) => ({
+        ...current,
+        email: "Email address is required.",
+      }));
       return;
     }
     if (!isValidEmail(trimmed)) {
-      setError("Please enter a valid email address.");
+      setFieldErrors((current) => ({
+        ...current,
+        email: "Please enter a valid email address.",
+      }));
       return;
     }
 
@@ -340,16 +370,23 @@ export default function Register() {
   async function handleVerifyRegisterCode() {
     setError("");
     setInfo("");
+    clearFieldErrors();
 
     const trimmed = emailCode.trim();
     if (!trimmed) {
-      setError("Please enter the verification code.");
+      setFieldErrors((current) => ({
+        ...current,
+        emailCode: "Please enter the verification code.",
+      }));
       return;
     }
 
     if (!emailCodeExpiresAt || Date.now() > emailCodeExpiresAt) {
       resetEmailVerification();
-      setError("This email verification code has expired. Please request a new one.");
+      setFieldErrors((current) => ({
+        ...current,
+        emailCode: "This email verification code has expired. Please request a new one.",
+      }));
       return;
     }
 
@@ -371,8 +408,12 @@ export default function Register() {
   }
 
   async function handleAccountContinue() {
+    clearFieldErrors();
     if (!emailVerified) {
-      setError("Please verify your email before continuing.");
+      setFieldErrors((current) => ({
+        ...current,
+        emailCode: "Please verify your email before continuing.",
+      }));
       return;
     }
 
@@ -383,6 +424,7 @@ export default function Register() {
   async function handleAccountSubmit(e) {
     e.preventDefault();
     setError("");
+    clearFieldErrors();
 
     if (!emailCodeSent) {
       await handleSendRegisterCode();
@@ -405,10 +447,11 @@ export default function Register() {
   function handlePasswordSubmit(e) {
     e.preventDefault();
     setError("");
+    clearFieldErrors();
 
     const passwordError = getPasswordPolicyError(password);
     if (passwordError) {
-      setError(passwordError);
+      setFieldErrors((current) => ({ ...current, password: passwordError }));
       return;
     }
 
@@ -418,10 +461,14 @@ export default function Register() {
   async function handlePhoneSubmit(e) {
     e.preventDefault();
     setError("");
+    clearFieldErrors();
 
     const trimmed = phone.trim();
     if (!trimmed) {
-      setError("Phone number is required.");
+      setFieldErrors((current) => ({
+        ...current,
+        phone: "Phone number is required.",
+      }));
       return;
     }
 
@@ -447,21 +494,31 @@ export default function Register() {
   function handlePhoneCodeSubmit(e) {
     e.preventDefault();
     setError("");
+    clearFieldErrors();
 
     const trimmed = phoneCode.trim();
     if (!trimmed) {
-      setError("Please enter the verification code.");
+      setFieldErrors((current) => ({
+        ...current,
+        phoneCode: "Please enter the verification code.",
+      }));
       return;
     }
 
     if (!phoneCodeExpiresAt || Date.now() > phoneCodeExpiresAt) {
       resetPhoneVerification();
-      setError("This SMS verification code has expired. Please request a new one.");
+      setFieldErrors((current) => ({
+        ...current,
+        phoneCode: "This SMS verification code has expired. Please request a new one.",
+      }));
       return;
     }
 
     if (expectedPhoneCode && trimmed !== expectedPhoneCode) {
-      setError("Incorrect verification code.");
+      setFieldErrors((current) => ({
+        ...current,
+        phoneCode: "Incorrect verification code.",
+      }));
       return;
     }
 
@@ -472,28 +529,36 @@ export default function Register() {
   function handleProfileSubmit(e) {
     e.preventDefault();
     setError("");
+    clearFieldErrors();
 
-    if (!firstName.trim() || !lastName.trim()) {
-      setError("Please enter both first and last name.");
-      return;
+    const nextFieldErrors = { ...EMPTY_FIELD_ERRORS };
+    if (!firstName.trim()) {
+      nextFieldErrors.firstName = "First name is required.";
+    }
+    if (!lastName.trim()) {
+      nextFieldErrors.lastName = "Last name is required.";
     }
 
     const trimmedUsername = username.trim();
     if (!trimmedUsername) {
-      setError("Username is required.");
-      return;
-    }
-    if (trimmedUsername.length < 3) {
-      setError("Username must be at least 3 characters.");
-      return;
+      nextFieldErrors.username = "Username is required.";
+    } else if (trimmedUsername.length < 3) {
+      nextFieldErrors.username = "Username must be at least 3 characters.";
     }
 
     if (!dob) {
-      setError("Date of birth is required.");
-      return;
+      nextFieldErrors.dob = "Date of birth is required.";
+    } else if (isUnder17(dob)) {
+      nextFieldErrors.dob = "You must be at least 17 years old to create an account.";
     }
-    if (isUnder17(dob)) {
-      setError("You must be at least 17 years old to create an account.");
+
+    setFieldErrors(nextFieldErrors);
+    if (
+      nextFieldErrors.firstName ||
+      nextFieldErrors.lastName ||
+      nextFieldErrors.username ||
+      nextFieldErrors.dob
+    ) {
       return;
     }
 
@@ -504,25 +569,38 @@ export default function Register() {
   async function handleKycSubmit(e) {
     e.preventDefault();
     setError("");
+    clearFieldErrors();
 
+    const nextFieldErrors = { ...EMPTY_FIELD_ERRORS };
     if (!employmentStatus) {
-      setError("Please choose an employment status.");
-      return;
+      nextFieldErrors.employmentStatus = "Please choose an employment status.";
     }
 
     if (!sourceOfFunds.trim()) {
-      setError("Please select your main source of funds.");
-      return;
+      nextFieldErrors.sourceOfFunds = "Please select your main source of funds.";
     }
     if (!monthlyVolume.trim()) {
-      setError("Please select your estimated monthly deposits/withdrawals.");
-      return;
+      nextFieldErrors.monthlyVolume =
+        "Please select your estimated monthly deposits/withdrawals.";
     }
 
-    if (!agreeGuidelines || !agreeAccuracy) {
-      setError(
-        "You must confirm that you've read the guidelines and that your details are accurate."
-      );
+    if (!agreeGuidelines) {
+      nextFieldErrors.agreeGuidelines =
+        "You must confirm that you've read the guidelines.";
+    }
+    if (!agreeAccuracy) {
+      nextFieldErrors.agreeAccuracy =
+        "You must confirm that your details are accurate.";
+    }
+
+    setFieldErrors(nextFieldErrors);
+    if (
+      nextFieldErrors.employmentStatus ||
+      nextFieldErrors.sourceOfFunds ||
+      nextFieldErrors.monthlyVolume ||
+      nextFieldErrors.agreeGuidelines ||
+      nextFieldErrors.agreeAccuracy
+    ) {
       return;
     }
 
@@ -561,15 +639,6 @@ export default function Register() {
       setLoading(false);
     }
   }
-
-  const canSubmitKyc =
-    !!employmentStatus &&
-    !!sourceOfFunds &&
-    !!monthlyVolume &&
-    agreeGuidelines &&
-    agreeAccuracy &&
-    !loading;
-  const canContinueFromPassword = isPasswordPolicySatisfied(password) && !loading;
 
   return (
     <AuthCard title="Create your account" subtitle={subtitle} onBack={handleBack}>
@@ -613,9 +682,11 @@ export default function Register() {
               onChange={(e) => {
                 if (emailCodeSent || emailVerified) return;
                 setEmail(e.target.value);
+                clearFieldError("email");
                 resetEmailVerification();
               }}
             />
+            <FieldError>{fieldErrors.email}</FieldError>
           </div>
 
           {!emailCodeSent && (
@@ -642,11 +713,13 @@ export default function Register() {
                   maxLength={6}
                   value={emailCode}
                   disabled={emailVerified}
-                  onChange={(e) =>
-                    !emailVerified &&
-                    setEmailCode(normalizeDigits(e.target.value).slice(0, 6))
-                  }
+                  onChange={(e) => {
+                    if (emailVerified) return;
+                    setEmailCode(normalizeDigits(e.target.value).slice(0, 6));
+                    clearFieldError("emailCode");
+                  }}
                 />
+                <FieldError>{fieldErrors.emailCode}</FieldError>
 
                 {!emailVerified && (
                   <div className="mt-3 flex justify-center">
@@ -720,7 +793,10 @@ export default function Register() {
                 placeholder="********"
                 value={password}
                 autoComplete="new-password"
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  clearFieldError("password");
+                }}
               />
               <div className="absolute inset-y-0 right-2 flex items-center">
                 <PasswordVisibilityToggle
@@ -730,16 +806,13 @@ export default function Register() {
               </div>
             </div>
             <PasswordStrengthIndicator password={password} />
+            <FieldError>{fieldErrors.password}</FieldError>
           </div>
 
           <button
             type="submit"
-            disabled={!canContinueFromPassword}
-            className={
-              canContinueFromPassword
-                ? FORM_PRIMARY_BUTTON_CLASS
-                : "w-full rounded-full bg-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-500 cursor-not-allowed"
-            }
+            disabled={loading}
+            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
           >
             Continue
           </button>
@@ -813,16 +886,18 @@ export default function Register() {
                   placeholder="XX XXX XXXX"
                   value={phone}
                   autoComplete="tel-national"
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setPhone(
                       normalizeDigits(e.target.value).slice(
                         0,
                         MAX_LOCAL_PHONE_DIGITS
                       )
-                    )
-                  }
+                    );
+                    clearFieldError("phone");
+                  }}
                 />
               </div>
+              <FieldError>{fieldErrors.phone}</FieldError>
             </div>
           </div>
 
@@ -857,11 +932,13 @@ export default function Register() {
               maxLength={6}
               value={phoneCode}
               disabled={phoneVerified}
-              onChange={(e) =>
-                !phoneVerified &&
-                setPhoneCode(normalizeDigits(e.target.value).slice(0, 6))
-              }
+              onChange={(e) => {
+                if (phoneVerified) return;
+                setPhoneCode(normalizeDigits(e.target.value).slice(0, 6));
+                clearFieldError("phoneCode");
+              }}
             />
+            <FieldError>{fieldErrors.phoneCode}</FieldError>
             <p className="mt-2 text-xs text-gray-500">
               We sent a code to{" "}
               <span className="font-medium">
@@ -913,8 +990,12 @@ export default function Register() {
                 value={firstName}
                 maxLength={60}
                 autoComplete="given-name"
-                onChange={(e) => setFirstName(e.target.value)}
+                onChange={(e) => {
+                  setFirstName(e.target.value);
+                  clearFieldError("firstName");
+                }}
               />
+              <FieldError>{fieldErrors.firstName}</FieldError>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -926,8 +1007,12 @@ export default function Register() {
                 value={lastName}
                 maxLength={60}
                 autoComplete="family-name"
-                onChange={(e) => setLastName(e.target.value)}
+                onChange={(e) => {
+                  setLastName(e.target.value);
+                  clearFieldError("lastName");
+                }}
               />
+              <FieldError>{fieldErrors.lastName}</FieldError>
             </div>
           </div>
 
@@ -944,8 +1029,12 @@ export default function Register() {
               autoCapitalize="none"
               autoCorrect="off"
               autoComplete="username"
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={(e) => {
+                setUsername(e.target.value);
+                clearFieldError("username");
+              }}
             />
+            <FieldError>{fieldErrors.username}</FieldError>
           </div>
 
           <div>
@@ -957,8 +1046,12 @@ export default function Register() {
               className={FORM_INPUT_BASE_CLASS}
               value={dob}
               max={DOB_MAX}
-              onChange={(e) => setDob(e.target.value)}
+              onChange={(e) => {
+                setDob(e.target.value);
+                clearFieldError("dob");
+              }}
             />
+            <FieldError>{fieldErrors.dob}</FieldError>
             <p className="mt-1 text-xs text-gray-500">
               You must be at least 17 years old.
             </p>
@@ -979,7 +1072,10 @@ export default function Register() {
             <select
               className={FORM_SELECT_BASE_CLASS}
               value={employmentStatus}
-              onChange={(e) => setEmploymentStatus(e.target.value)}
+              onChange={(e) => {
+                setEmploymentStatus(e.target.value);
+                clearFieldError("employmentStatus");
+              }}
             >
               <option value="">Choose one</option>
               <option value="employed">Employed</option>
@@ -989,6 +1085,7 @@ export default function Register() {
               <option value="retired">Retired</option>
               <option value="other">Other</option>
             </select>
+            <FieldError>{fieldErrors.employmentStatus}</FieldError>
           </div>
 
           <div>
@@ -998,7 +1095,10 @@ export default function Register() {
             <select
               className={FORM_SELECT_BASE_CLASS}
               value={sourceOfFunds}
-              onChange={(e) => setSourceOfFunds(e.target.value)}
+              onChange={(e) => {
+                setSourceOfFunds(e.target.value);
+                clearFieldError("sourceOfFunds");
+              }}
             >
               <option value="">Select one</option>
               <option value="salary_employment">Salary / employment income</option>
@@ -1010,6 +1110,7 @@ export default function Register() {
                 Family support / transfers
               </option>
             </select>
+            <FieldError>{fieldErrors.sourceOfFunds}</FieldError>
           </div>
 
           <div>
@@ -1019,7 +1120,10 @@ export default function Register() {
             <select
               className={FORM_SELECT_BASE_CLASS}
               value={monthlyVolume}
-              onChange={(e) => setMonthlyVolume(e.target.value)}
+              onChange={(e) => {
+                setMonthlyVolume(e.target.value);
+                clearFieldError("monthlyVolume");
+              }}
             >
               <option value="">Select one</option>
               <option value="0_500">0 - 500 USD</option>
@@ -1027,6 +1131,7 @@ export default function Register() {
               <option value="1000_5000">1,000 - 5,000 USD</option>
               <option value="5000_plus">Above 5,000 USD</option>
             </select>
+            <FieldError>{fieldErrors.monthlyVolume}</FieldError>
           </div>
 
           <div className="space-y-2 pt-2">
@@ -1035,31 +1140,39 @@ export default function Register() {
                 type="checkbox"
                 className="mt-0.5 h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                 checked={agreeGuidelines}
-                onChange={(e) => setAgreeGuidelines(e.target.checked)}
+                onChange={(e) => {
+                  setAgreeGuidelines(e.target.checked);
+                  clearFieldError("agreeGuidelines");
+                }}
               />
               <span>
                 I have read and agree to follow the guidelines and terms of use of
                 the system.
               </span>
             </label>
+            <FieldError>{fieldErrors.agreeGuidelines}</FieldError>
 
             <label className="flex items-start gap-2 text-xs text-gray-700">
               <input
                 type="checkbox"
                 className="mt-0.5 h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                 checked={agreeAccuracy}
-                onChange={(e) => setAgreeAccuracy(e.target.checked)}
+                onChange={(e) => {
+                  setAgreeAccuracy(e.target.checked);
+                  clearFieldError("agreeAccuracy");
+                }}
               />
               <span>
                 I confirm that all details provided are accurate and complete to
                 the best of my knowledge.
               </span>
             </label>
+            <FieldError>{fieldErrors.agreeAccuracy}</FieldError>
           </div>
 
           <button
             type="submit"
-            disabled={!canSubmitKyc}
+            disabled={loading}
             className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
           >
             {loading ? "Creating account..." : "Create account"}

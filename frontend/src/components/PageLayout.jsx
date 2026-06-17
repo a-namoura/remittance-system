@@ -57,6 +57,18 @@ export function PageError({ children, className = "" }) {
   return <div className={joinClasses("app-page-error", className)}>{children}</div>;
 }
 
+export function FieldError({ children, className = "" }) {
+  if (!children) return null;
+  return (
+    <p
+      role="alert"
+      className={joinClasses("mt-1 text-xs font-medium text-red-600", className)}
+    >
+      {children}
+    </p>
+  );
+}
+
 export function PageNotice({ children, className = "", variant = "info" }) {
   if (!children) return null;
   const toneClass = NOTICE_CLASS_BY_VARIANT[variant] || NOTICE_CLASS_BY_VARIANT.info;

@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
+import {
+  FieldError,
+  PageContainer,
+  PageError,
+  PageHeader,
+} from "../components/PageLayout.jsx";
 import { getMyTransactions } from "../services/transactionApi.js";
 import { requireAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
@@ -43,6 +48,7 @@ export default function Transactions() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({ from: "", to: "" });
   const todayDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const totalPages = useMemo(
@@ -109,19 +115,23 @@ export default function Transactions() {
   function applyFilters(event) {
     event.preventDefault();
     setError("");
+    const nextFieldErrors = { from: "", to: "" };
 
     if (from && from > todayDate) {
-      setError("From date cannot be in the future.");
-      return;
+      nextFieldErrors.from = "From date cannot be in the future.";
     }
 
     if (to && to > todayDate) {
-      setError("To date cannot be in the future.");
-      return;
+      nextFieldErrors.to = "To date cannot be in the future.";
     }
 
     if (from && to && from > to) {
-      setError("From date cannot be later than To date.");
+      nextFieldErrors.from = "From date cannot be later than To date.";
+      nextFieldErrors.to = "To date cannot be earlier than From date.";
+    }
+
+    setFieldErrors(nextFieldErrors);
+    if (nextFieldErrors.from || nextFieldErrors.to) {
       return;
     }
 
@@ -189,8 +199,12 @@ export default function Transactions() {
               max={todayDate}
               className="rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-sm"
               value={from}
-              onChange={(event) => setFrom(event.target.value)}
+              onChange={(event) => {
+                setFrom(event.target.value);
+                setFieldErrors((current) => ({ ...current, from: "" }));
+              }}
             />
+            <FieldError>{fieldErrors.from}</FieldError>
           </div>
 
           <div>
@@ -202,8 +216,12 @@ export default function Transactions() {
               max={todayDate}
               className="rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-sm"
               value={to}
-              onChange={(event) => setTo(event.target.value)}
+              onChange={(event) => {
+                setTo(event.target.value);
+                setFieldErrors((current) => ({ ...current, to: "" }));
+              }}
             />
+            <FieldError>{fieldErrors.to}</FieldError>
           </div>
 
           <button

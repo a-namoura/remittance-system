@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import AuthCard from "../components/AuthCard.jsx";
-import { PageLoading, PageNotice } from "../components/PageLayout.jsx";
+import { FieldError, PageLoading, PageNotice } from "../components/PageLayout.jsx";
 import PasswordStrengthIndicator from "../components/PasswordStrengthIndicator.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
 import { apiRequest } from "../services/api.js";
@@ -74,6 +74,13 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({
+    identifier: "",
+    verificationChannel: "",
+    code: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
 
   const subtitle = useMemo(() => getStepSubtitle(step), [step]);
   const phoneDisabled = !availableChannels.phone;
@@ -91,6 +98,13 @@ export default function ForgotPassword() {
     setShowConfirmPassword(false);
     setCooldown(0);
     setError("");
+    setFieldErrors({
+      identifier: "",
+      verificationChannel: "",
+      code: "",
+      newPassword: "",
+      confirmPassword: "",
+    });
     setInfo("Set a new password to complete account recovery.");
     setStep(STEPS.PASSWORD);
   }, [searchParams]);
@@ -104,6 +118,13 @@ export default function ForgotPassword() {
   function resetMessages() {
     setError("");
     setInfo("");
+    setFieldErrors({
+      identifier: "",
+      verificationChannel: "",
+      code: "",
+      newPassword: "",
+      confirmPassword: "",
+    });
   }
 
   function handleBack() {
@@ -139,7 +160,10 @@ export default function ForgotPassword() {
 
     const normalizedIdentifier = identifier.trim();
     if (!normalizedIdentifier) {
-      setError("Username, email, or phone number is required.");
+      setFieldErrors((current) => ({
+        ...current,
+        identifier: "Username, email, or phone number is required.",
+      }));
       return;
     }
 
@@ -180,13 +204,19 @@ export default function ForgotPassword() {
 
     const normalizedIdentifier = identifier.trim();
     if (!normalizedIdentifier) {
-      setError("Username, email, or phone number is required.");
+      setFieldErrors((current) => ({
+        ...current,
+        identifier: "Username, email, or phone number is required.",
+      }));
       setStep(STEPS.IDENTIFIER);
       return;
     }
 
     if (verificationChannel === CHANNELS.PHONE && phoneDisabled) {
-      setError("No phone number found for this account.");
+      setFieldErrors((current) => ({
+        ...current,
+        verificationChannel: "No phone number found for this account.",
+      }));
       return;
     }
 
@@ -247,7 +277,10 @@ export default function ForgotPassword() {
 
     const trimmedCode = normalizeDigits(code).slice(0, 6);
     if (!trimmedCode) {
-      setError("Verification code is required.");
+      setFieldErrors((current) => ({
+        ...current,
+        code: "Verification code is required.",
+      }));
       return;
     }
 
@@ -310,12 +343,18 @@ export default function ForgotPassword() {
 
     const passwordError = getPasswordPolicyError(newPassword);
     if (passwordError) {
-      setError(passwordError);
+      setFieldErrors((current) => ({
+        ...current,
+        newPassword: passwordError,
+      }));
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("Passwords do not match.");
+      setFieldErrors((current) => ({
+        ...current,
+        confirmPassword: "Passwords do not match.",
+      }));
       return;
     }
 
@@ -369,8 +408,12 @@ export default function ForgotPassword() {
               maxLength={120}
               autoCapitalize="none"
               autoCorrect="off"
-              onChange={(event) => setIdentifier(event.target.value)}
+              onChange={(event) => {
+                setIdentifier(event.target.value);
+                setFieldErrors((current) => ({ ...current, identifier: "" }));
+              }}
             />
+            <FieldError>{fieldErrors.identifier}</FieldError>
           </div>
 
           <button
@@ -416,6 +459,7 @@ export default function ForgotPassword() {
                 No phone number found for this account.
               </p>
             )}
+            <FieldError>{fieldErrors.verificationChannel}</FieldError>
           </div>
 
           <button
@@ -443,10 +487,14 @@ export default function ForgotPassword() {
               maxLength={6}
               autoComplete="one-time-code"
               onChange={(event) =>
-                setCode(normalizeDigits(event.target.value).slice(0, 6))
+                {
+                  setCode(normalizeDigits(event.target.value).slice(0, 6));
+                  setFieldErrors((current) => ({ ...current, code: "" }));
+                }
               }
               className={FORM_CODE_INPUT_CLASS}
             />
+            <FieldError>{fieldErrors.code}</FieldError>
             <p className="mt-2 text-xs text-gray-500">
               Enter the code sent to{" "}
               <span className="font-medium">
@@ -493,7 +541,13 @@ export default function ForgotPassword() {
                 placeholder="********"
                 value={newPassword}
                 autoComplete="new-password"
-                onChange={(event) => setNewPassword(event.target.value)}
+                onChange={(event) => {
+                  setNewPassword(event.target.value);
+                  setFieldErrors((current) => ({
+                    ...current,
+                    newPassword: "",
+                  }));
+                }}
               />
               <div className="absolute inset-y-0 right-2 flex items-center">
                 <PasswordVisibilityToggle
@@ -503,6 +557,7 @@ export default function ForgotPassword() {
               </div>
             </div>
             <PasswordStrengthIndicator password={newPassword} />
+            <FieldError>{fieldErrors.newPassword}</FieldError>
           </div>
 
           <div>
@@ -516,7 +571,13 @@ export default function ForgotPassword() {
                 placeholder="********"
                 value={confirmPassword}
                 autoComplete="new-password"
-                onChange={(event) => setConfirmPassword(event.target.value)}
+                onChange={(event) => {
+                  setConfirmPassword(event.target.value);
+                  setFieldErrors((current) => ({
+                    ...current,
+                    confirmPassword: "",
+                  }));
+                }}
               />
               <div className="absolute inset-y-0 right-2 flex items-center">
                 <PasswordVisibilityToggle
@@ -525,6 +586,7 @@ export default function ForgotPassword() {
                 />
               </div>
             </div>
+            <FieldError>{fieldErrors.confirmPassword}</FieldError>
           </div>
 
           <button
