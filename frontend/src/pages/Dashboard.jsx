@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
+import {
+  PageContainer,
+  PageError,
+  PageHeader,
+  PageLoading,
+} from "../components/PageLayout.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import { listFriends } from "../services/friendApi.js";
 import { getMyTransactions, getWalletBalance } from "../services/transactionApi.js";
@@ -131,6 +136,7 @@ export default function Dashboard() {
   const [friendsError, setFriendsError] = useState("");
 
   const [transactions, setTransactions] = useState([]);
+  const [txLoading, setTxLoading] = useState(true);
   const [txError, setTxError] = useState("");
 
   const [isPlusModalOpen, setIsPlusModalOpen] = useState(false);
@@ -218,9 +224,13 @@ export default function Dashboard() {
 
     async function loadTransactions() {
       const token = requireAuthToken();
-      if (!token) return;
+      if (!token) {
+        setTxLoading(false);
+        return;
+      }
 
       try {
+        setTxLoading(true);
         setTxError("");
         const data = await getMyTransactions({ token, limit: 12 });
         if (isCancelled) return;
@@ -228,6 +238,10 @@ export default function Dashboard() {
       } catch (err) {
         if (isCancelled) return;
         setTxError(getUserErrorMessage(err, "Failed to load activity."));
+      } finally {
+        if (!isCancelled) {
+          setTxLoading(false);
+        }
       }
     }
 
@@ -504,7 +518,11 @@ export default function Dashboard() {
 
         {txError && <div className="mt-3 text-sm text-red-600">{txError}</div>}
 
-        {transactions.length === 0 ? (
+        {txLoading ? (
+          <div className="mt-6">
+            <PageLoading>Loading transactions...</PageLoading>
+          </div>
+        ) : transactions.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-dashed border-gray-200 p-8 text-center">
             <p className="text-lg font-medium text-gray-900">No transactions yet</p>
             <p className="mt-1 text-sm text-gray-600">

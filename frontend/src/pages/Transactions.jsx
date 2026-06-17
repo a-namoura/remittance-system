@@ -5,6 +5,7 @@ import {
   PageContainer,
   PageError,
   PageHeader,
+  PageLoading,
 } from "../components/PageLayout.jsx";
 import { getMyTransactions } from "../services/transactionApi.js";
 import { requireAuthToken } from "../services/session.js";
@@ -235,7 +236,9 @@ export default function Transactions() {
         <PageError className="mt-3">{error}</PageError>
 
         {loading ? (
-          <div className="mt-6 text-sm text-gray-600">Loading transactions...</div>
+          <div className="mt-6">
+            <PageLoading>Loading transactions...</PageLoading>
+          </div>
         ) : transactions.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-dashed border-gray-200 p-8 text-center">
             <p className="text-lg font-medium text-gray-900">No transactions found</p>

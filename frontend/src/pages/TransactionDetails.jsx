@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
+import {
+  PageContainer,
+  PageError,
+  PageHeader,
+  PageLoading,
+} from "../components/PageLayout.jsx";
 import { getTransactionById } from "../services/transactionApi.js";
 import { requireAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
@@ -131,7 +136,7 @@ export default function TransactionDetails() {
         description="View the full record for a single transaction."
       />
 
-      {loading && <p className="text-sm text-gray-500 mt-4">Loading transaction...</p>}
+      {loading && <PageLoading className="mt-4">Loading transaction...</PageLoading>}
 
       {!loading ? <PageError className="mt-4">{error}</PageError> : null}
 
