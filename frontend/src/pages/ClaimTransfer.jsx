@@ -15,6 +15,7 @@ import {
 } from "../services/transactionApi.js";
 import { getAuthToken, requireAuthToken } from "../services/session.js";
 import { useSuccessTransitionMessage } from "../utils/successTransition.js";
+import { isValidEvmAddress } from "../utils/security.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 export default function ClaimTransfer() {
@@ -90,6 +91,21 @@ export default function ClaimTransfer() {
   }, [token]);
 
   async function handleClaim() {
+    const receiverWallet = String(currentUser?.wallet?.address || "").trim();
+    const amount = Number(preview?.amount);
+    if (status !== "active") {
+      setError("This transfer cannot be claimed.");
+      return;
+    }
+    if (!isValidEvmAddress(receiverWallet)) {
+      setError("Link a valid wallet before claiming this transfer.");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError("This transfer does not have a valid amount.");
+      return;
+    }
+
     const authToken = requireAuthToken({
       message: "Please login before claiming this transfer.",
       onMissing: (message) => setError(message),
@@ -129,6 +145,14 @@ export default function ClaimTransfer() {
   }
 
   const receiverWallet = String(currentUser?.wallet?.address || "").trim();
+  const claimAmount = Number(preview?.amount);
+  const canClaimTransfer = Boolean(
+    status === "active" &&
+      isValidEvmAddress(receiverWallet) &&
+      Number.isFinite(claimAmount) &&
+      claimAmount > 0 &&
+      !claiming
+  );
 
   return (
     <>
@@ -202,12 +226,21 @@ export default function ClaimTransfer() {
               <button
                 type="button"
                 onClick={handleClaim}
-                disabled={claiming}
+                disabled={!canClaimTransfer}
                 className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:bg-gray-400"
               >
                 {claiming ? "Claiming..." : "Confirm and claim"}
               </button>
             </div>
+            {!isValidEvmAddress(receiverWallet) ? (
+              <p className="text-xs font-medium text-red-600">
+                Link a valid wallet before claiming this transfer.
+              </p>
+            ) : !Number.isFinite(claimAmount) || claimAmount <= 0 ? (
+              <p className="text-xs font-medium text-red-600">
+                This transfer does not have a valid amount.
+              </p>
+            ) : null}
           </>
         )}
 

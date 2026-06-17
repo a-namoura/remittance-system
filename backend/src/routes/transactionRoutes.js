@@ -1,5 +1,6 @@
 import express from "express";
 import crypto from "crypto";
+import { isAddress } from "ethers";
 import { protect } from "../middleware/authMiddleware.js";
 import {
   sendRemittance,
@@ -432,6 +433,14 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       throw new Error(`Only ${DEFAULT_ASSET_SYMBOL} transfers are currently supported.`);
     }
 
+    const normalizedReceiverWallet = String(receiverWallet || "")
+      .trim()
+      .toLowerCase();
+    if (!isAddress(normalizedReceiverWallet)) {
+      res.status(400);
+      throw new Error("receiverWallet must be a valid EVM address.");
+    }
+
     const walletDoc = await Wallet.findOne({ userId: req.user._id });
     if (!walletDoc || !walletDoc.isVerified) {
       res.status(400);
@@ -461,10 +470,6 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       res.status(codeErr?.statusCode || 400);
       throw codeErr;
     }
-
-    const normalizedReceiverWallet = String(receiverWallet || "")
-      .trim()
-      .toLowerCase();
 
     let receiverUserId = null;
     if (normalizedReceiverWallet) {

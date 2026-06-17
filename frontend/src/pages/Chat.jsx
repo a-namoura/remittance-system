@@ -470,6 +470,33 @@ export default function Chat() {
   const isSendComposer = composerMode === "send";
   const isRequestComposer = composerMode === "request";
   const isSendTransferSummaryStep = isSendComposer && sendTransferStep === "summary";
+  const sendAmountValue = Number(sendAmount);
+  const hasPositiveSendAmount =
+    Number.isFinite(sendAmountValue) && sendAmountValue > 0;
+  const sendAmountExceedsBalance =
+    hasPositiveSendAmount &&
+    Number.isFinite(walletBalance) &&
+    sendAmountValue > Number(walletBalance);
+  const canProceedWithChatTransfer = Boolean(
+    !sendingTransfer &&
+      !walletBalanceLoading &&
+      !transferBlockReason &&
+      activeThread?.id &&
+      identity?.publicKeyJwk &&
+      hasPositiveSendAmount &&
+      Number.isFinite(walletBalance) &&
+      !sendAmountExceedsBalance
+  );
+  const requestAmountValue = Number(requestAmount);
+  const hasPositiveRequestAmount =
+    Number.isFinite(requestAmountValue) && requestAmountValue > 0;
+  const canSubmitChatRequest = Boolean(
+    !sendingRequest &&
+      !transferBlockReason &&
+      activeThread?.id &&
+      identity?.publicKeyJwk &&
+      hasPositiveRequestAmount
+  );
 
   const friendUnreadByPeer = useMemo(() => {
     void unreadStateVersion;
@@ -2533,10 +2560,7 @@ export default function Chat() {
                       type="submit"
                       disabled={
                         sendingTransfer ||
-                        Boolean(transferBlockReason) ||
-                        !activeThread?.id ||
-                        !sendAmount.trim() ||
-                        !identity?.publicKeyJwk
+                        !canProceedWithChatTransfer
                       }
                       className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
                     >
@@ -2578,8 +2602,7 @@ export default function Chat() {
                   />
 
                   {isSendComposer &&
-                  Number.isFinite(walletBalance) &&
-                  Number(sendAmount || 0) > Number(walletBalance) ? (
+                  sendAmountExceedsBalance ? (
                     <p className="text-xs font-medium text-red-600">
                       Amount exceeds your available balance.
                     </p>
@@ -2600,16 +2623,8 @@ export default function Chat() {
                       type="submit"
                       disabled={
                         isSendComposer
-                          ? sendingTransfer ||
-                            Boolean(transferBlockReason) ||
-                            !activeThread?.id ||
-                            !sendAmount.trim() ||
-                            !identity?.publicKeyJwk
-                          : sendingRequest ||
-                            Boolean(transferBlockReason) ||
-                            !activeThread?.id ||
-                            !requestAmount.trim() ||
-                            !identity?.publicKeyJwk
+                          ? !canProceedWithChatTransfer
+                          : !canSubmitChatRequest
                       }
                       className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
                     >
@@ -2716,6 +2731,8 @@ export default function Chat() {
                   disabled={
                     requestModalLoading ||
                     walletBalanceLoading ||
+                    !Number.isFinite(Number(requestModal.amount)) ||
+                    Number(requestModal.amount) <= 0 ||
                     !Number.isFinite(walletBalance) ||
                     Number(requestModal.amount) > Number(walletBalance)
                   }

@@ -910,6 +910,7 @@ export default function SendMoney() {
   const selectedWallet = String(selectedRecipient?.walletAddress || "").trim();
   const parsedAmount = Number(String(amountEth).trim());
   const hasPositiveAmount = Number.isFinite(parsedAmount) && parsedAmount > 0;
+  const hasValidSelectedWallet = isValidEvmAddress(selectedWallet);
   const exceedsBalance =
     hasPositiveAmount &&
     Number.isFinite(availableBalance) &&
@@ -1266,7 +1267,8 @@ export default function SendMoney() {
                     <button
                       type="button"
                       onClick={goToAddressVerification}
-                      className="w-full rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700"
+                      disabled={!canRequestAddressVerification}
+                      className="w-full rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
                     >
                       Continue to verification
                     </button>
@@ -1407,7 +1409,13 @@ export default function SendMoney() {
                   <button
                     type="button"
                     onClick={handleSendCode}
-                    disabled={codeSending}
+                    disabled={
+                      codeSending ||
+                      !selectedRecipient ||
+                      !hasValidSelectedWallet ||
+                      !canProceedWithBalance ||
+                      !hasPositiveAmount
+                    }
                     className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                   >
                     {codeSending ? "Sending code..." : "Send code"}
@@ -1440,7 +1448,7 @@ export default function SendMoney() {
                       disabled={
                         sending ||
                         !selectedRecipient ||
-                        !selectedWallet ||
+                        !hasValidSelectedWallet ||
                         !canProceedWithBalance ||
                         !hasPositiveAmount ||
                         String(verificationCode || "").trim().length < 6

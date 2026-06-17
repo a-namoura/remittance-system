@@ -1231,6 +1231,12 @@ chatRouter.post(
         throw new Error("Only the requested user can send this payment.");
       }
 
+      const requestAmountNumber = Number(requestDoc.amount);
+      if (!Number.isFinite(requestAmountNumber) || requestAmountNumber <= 0) {
+        res.status(400);
+        throw new Error("Request amount must be a positive number.");
+      }
+
       const payerWalletDoc = await Wallet.findOne({
         userId: req.user._id,
         isVerified: true,
@@ -1254,7 +1260,7 @@ chatRouter.post(
       }
 
       const availableBalance = await getEthBalance(payerWalletDoc.address);
-      if (Number(requestDoc.amount) > availableBalance) {
+      if (requestAmountNumber > availableBalance) {
         res.status(400);
         throw new Error(
           `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`
@@ -1287,12 +1293,12 @@ chatRouter.post(
         receiverUserId: lockedRequest.requesterUserId,
         senderWallet: payerWalletDoc.address,
         receiverWallet: requesterWalletDoc.address,
-        amount: lockedRequest.amount,
+        amount: requestAmountNumber,
         status: "pending",
         type: "sent",
       });
 
-      const result = await sendRemittance(requesterWalletDoc.address, lockedRequest.amount);
+      const result = await sendRemittance(requesterWalletDoc.address, requestAmountNumber);
 
       txDoc.status = "success";
       txDoc.txHash = result.txHash || null;

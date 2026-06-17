@@ -97,9 +97,13 @@ export default function RequestMoney() {
   }, [me]);
 
   const canGenerateLink = walletState?.linked && walletState?.address;
+  const requestAmountValue = Number(linkAmount);
+  const hasPositiveRequestAmount =
+    Number.isFinite(requestAmountValue) && requestAmountValue > 0;
+  const canSubmitRequestLink = Boolean(canGenerateLink && hasPositiveRequestAmount);
 
   function handleGenerateLink() {
-    const amount = Number(linkAmount);
+    const amount = requestAmountValue;
     const nextFieldErrors = { amount: "" };
     if (!Number.isFinite(amount) || amount <= 0) {
       nextFieldErrors.amount = "Request amount must be a positive number.";
@@ -221,7 +225,8 @@ export default function RequestMoney() {
           <button
             type="button"
             onClick={handleGenerateLink}
-            className="mt-4 rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
+            disabled={!canSubmitRequestLink}
+            className="mt-4 rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
           >
             Generate link
           </button>
