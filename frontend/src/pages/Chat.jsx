@@ -6,6 +6,7 @@ import {
   PageHeader,
   PageNotice,
 } from "../components/PageLayout.jsx";
+import SuccessTransition from "../components/SuccessTransition.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import {
   cacheChatMessagePlaintext,
@@ -25,6 +26,7 @@ import { requireAuthToken } from "../services/session.js";
 import {
   getWalletBalance,
 } from "../services/transactionApi.js";
+import { useSuccessTransitionMessage } from "../utils/successTransition.js";
 import {
   decryptChatPayload,
   encryptForChat,
@@ -337,6 +339,8 @@ export default function Chat() {
   const [requestModalError, setRequestModalError] = useState("");
   const [requestModalInfo, setRequestModalInfo] = useState("");
   const [requestModalLoading, setRequestModalLoading] = useState(false);
+  const [transactionSuccessMessage, showTransactionSuccess] =
+    useSuccessTransitionMessage();
 
   const timelineRef = useRef(null);
   const composerActionsRef = useRef(null);
@@ -1564,6 +1568,7 @@ export default function Chat() {
       setSendTransferStep("details");
       setComposerMode("message");
       setTimelineInfo("Payment sent.");
+      showTransactionSuccess("Transaction successful");
       forceTimelineScrollRef.current = true;
       await loadHistory({
         threadId: activeThread.id,
@@ -1596,6 +1601,7 @@ export default function Chat() {
         revealedMessages: [],
       });
       setTimelineInfo("Chat report submitted.");
+      showTransactionSuccess("Report submitted");
     } catch (err) {
       setTimelineError(getUserErrorMessage(err, "Failed to submit report."));
     } finally {
@@ -1683,6 +1689,7 @@ export default function Chat() {
           : current
       );
       setRequestModalInfo("Payment sent successfully.");
+      showTransactionSuccess("Transaction successful");
       await loadHistory({
         threadId: activeThread.id,
         identityValue: identity,
@@ -1735,7 +1742,10 @@ export default function Chat() {
   }
 
   return (
-    <PageContainer stack className="gap-3">
+    <>
+      <SuccessTransition message={transactionSuccessMessage} />
+
+      <PageContainer stack className="gap-3">
       <PageHeader
         title="Chat"
         description="Message your contacts, track requests, and send payments in one place."
@@ -2726,6 +2736,7 @@ export default function Chat() {
           </div>
         </div>
       ) : null}
-    </PageContainer>
+      </PageContainer>
+    </>
   );
 }

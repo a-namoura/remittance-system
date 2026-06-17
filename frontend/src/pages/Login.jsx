@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { apiRequest } from "../services/api.js";
 import AuthCard from "../components/AuthCard.jsx";
 import { FieldError, PageLoading, PageNotice } from "../components/PageLayout.jsx";
+import SuccessTransition from "../components/SuccessTransition.jsx";
+import { SUCCESS_TRANSITION_DURATION_MS } from "../utils/successTransition.js";
 import { clearAuthToken, setAuthToken } from "../services/session.js";
 import {
   FORM_CODE_INPUT_CLASS,
@@ -25,6 +27,12 @@ const CHANNELS = {
 };
 
 const RESEND_DELAY = 30;
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
+}
 
 function normalizeDigits(value) {
   return String(value || "").replace(/\D/g, "");
@@ -62,6 +70,7 @@ export default function Login() {
 
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState({
     identifier: "",
     password: "",
@@ -93,6 +102,7 @@ export default function Login() {
   function resetMessages() {
     setError("");
     setInfo("");
+    setSuccessMessage("");
     setFieldErrors({
       identifier: "",
       password: "",
@@ -269,6 +279,9 @@ export default function Login() {
       });
 
       setAuthToken(pendingToken);
+      setSuccessMessage("Login successful");
+      setLoading(false);
+      await delay(SUCCESS_TRANSITION_DURATION_MS);
       navigate("/dashboard", { replace: true });
     } catch (err) {
       setFieldErrors((current) => ({
@@ -306,8 +319,11 @@ export default function Login() {
   }
 
   return (
-    <AuthCard title="Login" subtitle={subtitle} onBack={handleBack}>
-      {loading ? <PageLoading className="mb-3">Processing...</PageLoading> : null}
+    <>
+      <SuccessTransition message={successMessage} />
+
+      <AuthCard title="Login" subtitle={subtitle} onBack={handleBack}>
+        {loading ? <PageLoading className="mb-3">Processing...</PageLoading> : null}
 
       <PageNotice variant="error" className="mb-3">
         {error}
@@ -487,6 +503,7 @@ export default function Login() {
           Register
         </button>
       </p>
-    </AuthCard>
+      </AuthCard>
+    </>
   );
 }

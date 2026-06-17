@@ -4,8 +4,10 @@ import AuthCard from "../components/AuthCard.jsx";
 import { FieldError, PageLoading, PageNotice } from "../components/PageLayout.jsx";
 import PasswordStrengthIndicator from "../components/PasswordStrengthIndicator.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
+import SuccessTransition from "../components/SuccessTransition.jsx";
 import { apiRequest } from "../services/api.js";
 import { getPasswordPolicyError } from "../utils/passwordPolicy.js";
+import { SUCCESS_TRANSITION_DURATION_MS } from "../utils/successTransition.js";
 import {
   FORM_CODE_INPUT_CLASS,
   FORM_INPUT_BASE_CLASS,
@@ -28,6 +30,12 @@ const CHANNELS = {
 };
 
 const RESEND_DELAY = 30;
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
+}
 
 function normalizeDigits(value) {
   return String(value || "").replace(/\D/g, "");
@@ -74,6 +82,7 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState({
     identifier: "",
     verificationChannel: "",
@@ -118,6 +127,7 @@ export default function ForgotPassword() {
   function resetMessages() {
     setError("");
     setInfo("");
+    setSuccessMessage("");
     setFieldErrors({
       identifier: "",
       verificationChannel: "",
@@ -369,12 +379,12 @@ export default function ForgotPassword() {
         },
       });
 
-      setInfo(
-        response.message ||
-          "Password updated successfully. Redirecting to login..."
-      );
+      setInfo(response.message || "Password updated successfully.");
 
-      setTimeout(() => navigate("/login", { replace: true }), 1200);
+      setSuccessMessage("Password reset successful");
+      setLoading(false);
+      await delay(SUCCESS_TRANSITION_DURATION_MS);
+      navigate("/login", { replace: true });
     } catch (err) {
       setError(getUserErrorMessage(err, "Failed to reset password."));
     } finally {
@@ -383,7 +393,10 @@ export default function ForgotPassword() {
   }
 
   return (
-    <AuthCard title="Forgot Password" subtitle={subtitle} onBack={handleBack}>
+    <>
+      <SuccessTransition message={successMessage} />
+
+      <AuthCard title="Forgot Password" subtitle={subtitle} onBack={handleBack}>
       {loading ? <PageLoading className="mb-3">Processing...</PageLoading> : null}
 
       <PageNotice variant="error" className="mb-3">
@@ -609,6 +622,7 @@ export default function ForgotPassword() {
           Log in
         </button>
       </p>
-    </AuthCard>
+      </AuthCard>
+    </>
   );
 }

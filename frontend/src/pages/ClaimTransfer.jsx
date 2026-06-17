@@ -7,12 +7,14 @@ import {
   PageLoading,
   PageNotice,
 } from "../components/PageLayout.jsx";
+import SuccessTransition from "../components/SuccessTransition.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import {
   claimTransferLink,
   resolveTransferLink,
 } from "../services/transactionApi.js";
 import { getAuthToken, requireAuthToken } from "../services/session.js";
+import { useSuccessTransitionMessage } from "../utils/successTransition.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 export default function ClaimTransfer() {
@@ -25,6 +27,8 @@ export default function ClaimTransfer() {
   const [error, setError] = useState("");
   const [claiming, setClaiming] = useState(false);
   const [claimSuccess, setClaimSuccess] = useState("");
+  const [transactionSuccessMessage, showTransactionSuccess] =
+    useSuccessTransitionMessage();
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
@@ -107,6 +111,7 @@ export default function ClaimTransfer() {
           ? `Transfer claimed successfully. Tx: ${txHash}`
           : "Transfer claimed successfully."
       );
+      showTransactionSuccess("Transaction successful");
       setStatus("claimed");
     } catch (err) {
       setError(getUserErrorMessage(err, "Failed to claim transfer."));
@@ -126,7 +131,10 @@ export default function ClaimTransfer() {
   const receiverWallet = String(currentUser?.wallet?.address || "").trim();
 
   return (
-    <PageContainer stack className="max-w-xl pt-16">
+    <>
+      <SuccessTransition message={transactionSuccessMessage} />
+
+      <PageContainer stack className="max-w-xl pt-16">
       <PageHeader
         title="Claim transfer"
         description="Review the transfer details and claim funds into your account."
@@ -211,6 +219,7 @@ export default function ClaimTransfer() {
           </div>
         )}
       </section>
-    </PageContainer>
+      </PageContainer>
+    </>
   );
 }

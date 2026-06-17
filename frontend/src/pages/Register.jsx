@@ -4,9 +4,11 @@ import AuthCard from "../components/AuthCard.jsx";
 import { FieldError, PageLoading, PageNotice } from "../components/PageLayout.jsx";
 import PasswordStrengthIndicator from "../components/PasswordStrengthIndicator.jsx";
 import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx";
+import SuccessTransition from "../components/SuccessTransition.jsx";
 import { apiRequest } from "../services/api.js";
 import { clearAuthToken, setAuthToken } from "../services/session.js";
 import { getPasswordPolicyError } from "../utils/passwordPolicy.js";
+import { SUCCESS_TRANSITION_DURATION_MS } from "../utils/successTransition.js";
 import {
   FORM_CODE_INPUT_CLASS,
   FORM_INPUT_BASE_CLASS,
@@ -29,6 +31,12 @@ const RESEND_DELAY = 30;
 const CODE_TTL_SECONDS = Number(import.meta.env.VITE_REGISTER_CODE_TTL_SECONDS) || 30;
 const CODE_TTL_MS = CODE_TTL_SECONDS * 1000;
 const MAX_LOCAL_PHONE_DIGITS = 12;
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
+}
 
 const COUNTRIES_API = import.meta.env.VITE_COUNTRIES_API;
 const FLAG_BASE = import.meta.env.VITE_FLAG_BASE_URL || "";
@@ -151,6 +159,7 @@ export default function Register() {
 
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState(EMPTY_FIELD_ERRORS);
   const [loading, setLoading] = useState(false);
 
@@ -261,6 +270,7 @@ export default function Register() {
     setEmailCode("");
     setEmailCodeExpiresAt(null);
     setInfo("");
+    setSuccessMessage("");
   }
 
   function clearFieldError(field) {
@@ -292,6 +302,7 @@ export default function Register() {
   function handleBack() {
     setError("");
     setInfo("");
+    setSuccessMessage("");
     clearFieldErrors();
 
     switch (step) {
@@ -632,6 +643,9 @@ export default function Register() {
         setAuthToken(res.token);
       }
 
+      setSuccessMessage("Registration successful");
+      setLoading(false);
+      await delay(SUCCESS_TRANSITION_DURATION_MS);
       navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(getUserErrorMessage(err, "Registration failed."));
@@ -641,7 +655,10 @@ export default function Register() {
   }
 
   return (
-    <AuthCard title="Create your account" subtitle={subtitle} onBack={handleBack}>
+    <>
+      <SuccessTransition message={successMessage} />
+
+      <AuthCard title="Create your account" subtitle={subtitle} onBack={handleBack}>
       <div className="flex justify-center mb-4">
         {Array.from({ length: TOTAL_STEPS }).map((_, idx) => (
           <span
@@ -1190,6 +1207,7 @@ export default function Register() {
           Log in
         </button>
       </p>
-    </AuthCard>
+      </AuthCard>
+    </>
   );
 }

@@ -5,9 +5,11 @@ import {
   PageError,
   PageHeader,
 } from "../components/PageLayout.jsx";
+import SuccessTransition from "../components/SuccessTransition.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import { readWalletState, requireAuthToken, writeWalletState } from "../services/session.js";
 import { copyText, getQrImageUrl } from "../utils/paylink.js";
+import { useSuccessTransitionMessage } from "../utils/successTransition.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 function buildRequestLink({ walletAddress, amountEth, note, username }) {
@@ -41,6 +43,7 @@ export default function RequestMoney() {
   const [linkError, setLinkError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({ amount: "" });
   const [linkCopied, setLinkCopied] = useState(false);
+  const [linkSuccessMessage, showLinkSuccess] = useSuccessTransitionMessage();
 
   useEffect(() => {
     let isCancelled = false;
@@ -124,6 +127,7 @@ export default function RequestMoney() {
     });
 
     setGeneratedLink(link);
+    showLinkSuccess("Link created");
   }
 
   async function handleCopyLink() {
@@ -155,7 +159,10 @@ export default function RequestMoney() {
   }
 
   return (
-    <PageContainer stack>
+    <>
+      <SuccessTransition message={linkSuccessMessage} />
+
+      <PageContainer stack>
       <PageHeader
         title="Request money"
         description="Generate a secure request link and share it with the sender."
@@ -257,6 +264,7 @@ export default function RequestMoney() {
           )}
         </section>
       </section>
-    </PageContainer>
+      </PageContainer>
+    </>
   );
 }

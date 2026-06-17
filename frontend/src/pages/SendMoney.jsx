@@ -6,6 +6,7 @@ import {
   PageHeader,
   PageNotice,
 } from "../components/PageLayout.jsx";
+import SuccessTransition from "../components/SuccessTransition.jsx";
 import { apiRequest } from "../services/api.js";
 import { getCurrentUser } from "../services/authApi.js";
 import { createFriend, listFriends } from "../services/friendApi.js";
@@ -18,6 +19,7 @@ import { readWalletState, requireAuthToken, writeWalletState } from "../services
 import { searchUsers } from "../services/userApi.js";
 import { isValidEvmAddress } from "../utils/security.js";
 import { copyText, getQrImageUrl, shortWallet } from "../utils/paylink.js";
+import { useSuccessTransitionMessage } from "../utils/successTransition.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 const PAYMENT_OPTIONS = [
@@ -30,6 +32,10 @@ const PAYMENT_OPTIONS = [
 
 function isComingSoonMethod(method) {
   return method === "bank" || method === "card";
+}
+
+function isSuccessfulTransactionStatus(status) {
+  return String(status || "").trim().toLowerCase() === "success";
 }
 
 function methodGlyph(id) {
@@ -262,6 +268,8 @@ export default function SendMoney() {
   const [sending, setSending] = useState(false);
   const [methodError, setMethodError] = useState("");
   const [methodSuccess, setMethodSuccess] = useState("");
+  const [transactionSuccessMessage, showTransactionSuccess] =
+    useSuccessTransitionMessage();
   const [availableBalance, setAvailableBalance] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
@@ -684,6 +692,9 @@ export default function SendMoney() {
 
       const status = result?.transaction?.status || "pending";
       setMethodSuccess(`Transfer created with status "${status}".`);
+      if (isSuccessfulTransactionStatus(status)) {
+        showTransactionSuccess("Transaction successful");
+      }
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
@@ -731,6 +742,9 @@ export default function SendMoney() {
 
       const status = result?.transaction?.status || "pending";
       setMethodSuccess(`Transfer created with status "${status}".`);
+      if (isSuccessfulTransactionStatus(status)) {
+        showTransactionSuccess("Transaction successful");
+      }
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
@@ -796,6 +810,7 @@ export default function SendMoney() {
       const url = `${origin}/claim-transfer?token=${encodeURIComponent(claimToken)}`;
       setGeneratedLink(url);
       setMethodSuccess("Link created. Share it with the receiver to claim funds.");
+      showTransactionSuccess("Link created");
     } catch (err) {
       setMethodError(getUserErrorMessage(err, "Failed to generate link."));
     } finally {
@@ -909,7 +924,10 @@ export default function SendMoney() {
     activeMethod === "address" && transferStep === "verification";
 
   return (
-    <PageContainer stack>
+    <>
+      <SuccessTransition message={transactionSuccessMessage} />
+
+      <PageContainer stack>
       <PageHeader
         title="New payment"
         description="Select a recipient and method to send funds securely."
@@ -1507,6 +1525,7 @@ export default function SendMoney() {
           </div>
         </div>
       )}
-    </PageContainer>
+      </PageContainer>
+    </>
   );
 }

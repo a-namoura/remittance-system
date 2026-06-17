@@ -82,3 +82,172 @@ a,
 .app-page-spinner {
   @apply inline-block h-3 w-3 animate-spin rounded-full border-2 border-purple-500 border-t-transparent;
 }
+
+.app-success-transition {
+  animation: app-success-slide-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.app-success-transition-closing {
+  animation: app-success-slide-out 260ms ease both;
+}
+
+.app-success-illustration {
+  animation: app-success-float 1800ms ease-in-out infinite;
+}
+
+.app-success-pulse {
+  animation: app-success-pulse 1300ms ease-out infinite;
+}
+
+.app-success-ring {
+  stroke: currentColor;
+  stroke-dasharray: 190;
+  stroke-dashoffset: 190;
+  animation: app-success-ring-draw 540ms ease-out forwards;
+}
+
+.app-success-check {
+  stroke: currentColor;
+  stroke-dasharray: 54;
+  stroke-dashoffset: 54;
+  animation: app-success-check-draw 420ms 240ms ease-out forwards;
+}
+
+.app-success-dot {
+  position: absolute;
+  display: block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 9999px;
+  background: rgb(22 163 74);
+  opacity: 0.85;
+  box-shadow: 0 0 0 0.35rem rgb(187 247 208 / 0.75);
+}
+
+.dark .app-success-dot {
+  background: rgb(134 239 172);
+  box-shadow: 0 0 0 0.35rem rgb(34 197 94 / 0.22);
+}
+
+.app-success-dot-one {
+  left: 0.25rem;
+  top: 1.2rem;
+  animation: app-success-dot-one 1600ms ease-in-out infinite;
+}
+
+.app-success-dot-two {
+  right: 0.35rem;
+  top: 0.75rem;
+  animation: app-success-dot-two 1700ms ease-in-out infinite;
+}
+
+.app-success-dot-three {
+  bottom: 0.55rem;
+  right: 1rem;
+  animation: app-success-dot-three 1500ms ease-in-out infinite;
+}
+
+@keyframes app-success-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes app-success-slide-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.98);
+  }
+}
+
+@keyframes app-success-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes app-success-pulse {
+  0% {
+    opacity: 0.75;
+    transform: scale(0.82);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+
+@keyframes app-success-ring-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes app-success-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes app-success-dot-one {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(7px, -5px);
+  }
+}
+
+@keyframes app-success-dot-two {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-6px, 7px);
+  }
+}
+
+@keyframes app-success-dot-three {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(4px, 6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-success-transition,
+  .app-success-transition-closing,
+  .app-success-illustration,
+  .app-success-pulse,
+  .app-success-ring,
+  .app-success-check,
+  .app-success-dot-one,
+  .app-success-dot-two,
+  .app-success-dot-three {
+    animation: none;
+  }
+
+  .app-success-ring,
+  .app-success-check {
+    stroke-dashoffset: 0;
+  }
+}
