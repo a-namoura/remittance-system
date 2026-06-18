@@ -18,9 +18,10 @@ function normalizeWalletAddress(address) {
   return ethers.getAddress(rawAddress).toLowerCase();
 }
 
-function buildWalletChallengeMessage({ nonce, expiresAt }) {
+function buildWalletChallengeMessage({ userId, nonce, expiresAt }) {
   return [
     "Verify wallet ownership",
+    `User: ${userId}`,
     `Code: ${nonce}`,
     `Expires: ${expiresAt.toISOString()}`,
     "No transaction is made from this action.",
@@ -41,6 +42,7 @@ export async function createWalletChallenge(req, res) {
   const nonce = crypto.randomBytes(16).toString("hex");
   const expiresAt = new Date(Date.now() + WALLET_CHALLENGE_TTL_MS);
   const message = buildWalletChallengeMessage({
+    userId,
     nonce,
     expiresAt,
   });
