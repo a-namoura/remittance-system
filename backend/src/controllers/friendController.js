@@ -1,4 +1,11 @@
+import mongoose from "mongoose";
 import { Friend } from "../models/Friend.js";
+
+const FRIEND_LABEL_MIN_LENGTH = 2;
+const FRIEND_LABEL_MAX_LENGTH = 80;
+const FRIEND_USERNAME_MIN_LENGTH = 3;
+const FRIEND_USERNAME_MAX_LENGTH = 30;
+const FRIEND_NOTES_MAX_LENGTH = 200;
 
 export async function listFriends(req, res, next) {
   try {
@@ -29,10 +36,21 @@ export async function createFriend(req, res, next) {
     const rawLabel = label ? String(label).trim() : "";
     const rawUsername = username ? String(username).trim() : "";
     const rawWallet = walletAddress ? String(walletAddress).trim() : "";
+    const rawNotes = notes ? String(notes).trim() : "";
 
     if (!rawLabel) {
       res.status(400);
       throw new Error("Name is required for the friend.");
+    }
+
+    if (
+      rawLabel.length < FRIEND_LABEL_MIN_LENGTH ||
+      rawLabel.length > FRIEND_LABEL_MAX_LENGTH
+    ) {
+      res.status(400);
+      throw new Error(
+        `Name must be between ${FRIEND_LABEL_MIN_LENGTH} and ${FRIEND_LABEL_MAX_LENGTH} characters.`
+      );
     }
 
     const hasUsername = rawUsername.length > 0;
@@ -43,9 +61,20 @@ export async function createFriend(req, res, next) {
       throw new Error("Please provide at least a username or a wallet address.");
     }
 
-    if (hasUsername && rawUsername.length < 2) {
+    if (
+      hasUsername &&
+      (rawUsername.length < FRIEND_USERNAME_MIN_LENGTH ||
+        rawUsername.length > FRIEND_USERNAME_MAX_LENGTH)
+    ) {
       res.status(400);
-      throw new Error("Username must be at least 2 characters.");
+      throw new Error(
+        `Username must be between ${FRIEND_USERNAME_MIN_LENGTH} and ${FRIEND_USERNAME_MAX_LENGTH} characters.`
+      );
+    }
+
+    if (rawNotes.length > FRIEND_NOTES_MAX_LENGTH) {
+      res.status(400);
+      throw new Error(`Notes cannot exceed ${FRIEND_NOTES_MAX_LENGTH} characters.`);
     }
 
     let normalizedWallet = undefined;
@@ -62,7 +91,7 @@ export async function createFriend(req, res, next) {
       label: rawLabel,
       username: hasUsername ? rawUsername : undefined,
       walletAddress: normalizedWallet,
-      notes: notes ? String(notes).trim() : undefined,
+      notes: rawNotes || undefined,
     });
 
     res.status(201).json({
@@ -88,6 +117,11 @@ export async function createFriend(req, res, next) {
 export async function deleteFriend(req, res, next) {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(String(id || ""))) {
+      res.status(400);
+      throw new Error("Invalid friend id.");
+    }
 
     const doc = await Friend.findOneAndDelete({
       _id: id,

@@ -5,6 +5,8 @@ import { Wallet } from "../models/Wallet.js";
 
 export const userRouter = express.Router();
 
+const USER_SEARCH_MAX_LENGTH = 80;
+
 function escapeRegex(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -12,8 +14,19 @@ function escapeRegex(value) {
 userRouter.get("/search", protect, async (req, res, next) => {
   try {
     const rawQuery = String(req.query.query ?? req.query.q ?? "").trim();
-    const parsedLimit = parseInt(String(req.query.limit ?? "8"), 10);
-    const limit = Math.min(Math.max(parsedLimit || 8, 1), 20);
+    if (rawQuery.length > USER_SEARCH_MAX_LENGTH) {
+      res.status(400);
+      throw new Error(`query cannot exceed ${USER_SEARCH_MAX_LENGTH} characters.`);
+    }
+
+    const rawLimit = req.query.limit;
+    const parsedLimit =
+      rawLimit == null || rawLimit === "" ? 8 : Number(rawLimit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 20) {
+      res.status(400);
+      throw new Error("limit must be an integer between 1 and 20.");
+    }
+    const limit = parsedLimit;
 
     const query = {
       _id: { $ne: req.user._id },

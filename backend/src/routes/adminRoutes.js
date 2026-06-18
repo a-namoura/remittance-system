@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import { User } from "../models/User.js";
 import { Wallet } from "../models/Wallet.js";
 import { Transaction } from "../models/Transaction.js";
@@ -6,6 +7,59 @@ import { AuditLog } from "../models/AuditLog.js";
 import { logAudit } from "../utils/audit.js";
 
 export const adminRouter = express.Router();
+
+const ADMIN_TRANSACTION_STATUSES = ["pending", "success", "failed"];
+const ADMIN_USER_ROLES = ["user", "admin"];
+const ADMIN_USER_STATUSES = ["active", "disabled"];
+const ADMIN_AUDIT_ACTION_PATTERN = /^[A-Z0-9_:-]{1,80}$/;
+const ADMIN_SEARCH_MAX_LENGTH = 80;
+
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseIntegerQuery(value, { name, defaultValue, min, max }) {
+  if (value == null || value === "") return defaultValue;
+  const normalized = Number(value);
+  if (!Number.isInteger(normalized) || normalized < min || normalized > max) {
+    const range =
+      min === max ? `${min}` : `${min} and ${max}`;
+    const error = new Error(`${name} must be an integer between ${range}.`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return normalized;
+}
+
+function optionalEnumQuery(value, { name, allowed }) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  if (!allowed.includes(normalized)) {
+    const error = new Error(`${name} must be one of: ${allowed.join(", ")}.`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return normalized;
+}
+
+function validateSearchQuery(value) {
+  const normalized = String(value || "").trim();
+  if (normalized.length > ADMIN_SEARCH_MAX_LENGTH) {
+    const error = new Error(
+      `search cannot exceed ${ADMIN_SEARCH_MAX_LENGTH} characters.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+  return normalized;
+}
+
+function nextAdminError(res, next, err) {
+  if (err?.statusCode) {
+    res.status(err.statusCode);
+  }
+  next(err);
+}
 
 // GET /api/admin/summary
 adminRouter.get("/summary", async (req, res, next) => {
@@ -72,10 +126,26 @@ adminRouter.get("/summary", async (req, res, next) => {
 adminRouter.get("/transactions", async (req, res, next) => {
   try {
     const {
-      status,
+      status: rawStatus,
       page = "1",
       limit = "20",
     } = req.query;
+    const status = optionalEnumQuery(rawStatus, {
+      name: "status",
+      allowed: ADMIN_TRANSACTION_STATUSES,
+    });
+    const numericLimit = parseIntegerQuery(limit, {
+      name: "limit",
+      defaultValue: 20,
+      min: 1,
+      max: 100,
+    });
+    const numericPage = parseIntegerQuery(page, {
+      name: "page",
+      defaultValue: 1,
+      min: 1,
+      max: 10000,
+    });
 
     await logAudit({
       user: req.user,
@@ -89,12 +159,8 @@ adminRouter.get("/transactions", async (req, res, next) => {
       req,
     });
 
-    const numericLimit = Math.min(parseInt(limit, 10) || 20, 100);
-    const numericPage = Math.max(parseInt(page, 10) || 1, 1);
-
     const query = {};
-    const allowedStatuses = ["pending", "success", "failed"];
-    if (status && allowedStatuses.includes(status)) {
+    if (status) {
       query.status = status;
     }
 
@@ -128,7 +194,7 @@ adminRouter.get("/transactions", async (req, res, next) => {
       })),
     });
   } catch (err) {
-    next(err);
+    nextAdminError(res, next, err);
   }
 });
 
@@ -138,10 +204,31 @@ adminRouter.get("/users", async (req, res, next) => {
     const {
       limit = "20",
       page = "1",
-      search = "",
-      role,
-      status,
+      search: rawSearch = "",
+      role: rawRole,
+      status: rawStatus,
     } = req.query;
+    const search = validateSearchQuery(rawSearch);
+    const role = optionalEnumQuery(rawRole, {
+      name: "role",
+      allowed: ADMIN_USER_ROLES,
+    });
+    const status = optionalEnumQuery(rawStatus, {
+      name: "status",
+      allowed: ADMIN_USER_STATUSES,
+    });
+    const numericLimit = parseIntegerQuery(limit, {
+      name: "limit",
+      defaultValue: 20,
+      min: 1,
+      max: 100,
+    });
+    const numericPage = parseIntegerQuery(page, {
+      name: "page",
+      defaultValue: 1,
+      min: 1,
+      max: 10000,
+    });
 
     await logAudit({
       user: req.user,
@@ -157,17 +244,14 @@ adminRouter.get("/users", async (req, res, next) => {
       req,
     });
 
-    const numericLimit = Math.min(parseInt(limit, 10) || 20, 100);
-    const numericPage = Math.max(parseInt(page, 10) || 1, 1);
-
     const query = {};
 
     if (search) {
-      const regex = new RegExp(search, "i");
+      const regex = new RegExp(escapeRegex(search), "i");
       query.$or = [{ email: regex }, { username: regex }];
     }
 
-    if (role && ["user", "admin"].includes(role)) {
+    if (role) {
       query.role = role;
     }
 
@@ -203,7 +287,7 @@ adminRouter.get("/users", async (req, res, next) => {
       })),
     });
   } catch (err) {
-    next(err);
+    nextAdminError(res, next, err);
   }
 });
 
@@ -217,6 +301,11 @@ adminRouter.patch("/users/:id/disable", async (req, res, next) => {
   try {
     const { id } = req.params;
     const { isDisabled } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(String(id || ""))) {
+      res.status(400);
+      throw new Error("Invalid user id.");
+    }
 
     if (typeof isDisabled !== "boolean") {
       res.status(400);
@@ -274,7 +363,7 @@ adminRouter.patch("/users/:id/disable", async (req, res, next) => {
       },
     });
   } catch (err) {
-    next(err);
+    nextAdminError(res, next, err);
   }
 });
 
@@ -289,11 +378,27 @@ adminRouter.get("/audit-logs", async (req, res, next) => {
     const {
       limit = "50",
       page = "1",
-      action,
+      action: rawAction,
     } = req.query;
-
-    const numericLimit = Math.min(parseInt(limit, 10) || 50, 200);
-    const numericPage = Math.max(parseInt(page, 10) || 1, 1);
+    const numericLimit = parseIntegerQuery(limit, {
+      name: "limit",
+      defaultValue: 50,
+      min: 1,
+      max: 200,
+    });
+    const numericPage = parseIntegerQuery(page, {
+      name: "page",
+      defaultValue: 1,
+      min: 1,
+      max: 10000,
+    });
+    const action = String(rawAction || "").trim();
+    if (action && !ADMIN_AUDIT_ACTION_PATTERN.test(action)) {
+      res.status(400);
+      throw new Error(
+        "action must be 1-80 characters using uppercase letters, numbers, underscores, colons, or hyphens."
+      );
+    }
 
     const query = {};
     if (action) {
@@ -340,6 +445,6 @@ adminRouter.get("/audit-logs", async (req, res, next) => {
       })),
     });
   } catch (err) {
-    next(err);
+    nextAdminError(res, next, err);
   }
 });

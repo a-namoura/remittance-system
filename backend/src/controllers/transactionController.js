@@ -1,82 +1,135 @@
+import { isAddress } from "ethers";
 import { Transaction } from "../models/Transaction.js";
-import { sendRemittance } from "../blockchain/remittanceClient.js";
+import { Wallet } from "../models/Wallet.js";
+import {
+  getEthBalance,
+  sendRemittance,
+} from "../blockchain/remittanceClient.js";
+
+const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
+  .trim()
+  .toUpperCase();
+
+function parsePositiveLimit(value, defaultValue = 10) {
+  if (value == null || value === "") return defaultValue;
+  const numeric = Number(value);
+  if (!Number.isInteger(numeric) || numeric < 1 || numeric > 50) {
+    const error = new Error("limit must be an integer between 1 and 50.");
+    error.statusCode = 400;
+    throw error;
+  }
+  return numeric;
+}
 
 // POST /api/transactions/send
 // body: { receiver, amountEth }
-export async function sendTransaction(req, res) {
-  const { receiver, amountEth } = req.body;
-
-  if (!receiver || !amountEth) {
-    return res.status(400).json({ message: "receiver and amountEth are required" });
-  }
-
-  // 1) Create transaction as pending
-  const txDoc = await Transaction.create({
-    userId: req.user._id,
-    receiver,
-    amountEth: String(amountEth),
-    status: "pending",
-  });
+export async function sendTransaction(req, res, next) {
+  let txDoc = null;
 
   try {
-    // 2) Send on-chain tx
-    const result = await sendRemittance(receiver, amountEth);
+    const receiver = String(req.body?.receiver || "").trim().toLowerCase();
+    const amountNumber = Number(req.body?.amountEth);
 
-    // result may contain txHash depending on your client implementation
-    const txHash =
-      result?.txHash ||
-      result?.hash ||
-      result?.receipt?.hash ||
-      result?.receipt?.transactionHash;
+    if (!receiver || !req.body?.amountEth) {
+      res.status(400);
+      throw new Error("receiver and amountEth are required.");
+    }
 
-    // 3) Mark success
+    if (!isAddress(receiver)) {
+      res.status(400);
+      throw new Error("receiver must be a valid EVM address.");
+    }
+
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      res.status(400);
+      throw new Error("amountEth must be a positive number.");
+    }
+
+    const walletDoc = await Wallet.findOne({
+      userId: req.user._id,
+      isVerified: true,
+    })
+      .select("address")
+      .lean();
+
+    if (!walletDoc?.address) {
+      res.status(400);
+      throw new Error("You must link and verify a wallet before sending.");
+    }
+
+    const availableBalance = await getEthBalance(walletDoc.address);
+    if (amountNumber > availableBalance) {
+      res.status(400);
+      throw new Error(
+        `Insufficient balance. Available: ${availableBalance.toFixed(4)} ${DEFAULT_ASSET_SYMBOL}.`
+      );
+    }
+
+    txDoc = await Transaction.create({
+      senderUserId: req.user._id,
+      senderWallet: walletDoc.address,
+      receiverWallet: receiver,
+      amount: amountNumber,
+      assetSymbol: DEFAULT_ASSET_SYMBOL,
+      status: "pending",
+      type: "sent",
+    });
+
+    const result = await sendRemittance(receiver, amountNumber);
+
     txDoc.status = "success";
-    if (txHash) txDoc.txHash = txHash;
+    txDoc.txHash = result?.txHash || null;
     await txDoc.save();
 
     return res.json({
       ok: true,
       transaction: {
         id: txDoc._id,
-        receiver: txDoc.receiver,
-        amountEth: txDoc.amountEth,
+        receiverWallet: txDoc.receiverWallet,
+        amount: txDoc.amount,
+        assetSymbol: txDoc.assetSymbol,
         status: txDoc.status,
         txHash: txDoc.txHash || null,
         createdAt: txDoc.createdAt,
       },
     });
   } catch (err) {
-    // 4) Mark failed
-    txDoc.status = "failed";
-    txDoc.error = err?.message || "Transaction failed";
-    await txDoc.save();
-
-    return res.status(500).json({
-      message: txDoc.error,
-      transactionId: txDoc._id,
-    });
+    if (txDoc && txDoc.status !== "success") {
+      txDoc.status = "failed";
+      await txDoc.save().catch(() => {});
+    }
+    if (err?.statusCode) res.status(err.statusCode);
+    next(err);
   }
 }
 
 // GET /api/transactions/my?limit=10
-export async function getMyTransactions(req, res) {
-  const limit = Math.min(parseInt(req.query.limit || "10", 10), 50);
+export async function getMyTransactions(req, res, next) {
+  try {
+    const limit = parsePositiveLimit(req.query.limit, 10);
 
-  const txs = await Transaction.find({ userId: req.user._id })
-    .sort({ createdAt: -1 })
-    .limit(limit)
-    .lean();
+    const txs = await Transaction.find({
+      $or: [{ senderUserId: req.user._id }, { receiverUserId: req.user._id }],
+    })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
 
-  return res.json({
-    ok: true,
-    transactions: txs.map((t) => ({
-      id: t._id,
-      receiver: t.receiver,
-      amountEth: t.amountEth,
-      status: t.status,
-      txHash: t.txHash || null,
-      error: t.error || null,
-      createdAt: t.createdAt,
-    })),
-  });
+    return res.json({
+      ok: true,
+      transactions: txs.map((t) => ({
+        id: t._id,
+        receiverWallet: t.receiverWallet,
+        senderWallet: t.senderWallet,
+        amount: t.amount,
+        assetSymbol: t.assetSymbol || DEFAULT_ASSET_SYMBOL,
+        status: t.status,
+        txHash: t.txHash || null,
+        createdAt: t.createdAt,
+      })),
+    });
+  } catch (err) {
+    if (err?.statusCode) res.status(err.statusCode);
+    next(err);
+  }
 }
