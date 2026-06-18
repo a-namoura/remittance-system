@@ -18,15 +18,12 @@ function normalizeWalletAddress(address) {
   return ethers.getAddress(rawAddress).toLowerCase();
 }
 
-function buildWalletChallengeMessage({ userId, address, nonce, expiresAt }) {
+function buildWalletChallengeMessage({ nonce, expiresAt }) {
   return [
-    "Remittance System wallet verification",
-    `User ID: ${userId}`,
-    `Wallet: ${address}`,
-    `Challenge: ${nonce}`,
-    `Expires At: ${expiresAt.toISOString()}`,
-    "Only sign this message if you initiated wallet linking.",
-    "This signature does not authorize a blockchain transaction.",
+    "Verify wallet ownership",
+    `Code: ${nonce}`,
+    `Expires: ${expiresAt.toISOString()}`,
+    "No transaction is made from this action.",
   ].join("\n");
 }
 
@@ -41,11 +38,9 @@ export async function createWalletChallenge(req, res) {
   }
 
   const userId = req.user._id;
-  const nonce = crypto.randomBytes(32).toString("hex");
+  const nonce = crypto.randomBytes(16).toString("hex");
   const expiresAt = new Date(Date.now() + WALLET_CHALLENGE_TTL_MS);
   const message = buildWalletChallengeMessage({
-    userId,
-    address,
     nonce,
     expiresAt,
   });
