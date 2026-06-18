@@ -1,15 +1,125 @@
 import { ethers } from "ethers";
+import crypto from "crypto";
+import mongoose from "mongoose";
 import { Wallet } from "../models/Wallet.js";
+import { WalletChallenge } from "../models/WalletChallenge.js";
 
-// POST /api/wallet/link
-// body: { address, signature, message }
-export async function linkWallet(req, res) {
-  const { address, signature, message } = req.body;
+const WALLET_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
-  if (!address || !signature || !message) {
+function hashChallengeMessage(message) {
+  return crypto.createHash("sha256").update(String(message)).digest("hex");
+}
+
+function normalizeWalletAddress(address) {
+  const rawAddress = String(address || "").trim();
+  if (!ethers.isAddress(rawAddress)) {
+    return "";
+  }
+  return ethers.getAddress(rawAddress).toLowerCase();
+}
+
+function buildWalletChallengeMessage({ userId, address, nonce, expiresAt }) {
+  return [
+    "Remittance System wallet verification",
+    `User ID: ${userId}`,
+    `Wallet: ${address}`,
+    `Challenge: ${nonce}`,
+    `Expires At: ${expiresAt.toISOString()}`,
+    "Only sign this message if you initiated wallet linking.",
+    "This signature does not authorize a blockchain transaction.",
+  ].join("\n");
+}
+
+// POST /api/wallet/challenge
+// body: { address }
+export async function createWalletChallenge(req, res) {
+  const address = normalizeWalletAddress(req.body?.address);
+  if (!address) {
     return res
       .status(400)
-      .json({ message: "address, signature, and message are required" });
+      .json({ message: "address must be a valid EVM address." });
+  }
+
+  const userId = req.user._id;
+  const nonce = crypto.randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + WALLET_CHALLENGE_TTL_MS);
+  const message = buildWalletChallengeMessage({
+    userId,
+    address,
+    nonce,
+    expiresAt,
+  });
+
+  await WalletChallenge.updateMany(
+    { userId, address, consumedAt: null },
+    { $set: { consumedAt: new Date() } }
+  );
+
+  const challenge = await WalletChallenge.create({
+    userId,
+    address,
+    messageHash: hashChallengeMessage(message),
+    expiresAt,
+  });
+
+  return res.status(201).json({
+    ok: true,
+    challengeId: challenge._id,
+    message,
+    expiresAt,
+  });
+}
+
+// POST /api/wallet/link
+// body: { address, signature, message, challengeId }
+export async function linkWallet(req, res) {
+  const { address, signature, message, challengeId } = req.body;
+
+  if (!address || !signature || !message || !challengeId) {
+    return res.status(400).json({
+      message: "address, signature, message, and challengeId are required",
+    });
+  }
+
+  const normalizedAddress = normalizeWalletAddress(address);
+  if (!normalizedAddress) {
+    return res
+      .status(400)
+      .json({ message: "address must be a valid EVM address." });
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(String(challengeId))) {
+    return res.status(400).json({
+      message: "Wallet ownership verification failed. The challenge is invalid.",
+    });
+  }
+
+  const challenge = await WalletChallenge.findOne({
+    _id: challengeId,
+    userId: req.user._id,
+    address: normalizedAddress,
+    consumedAt: null,
+  });
+
+  if (!challenge) {
+    return res.status(400).json({
+      message:
+        "Wallet ownership verification failed. The challenge is invalid or already used.",
+    });
+  }
+
+  if (challenge.expiresAt.getTime() <= Date.now()) {
+    return res.status(400).json({
+      message:
+        "Wallet ownership verification failed. The challenge has expired. Please try again.",
+    });
+  }
+
+  if (challenge.messageHash !== hashChallengeMessage(message)) {
+    return res.status(400).json({
+      message:
+        "Wallet ownership verification failed. The signed message does not match the active challenge.",
+    });
   }
 
   let recovered;
@@ -22,7 +132,7 @@ export async function linkWallet(req, res) {
     });
   }
 
-  if (recovered.toLowerCase() !== address.toLowerCase()) {
+  if (normalizeWalletAddress(recovered) !== normalizedAddress) {
     return res
       .status(400)
       .json({
@@ -32,7 +142,25 @@ export async function linkWallet(req, res) {
   }
 
   const userId = req.user._id;
-  const normalizedAddress = address.toLowerCase();
+  const consumedChallenge = await WalletChallenge.findOneAndUpdate(
+    {
+      _id: challenge._id,
+      userId,
+      address: normalizedAddress,
+      messageHash: challenge.messageHash,
+      consumedAt: null,
+      expiresAt: { $gt: new Date() },
+    },
+    { $set: { consumedAt: new Date() } },
+    { new: true }
+  );
+
+  if (!consumedChallenge) {
+    return res.status(400).json({
+      message:
+        "Wallet ownership verification failed. The challenge has expired or was already used.",
+    });
+  }
 
   const existingForAddress = await Wallet.findOne({
     address: normalizedAddress,

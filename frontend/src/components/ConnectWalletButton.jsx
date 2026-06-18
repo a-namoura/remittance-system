@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import {
+  createWalletChallenge,
   linkWalletToUser,
   unlinkWalletFromUser,
 } from "../services/walletApi.js";
@@ -157,11 +158,16 @@ export default function ConnectWalletButton({
 
       const normalizedAddress = ethers.getAddress(accounts[0]);
       const signer = await provider.getSigner();
-      const message = [
-        "Wallet link request",
-        `Host: ${window.location.host}`,
-        `Timestamp: ${new Date().toISOString()}`,
-      ].join("\n");
+      const challenge = await createWalletChallenge({
+        token,
+        address: normalizedAddress,
+      });
+      const message = String(challenge?.message || "");
+      const challengeId = String(challenge?.challengeId || "").trim();
+      if (!message || !challengeId) {
+        throw new Error("Wallet ownership verification failed. The server challenge is invalid.");
+      }
+
       let signature;
       try {
         signature = await signer.signMessage(message);
@@ -179,6 +185,7 @@ export default function ConnectWalletButton({
           address: normalizedAddress,
           message,
           signature,
+          challengeId,
         });
       } catch (err) {
         throw new Error(formatWalletVerificationError(err));
