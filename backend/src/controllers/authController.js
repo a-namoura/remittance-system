@@ -77,6 +77,20 @@ function isValidEmail(value) {
   return EMAIL_PATTERN.test(String(value || "").trim());
 }
 
+function getDuplicateUserConflictMessage(err) {
+  if (err?.code !== 11000) return "";
+
+  const duplicateFields = new Set([
+    ...Object.keys(err.keyPattern || {}),
+    ...Object.keys(err.keyValue || {}),
+  ]);
+
+  if (duplicateFields.has("email")) return "Email already in use";
+  if (duplicateFields.has("username")) return "Username already in use";
+
+  return "Account already exists with those details";
+}
+
 function hashPasswordResetToken(token) {
   return crypto.createHash("sha256").update(String(token || "")).digest("hex");
 }
@@ -409,19 +423,28 @@ export async function register(req, res) {
 
   const passwordHash = await bcrypt.hash(password, 10);
 
-  const user = await User.create({
-    email: normalizedEmail,
-    username: normalizedUsername,
-    passwordHash,
-    firstName,
-    lastName,
-    countryOfResidence,
-    phoneNumber,
-    dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
-    employmentStatus,
-    sourceOfFunds,
-    expectedMonthlyVolume,
-  });
+  let user;
+  try {
+    user = await User.create({
+      email: normalizedEmail,
+      username: normalizedUsername,
+      passwordHash,
+      firstName,
+      lastName,
+      countryOfResidence,
+      phoneNumber,
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
+      employmentStatus,
+      sourceOfFunds,
+      expectedMonthlyVolume,
+    });
+  } catch (err) {
+    const duplicateMessage = getDuplicateUserConflictMessage(err);
+    if (duplicateMessage) {
+      return res.status(409).json({ message: duplicateMessage });
+    }
+    throw err;
+  }
 
   await logAudit({ user, action: "REGISTER", req });
 
