@@ -14,6 +14,7 @@ import {
   formChannelButtonClass,
 } from "../styles/formClasses.js";
 
+import { getEmailIdentifierError } from "../utils/emailValidation.js";
 import { getUserErrorMessage } from "../utils/userError.js";
 const STEPS = {
   CREDENTIALS: "credentials",
@@ -142,6 +143,8 @@ export default function Login() {
     };
     if (!normalizedIdentifier) {
       nextFieldErrors.identifier = "Email or username is required.";
+    } else {
+      nextFieldErrors.identifier = getEmailIdentifierError(normalizedIdentifier);
     }
 
     if (!password) {
@@ -177,9 +180,13 @@ export default function Login() {
       resetVerificationState();
       setStep(STEPS.CHANNEL);
     } catch (err) {
+      const message = getUserErrorMessage(err, "Login failed.");
+      const targetField = message.toLowerCase().includes("email")
+        ? "identifier"
+        : "password";
       setFieldErrors((current) => ({
         ...current,
-        password: getUserErrorMessage(err, "Login failed."),
+        [targetField]: message,
       }));
     } finally {
       setLoading(false);
@@ -191,10 +198,13 @@ export default function Login() {
     resetMessages();
 
     const normalizedIdentifier = identifier.trim();
-    if (!normalizedIdentifier || !password) {
+    const identifierError = !normalizedIdentifier
+      ? "Email or username is required."
+      : getEmailIdentifierError(normalizedIdentifier);
+    if (identifierError || !password) {
       setFieldErrors((current) => ({
         ...current,
-        identifier: !normalizedIdentifier ? "Email or username is required." : "",
+        identifier: identifierError,
         password: !password ? "Password is required." : "",
       }));
       setStep(STEPS.CREDENTIALS);
@@ -240,7 +250,8 @@ export default function Login() {
 
       setFieldErrors((current) => ({
         ...current,
-        password: message,
+        [message.toLowerCase().includes("email") ? "identifier" : "password"]:
+          message,
       }));
       setStep(STEPS.CREDENTIALS);
     } finally {

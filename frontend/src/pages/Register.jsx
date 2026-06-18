@@ -7,6 +7,7 @@ import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx
 import SuccessTransition from "../components/SuccessTransition.jsx";
 import { apiRequest } from "../services/api.js";
 import { clearAuthToken, setAuthToken } from "../services/session.js";
+import { isValidEmail } from "../utils/emailValidation.js";
 import { getPasswordPolicyError } from "../utils/passwordPolicy.js";
 import { SUCCESS_TRANSITION_DURATION_MS } from "../utils/successTransition.js";
 import {
@@ -293,10 +294,6 @@ export default function Register() {
     const digits = normalizeDigits(localPhone || "");
     if (country?.dialCode) return `${country.dialCode}${digits}`;
     return allowRawFallback ? localPhone || "" : digits;
-  }
-
-  function isValidEmail(value) {
-    return value.includes("@") && value.includes(".");
   }
 
   function handleBack() {

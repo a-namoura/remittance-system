@@ -171,8 +171,13 @@ function getLoginQuery({ identifier, authMethod }) {
   }
 
   if (normalizedIdentifier.includes("@")) {
+    const normalizedEmail = normalizeEmail(normalizedIdentifier);
+    if (!isValidEmail(normalizedEmail)) {
+      return { query: null, error: "Invalid email format" };
+    }
+
     return {
-      query: { email: normalizedIdentifier.toLowerCase() },
+      query: { email: normalizedEmail },
     };
   }
 
@@ -186,8 +191,13 @@ function getRecoveryQuery(identifier) {
   if (!normalizedIdentifier) return { query: null };
 
   if (normalizedIdentifier.includes("@")) {
+    const normalizedEmail = normalizeEmail(normalizedIdentifier);
+    if (!isValidEmail(normalizedEmail)) {
+      return { query: null, error: "Invalid email format" };
+    }
+
     return {
-      query: { email: normalizedIdentifier.toLowerCase() },
+      query: { email: normalizedEmail },
     };
   }
 
@@ -431,8 +441,11 @@ export async function loginOptions(req, res) {
   }
 
   const authMethod = normalizeAuthMethod(rawAuthMethod);
-  const { query } = getLoginQuery({ identifier, authMethod });
+  const { query, error } = getLoginQuery({ identifier, authMethod });
 
+  if (error) {
+    return res.status(400).json({ message: error });
+  }
   if (!query) {
     return res.status(400).json({ message: "Invalid credentials" });
   }
@@ -471,8 +484,11 @@ export async function login(req, res) {
 
   const authMethod = normalizeAuthMethod(rawAuthMethod);
   const verificationChannel = normalizeVerificationChannel(rawVerificationChannel);
-  const { query } = getLoginQuery({ identifier, authMethod });
+  const { query, error } = getLoginQuery({ identifier, authMethod });
 
+  if (error) {
+    return res.status(400).json({ message: error });
+  }
   if (!query) {
     return res.status(400).json({ message: "Invalid credentials" });
   }
@@ -573,8 +589,11 @@ export async function resendCode(req, res) {
 
 export async function forgotPasswordOptions(req, res) {
   const { identifier } = req.body || {};
-  const { query } = getRecoveryQuery(identifier);
+  const { query, error } = getRecoveryQuery(identifier);
 
+  if (error) {
+    return res.status(400).json({ message: error });
+  }
   if (!query) {
     return res.status(400).json({ message: "Identifier is required" });
   }
@@ -604,7 +623,10 @@ export async function forgotPasswordStart(req, res) {
   const { identifier, verificationChannel: rawVerificationChannel } =
     req.body || {};
 
-  const { query } = getRecoveryQuery(identifier);
+  const { query, error } = getRecoveryQuery(identifier);
+  if (error) {
+    return res.status(400).json({ message: error });
+  }
   if (!query) {
     return res.status(400).json({ message: "Identifier is required" });
   }

@@ -16,6 +16,7 @@ import {
   formChannelButtonClass,
 } from "../styles/formClasses.js";
 
+import { getEmailIdentifierError } from "../utils/emailValidation.js";
 import { getUserErrorMessage } from "../utils/userError.js";
 const STEPS = {
   IDENTIFIER: "identifier",
@@ -169,10 +170,13 @@ export default function ForgotPassword() {
     resetMessages();
 
     const normalizedIdentifier = identifier.trim();
-    if (!normalizedIdentifier) {
+    const identifierError = !normalizedIdentifier
+      ? "Username, email, or phone number is required."
+      : getEmailIdentifierError(normalizedIdentifier);
+    if (identifierError) {
       setFieldErrors((current) => ({
         ...current,
-        identifier: "Username, email, or phone number is required.",
+        identifier: identifierError,
       }));
       return;
     }
@@ -213,10 +217,13 @@ export default function ForgotPassword() {
     resetMessages();
 
     const normalizedIdentifier = identifier.trim();
-    if (!normalizedIdentifier) {
+    const identifierError = !normalizedIdentifier
+      ? "Username, email, or phone number is required."
+      : getEmailIdentifierError(normalizedIdentifier);
+    if (identifierError) {
       setFieldErrors((current) => ({
         ...current,
-        identifier: "Username, email, or phone number is required.",
+        identifier: identifierError,
       }));
       setStep(STEPS.IDENTIFIER);
       return;
