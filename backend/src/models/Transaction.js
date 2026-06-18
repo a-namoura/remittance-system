@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import {
+  createInvalidWalletAddressMessage,
+  formatWalletAddressForStorage,
+  isValidEvmAddress,
+} from "../utils/walletAddress.js";
 
 const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
   .trim()
@@ -9,8 +14,24 @@ const transactionSchema = new mongoose.Schema(
     senderUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     receiverUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
-    senderWallet: { type: String, required: true, lowercase: true, trim: true },
-    receiverWallet: { type: String, required: true, lowercase: true, trim: true },
+    senderWallet: {
+      type: String,
+      required: true,
+      set: formatWalletAddressForStorage,
+      validate: {
+        validator: isValidEvmAddress,
+        message: createInvalidWalletAddressMessage("senderWallet"),
+      },
+    },
+    receiverWallet: {
+      type: String,
+      required: true,
+      set: formatWalletAddressForStorage,
+      validate: {
+        validator: isValidEvmAddress,
+        message: createInvalidWalletAddressMessage("receiverWallet"),
+      },
+    },
 
     amount: { type: Number, required: true, min: 0 },
     note: { type: String, trim: true, maxlength: 280 },

@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import {
+  createInvalidWalletAddressMessage,
+  formatWalletAddressForStorage,
+  isValidEvmAddress,
+} from "../utils/walletAddress.js";
 
 const walletSchema = new mongoose.Schema(
   {
@@ -12,8 +17,11 @@ const walletSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      lowercase: true,
-      trim: true,
+      set: formatWalletAddressForStorage,
+      validate: {
+        validator: isValidEvmAddress,
+        message: createInvalidWalletAddressMessage("address"),
+      },
     },
     isVerified: {
       type: Boolean,

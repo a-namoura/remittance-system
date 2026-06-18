@@ -15,13 +15,26 @@ import {
 } from "../blockchain/remittanceClient.js";
 import { logAudit } from "../utils/audit.js";
 import { getNativeAssetSymbol } from "../utils/currency.js";
+import {
+  createInvalidWalletAddressMessage,
+  normalizeEvmAddress,
+} from "../utils/walletAddress.js";
 
 export const chatRouter = express.Router();
 const DEFAULT_CHAT_ASSET_SYMBOL = getNativeAssetSymbol();
 const MAX_CHAT_PLAINTEXT_FALLBACK_LENGTH = 4000;
 
 function normalizeAddress(value) {
-  return String(value || "").trim().toLowerCase();
+  return normalizeEvmAddress(value);
+}
+
+function requireChatEvmAddress(res, value, fieldName) {
+  const normalizedAddress = normalizeEvmAddress(value);
+  if (!normalizedAddress) {
+    res.status(400);
+    throw new Error(createInvalidWalletAddressMessage(fieldName));
+  }
+  return normalizedAddress;
 }
 
 function escapeRegex(value) {
@@ -1111,7 +1124,18 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       throw new Error("Recipient does not have a linked and verified wallet.");
     }
 
-    const availableBalance = await getEthBalance(senderWalletDoc.address);
+    const senderWallet = requireChatEvmAddress(
+      res,
+      senderWalletDoc.address,
+      "senderWallet"
+    );
+    const recipientWallet = requireChatEvmAddress(
+      res,
+      recipientWalletDoc.address,
+      "receiverWallet"
+    );
+
+    const availableBalance = await getEthBalance(senderWallet);
     if (amountNumber > availableBalance) {
       res.status(400);
       throw new Error(
@@ -1124,10 +1148,8 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
     txDoc = await Transaction.create({
       senderUserId,
       receiverUserId: recipientUserId,
-      senderWallet: senderWalletDoc.address,
-      receiverWallet: String(recipientWalletDoc.address || "")
-        .trim()
-        .toLowerCase(),
+      senderWallet,
+      receiverWallet: recipientWallet,
       amount: amountNumber,
       note: note || undefined,
       assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
@@ -1135,7 +1157,7 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       type: "sent",
     });
 
-    const result = await sendRemittance(recipientWalletDoc.address, amountNumber);
+    const result = await sendRemittance(recipientWallet, amountNumber);
 
     txDoc.status = "success";
     txDoc.txHash = result.txHash || null;
@@ -1259,7 +1281,18 @@ chatRouter.post(
         throw new Error("Requester does not have a verified wallet.");
       }
 
-      const availableBalance = await getEthBalance(payerWalletDoc.address);
+      const payerWallet = requireChatEvmAddress(
+        res,
+        payerWalletDoc.address,
+        "senderWallet"
+      );
+      const requesterWallet = requireChatEvmAddress(
+        res,
+        requesterWalletDoc.address,
+        "receiverWallet"
+      );
+
+      const availableBalance = await getEthBalance(payerWallet);
       if (requestAmountNumber > availableBalance) {
         res.status(400);
         throw new Error(
@@ -1291,14 +1324,14 @@ chatRouter.post(
       txDoc = await Transaction.create({
         senderUserId: req.user._id,
         receiverUserId: lockedRequest.requesterUserId,
-        senderWallet: payerWalletDoc.address,
-        receiverWallet: requesterWalletDoc.address,
+        senderWallet: payerWallet,
+        receiverWallet: requesterWallet,
         amount: requestAmountNumber,
         status: "pending",
         type: "sent",
       });
 
-      const result = await sendRemittance(requesterWalletDoc.address, requestAmountNumber);
+      const result = await sendRemittance(requesterWallet, requestAmountNumber);
 
       txDoc.status = "success";
       txDoc.txHash = result.txHash || null;

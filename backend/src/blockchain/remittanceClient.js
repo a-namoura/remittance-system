@@ -2,7 +2,8 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import { JsonRpcProvider, Wallet, Contract, isAddress, parseEther, formatEther } from "ethers";
+import { JsonRpcProvider, Wallet, Contract, parseEther, formatEther } from "ethers";
+import { normalizeEvmAddress } from "../utils/walletAddress.js";
 
 dotenv.config();
 
@@ -45,14 +46,15 @@ export function getRemittanceClient() {
     throw new Error("REM_CONTRACT_ADDRESS is not set in backend/.env");
   }
 
-  if (!isAddress(CONTRACT_ADDRESS)) {
+  const normalizedContractAddress = normalizeEvmAddress(CONTRACT_ADDRESS);
+  if (!normalizedContractAddress) {
     throw new Error(`Invalid REM_CONTRACT_ADDRESS: ${CONTRACT_ADDRESS}`);
   }
 
   const provider = new JsonRpcProvider(RPC_URL);
   const wallet = new Wallet(PRIVATE_KEY, provider);
 
-  const contract = new Contract(CONTRACT_ADDRESS, REMITTANCE_ABI, wallet);
+  const contract = new Contract(normalizedContractAddress, REMITTANCE_ABI, wallet);
 
   return { contract, wallet };
 }
@@ -63,7 +65,8 @@ export function getRemittanceClient() {
  * amountEth: string or number (e.g. "0.01")
  */
 export async function sendRemittance(receiver, amountEth) {
-  if (!isAddress(receiver)) {
+  const normalizedReceiver = normalizeEvmAddress(receiver);
+  if (!normalizedReceiver) {
     throw new Error("Receiver must be a valid address.");
   }
 
@@ -71,12 +74,12 @@ export async function sendRemittance(receiver, amountEth) {
 
   const value = parseEther(String(amountEth));
 
-  const tx = await contract.transfer(receiver, { value });
+  const tx = await contract.transfer(normalizedReceiver, { value });
   const receipt = await tx.wait();
 
   return {
     from: wallet.address,
-    to: receiver,
+    to: normalizedReceiver,
     value: amountEth,
     txHash: tx.hash,
     blockNumber: receipt?.blockNumber,
@@ -89,7 +92,8 @@ export async function sendRemittance(receiver, amountEth) {
  * Returns a Number (e.g., 0.1234)
  */
 export async function getEthBalance(address) {
-  if (!isAddress(address)) {
+  const normalizedAddress = normalizeEvmAddress(address);
+  if (!normalizedAddress) {
     throw new Error("Address must be a valid EVM address.");
   }
 
@@ -99,7 +103,7 @@ export async function getEthBalance(address) {
   }
 
   const provider = new JsonRpcProvider(RPC_URL);
-  const balanceWei = await provider.getBalance(address);
+  const balanceWei = await provider.getBalance(normalizedAddress);
   const balanceEth = Number(formatEther(balanceWei));
 
   return balanceEth;

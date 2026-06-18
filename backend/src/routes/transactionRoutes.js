@@ -1,6 +1,5 @@
 import express from "express";
 import crypto from "crypto";
-import { isAddress } from "ethers";
 import { protect } from "../middleware/authMiddleware.js";
 import {
   sendRemittance,
@@ -24,11 +23,24 @@ import {
   normalizeCurrencySymbol,
   getBalancesForSymbols,
 } from "../utils/currency.js";
+import {
+  createInvalidWalletAddressMessage,
+  normalizeEvmAddress,
+} from "../utils/walletAddress.js";
 
 export const transactionRouter = express.Router();
 
 const DEFAULT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_ASSET_SYMBOL = getNativeAssetSymbol();
+
+function requireRouteEvmAddress(res, value, fieldName) {
+  const normalizedAddress = normalizeEvmAddress(value);
+  if (!normalizedAddress) {
+    res.status(400);
+    throw new Error(createInvalidWalletAddressMessage(fieldName));
+  }
+  return normalizedAddress;
+}
 
 function normalizeTransferAssetSymbol(rawSymbol) {
   const normalized = normalizeCurrencySymbol(rawSymbol);
@@ -180,7 +192,13 @@ transactionRouter.post("/link", protect, async (req, res, next) => {
       );
     }
 
-    const availableBalance = await getEthBalance(walletDoc.address);
+    const senderWallet = requireRouteEvmAddress(
+      res,
+      walletDoc.address,
+      "linked wallet address"
+    );
+
+    const availableBalance = await getEthBalance(senderWallet);
     if (amountNumber > availableBalance) {
       res.status(400);
       throw new Error(
@@ -301,6 +319,12 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
       throw new Error("You must link and verify a wallet before claiming.");
     }
 
+    const receiverWallet = requireRouteEvmAddress(
+      res,
+      receiverWalletDoc.address,
+      "receiverWallet"
+    );
+
     const tokenHash = hashLinkToken(token);
 
     linkDoc = await PaymentLink.findOneAndUpdate(
@@ -361,19 +385,20 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
     if (!senderWallet) {
       senderWallet = getRemittanceClient().wallet.address;
     }
+    senderWallet = requireRouteEvmAddress(res, senderWallet, "senderWallet");
 
     txDoc = await Transaction.create({
       senderUserId: linkDoc.creatorUserId,
       receiverUserId: req.user._id,
       senderWallet,
-      receiverWallet: receiverWalletDoc.address,
+      receiverWallet,
       amount: linkDoc.amount,
       assetSymbol: normalizeTransferAssetSymbol(linkDoc.assetSymbol),
       status: "pending",
       type: "sent",
     });
 
-    const result = await sendRemittance(receiverWalletDoc.address, linkDoc.amount);
+    const result = await sendRemittance(receiverWallet, linkDoc.amount);
 
     txDoc.status = "success";
     txDoc.txHash = result.txHash || null;
@@ -433,19 +458,22 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       throw new Error(`Only ${DEFAULT_ASSET_SYMBOL} transfers are currently supported.`);
     }
 
-    const normalizedReceiverWallet = String(receiverWallet || "")
-      .trim()
-      .toLowerCase();
-    if (!isAddress(normalizedReceiverWallet)) {
-      res.status(400);
-      throw new Error("receiverWallet must be a valid EVM address.");
-    }
+    const normalizedReceiverWallet = requireRouteEvmAddress(
+      res,
+      receiverWallet,
+      "receiverWallet"
+    );
 
     const walletDoc = await Wallet.findOne({ userId: req.user._id });
     if (!walletDoc || !walletDoc.isVerified) {
       res.status(400);
       throw new Error("You must link and verify a wallet before sending.");
     }
+    const senderWallet = requireRouteEvmAddress(
+      res,
+      walletDoc.address,
+      "linked wallet address"
+    );
 
     const amountNumber = Number(amountEth);
     if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
@@ -453,7 +481,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       throw new Error("amountEth must be a positive number.");
     }
 
-    const availableBalance = await getEthBalance(walletDoc.address);
+    const availableBalance = await getEthBalance(senderWallet);
     if (amountNumber > availableBalance) {
       res.status(400);
       throw new Error(
@@ -487,7 +515,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
     txDoc = await Transaction.create({
       senderUserId: req.user._id,
       receiverUserId: receiverUserId || undefined,
-      senderWallet: walletDoc.address,
+      senderWallet,
       receiverWallet: normalizedReceiverWallet,
       amount: amountNumber,
       assetSymbol,
@@ -510,8 +538,8 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
         metadata: {
           txId: txDoc._id.toString(),
           amountEth: amountNumber,
-          senderWallet: walletDoc.address,
-          receiverWallet,
+          senderWallet,
+          receiverWallet: normalizedReceiverWallet,
           txHash: result.txHash,
         },
         req,
@@ -552,6 +580,8 @@ transactionRouter.get("/balance", protect, async (req, res, next) => {
       throw new Error("wallet query parameter is required");
     }
 
+    const normalizedWallet = requireRouteEvmAddress(res, wallet, "wallet");
+
     if (requestedCurrency && !availableCurrencies.includes(requestedCurrency)) {
       res.status(400);
       throw new Error(`Unsupported currency: ${requestedCurrency}`);
@@ -566,7 +596,7 @@ transactionRouter.get("/balance", protect, async (req, res, next) => {
       throw new Error("One or more requested currencies are unsupported.");
     }
 
-    const nativeBalance = await getEthBalance(wallet);
+    const nativeBalance = await getEthBalance(normalizedWallet);
     const symbolsForBalances =
       requestedCurrencies.length > 0 ? requestedCurrencies : availableCurrencies;
     const { nativeCurrency, balances } = getBalancesForSymbols(
@@ -593,7 +623,7 @@ transactionRouter.get("/balance", protect, async (req, res, next) => {
 
     res.json({
       ok: true,
-      wallet,
+      wallet: normalizedWallet,
       balance: responseBalance,
       currency: responseCurrency,
       nativeBalance,

@@ -3,6 +3,10 @@ import crypto from "crypto";
 import mongoose from "mongoose";
 import { Wallet } from "../models/Wallet.js";
 import { WalletChallenge } from "../models/WalletChallenge.js";
+import {
+  createInvalidWalletAddressMessage,
+  normalizeEvmAddress,
+} from "../utils/walletAddress.js";
 
 const WALLET_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
@@ -11,11 +15,7 @@ function hashChallengeMessage(message) {
 }
 
 function normalizeWalletAddress(address) {
-  const rawAddress = String(address || "").trim();
-  if (!ethers.isAddress(rawAddress)) {
-    return "";
-  }
-  return ethers.getAddress(rawAddress).toLowerCase();
+  return normalizeEvmAddress(address);
 }
 
 function buildWalletChallengeMessage({ userId, nonce, expiresAt }) {
@@ -35,7 +35,7 @@ export async function createWalletChallenge(req, res) {
   if (!address) {
     return res
       .status(400)
-      .json({ message: "address must be a valid EVM address." });
+      .json({ message: createInvalidWalletAddressMessage("address") });
   }
 
   const userId = req.user._id;
@@ -82,7 +82,7 @@ export async function linkWallet(req, res) {
   if (!normalizedAddress) {
     return res
       .status(400)
-      .json({ message: "address must be a valid EVM address." });
+      .json({ message: createInvalidWalletAddressMessage("address") });
   }
 
   if (!mongoose.Types.ObjectId.isValid(String(challengeId))) {
@@ -181,7 +181,7 @@ export async function linkWallet(req, res) {
       isVerified: true,
       verifiedAt: new Date(),
     },
-    { new: true, upsert: true }
+    { new: true, runValidators: true, upsert: true }
   );
 
   return res.json({

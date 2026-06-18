@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
 import { Friend } from "../models/Friend.js";
+import {
+  createInvalidWalletAddressMessage,
+  normalizeEvmAddress,
+} from "../utils/walletAddress.js";
 
 const FRIEND_LABEL_MIN_LENGTH = 2;
 const FRIEND_LABEL_MAX_LENGTH = 80;
@@ -79,11 +83,11 @@ export async function createFriend(req, res, next) {
 
     let normalizedWallet = undefined;
     if (hasWallet) {
-      if (!/^0x[a-fA-F0-9]{40}$/.test(rawWallet)) {
+      normalizedWallet = normalizeEvmAddress(rawWallet);
+      if (!normalizedWallet) {
         res.status(400);
-        throw new Error("walletAddress must be a valid EVM address.");
+        throw new Error(createInvalidWalletAddressMessage("walletAddress"));
       }
-      normalizedWallet = rawWallet.toLowerCase();
     }
 
     const doc = await Friend.create({

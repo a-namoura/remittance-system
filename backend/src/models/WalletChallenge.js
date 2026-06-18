@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import {
+  createInvalidWalletAddressMessage,
+  formatWalletAddressForStorage,
+  isValidEvmAddress,
+} from "../utils/walletAddress.js";
 
 const walletChallengeSchema = new mongoose.Schema(
   {
@@ -11,8 +16,11 @@ const walletChallengeSchema = new mongoose.Schema(
     address: {
       type: String,
       required: true,
-      lowercase: true,
-      trim: true,
+      set: formatWalletAddressForStorage,
+      validate: {
+        validator: isValidEvmAddress,
+        message: createInvalidWalletAddressMessage("address"),
+      },
       index: true,
     },
     messageHash: {

@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import {
+  createInvalidWalletAddressMessage,
+  formatWalletAddressForStorage,
+  isValidEvmAddress,
+} from "../utils/walletAddress.js";
 
 const friendSchema = new mongoose.Schema(
   {
@@ -23,8 +28,13 @@ const friendSchema = new mongoose.Schema(
     },
     walletAddress: {
       type: String,
-      trim: true,
-      lowercase: true,
+      set: formatWalletAddressForStorage,
+      validate: {
+        validator(value) {
+          return !value || isValidEvmAddress(value);
+        },
+        message: createInvalidWalletAddressMessage("walletAddress"),
+      },
     },
     notes: {
       type: String,

@@ -1,10 +1,13 @@
-import { isAddress } from "ethers";
 import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
 import {
   getEthBalance,
   sendRemittance,
 } from "../blockchain/remittanceClient.js";
+import {
+  createInvalidWalletAddressMessage,
+  normalizeEvmAddress,
+} from "../utils/walletAddress.js";
 
 const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
   .trim()
@@ -27,17 +30,18 @@ export async function sendTransaction(req, res, next) {
   let txDoc = null;
 
   try {
-    const receiver = String(req.body?.receiver || "").trim().toLowerCase();
+    const rawReceiver = String(req.body?.receiver || "").trim();
     const amountNumber = Number(req.body?.amountEth);
 
-    if (!receiver || !req.body?.amountEth) {
+    if (!rawReceiver || !req.body?.amountEth) {
       res.status(400);
       throw new Error("receiver and amountEth are required.");
     }
 
-    if (!isAddress(receiver)) {
+    const receiver = normalizeEvmAddress(rawReceiver);
+    if (!receiver) {
       res.status(400);
-      throw new Error("receiver must be a valid EVM address.");
+      throw new Error(createInvalidWalletAddressMessage("receiver"));
     }
 
     if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
@@ -56,8 +60,13 @@ export async function sendTransaction(req, res, next) {
       res.status(400);
       throw new Error("You must link and verify a wallet before sending.");
     }
+    const senderWallet = normalizeEvmAddress(walletDoc.address);
+    if (!senderWallet) {
+      res.status(400);
+      throw new Error(createInvalidWalletAddressMessage("linked wallet address"));
+    }
 
-    const availableBalance = await getEthBalance(walletDoc.address);
+    const availableBalance = await getEthBalance(senderWallet);
     if (amountNumber > availableBalance) {
       res.status(400);
       throw new Error(
@@ -67,7 +76,7 @@ export async function sendTransaction(req, res, next) {
 
     txDoc = await Transaction.create({
       senderUserId: req.user._id,
-      senderWallet: walletDoc.address,
+      senderWallet,
       receiverWallet: receiver,
       amount: amountNumber,
       assetSymbol: DEFAULT_ASSET_SYMBOL,

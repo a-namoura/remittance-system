@@ -1,8 +1,17 @@
-const EVM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+import { getAddress, isAddress, ZeroAddress } from "ethers";
+
+export function normalizeEvmAddress(value) {
+  const normalized = String(value || "").trim();
+  if (!isAddress(normalized)) return "";
+
+  const checksumAddress = getAddress(normalized);
+  if (checksumAddress === ZeroAddress) return "";
+
+  return checksumAddress.toLowerCase();
+}
 
 export function isValidEvmAddress(value) {
-  const normalized = String(value || "").trim();
-  return EVM_ADDRESS_REGEX.test(normalized);
+  return Boolean(normalizeEvmAddress(value));
 }
 
 export function sanitizeNumericInput(value, { maxDigits } = {}) {
