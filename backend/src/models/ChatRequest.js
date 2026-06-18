@@ -23,7 +23,7 @@ const chatRequestSchema = new mongoose.Schema(
     amount: {
       type: Number,
       required: true,
-      min: 0,
+      min: [Number.MIN_VALUE, "amount must be a positive number."],
     },
     note: {
       type: String,
@@ -68,4 +68,3 @@ const chatRequestSchema = new mongoose.Schema(
 chatRequestSchema.index({ threadId: 1, createdAt: 1 });
 
 export const ChatRequest = mongoose.model("ChatRequest", chatRequestSchema);
-

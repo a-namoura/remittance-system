@@ -33,7 +33,11 @@ const transactionSchema = new mongoose.Schema(
       },
     },
 
-    amount: { type: Number, required: true, min: 0 },
+    amount: {
+      type: Number,
+      required: true,
+      min: [Number.MIN_VALUE, "amount must be a positive number."],
+    },
     note: { type: String, trim: true, maxlength: 280 },
     assetSymbol: {
       type: String,

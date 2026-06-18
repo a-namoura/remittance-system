@@ -20,7 +20,7 @@ const paymentLinkSchema = new mongoose.Schema(
     amount: {
       type: Number,
       required: true,
-      min: 0,
+      min: [Number.MIN_VALUE, "amount must be a positive number."],
     },
     assetSymbol: {
       type: String,
