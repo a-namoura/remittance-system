@@ -8,6 +8,7 @@ Smart contracts and Hardhat scripts for remittance settlement on EVM networks (p
 - `scripts/deploy-remittance.ts`: deploys `Remittance`
 - `scripts/call-transfer.ts`: executes `Remittance.transfer(...)` for smoke testing
 - `test/Remittance.ts`: contract behavior tests
+- `RELEASE_CHECKLIST.md`: pre-release review and deployment evidence checklist
 
 ## Prerequisites
 
@@ -86,3 +87,9 @@ After each deployment, update shared files used by the backend:
 - `../blockchain/deployment.json`
 
 The backend loads `Remittance.abi.json` at runtime for contract calls.
+
+## Release Review
+
+Before deploying or releasing updated contract artifacts, complete
+`RELEASE_CHECKLIST.md` and keep the reviewed source, configuration, ABI, and
+deployment metadata versioned together.
