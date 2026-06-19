@@ -8,7 +8,11 @@ import {
   createInvalidWalletAddressMessage,
   normalizeEvmAddress,
 } from "../utils/walletAddress.js";
-import { markTransactionFailed } from "../utils/transactionRequests.js";
+import {
+  isTransactionSyncError,
+  markTransactionFailed,
+  syncTransactionWithBlockchainResult,
+} from "../utils/transactionRequests.js";
 
 const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
   .trim()
@@ -91,10 +95,7 @@ export async function sendTransaction(req, res, next) {
 
     const result = await sendRemittance(receiver, amountNumber);
 
-    txDoc.status = "success";
-    txDoc.txHash = result?.txHash || null;
-    txDoc.failureReason = undefined;
-    await txDoc.save();
+    await syncTransactionWithBlockchainResult(txDoc, result);
 
     return res.json({
       ok: true,
@@ -106,11 +107,17 @@ export async function sendTransaction(req, res, next) {
         status: txDoc.status,
         txHash: txDoc.txHash || null,
         failureReason: txDoc.failureReason || null,
+        blockchainResultReceivedAt: txDoc.blockchainResultReceivedAt || null,
+        blockchainSyncedAt: txDoc.blockchainSyncedAt || null,
         createdAt: txDoc.createdAt,
       },
     });
   } catch (err) {
-    if (txDoc && txDoc.status !== "success") {
+    if (isTransactionSyncError(err)) {
+      return next(err);
+    }
+
+    if (txDoc && !["success", "failed"].includes(txDoc.status)) {
       await markTransactionFailed(txDoc, err);
     }
     if (err?.statusCode) res.status(err.statusCode);
@@ -141,6 +148,8 @@ export async function getMyTransactions(req, res, next) {
         status: t.status,
         txHash: t.txHash || null,
         failureReason: t.failureReason || null,
+        blockchainResultReceivedAt: t.blockchainResultReceivedAt || null,
+        blockchainSyncedAt: t.blockchainSyncedAt || null,
         createdAt: t.createdAt,
       })),
     });

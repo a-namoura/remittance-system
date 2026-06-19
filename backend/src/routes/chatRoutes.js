@@ -24,7 +24,9 @@ import {
   DUPLICATE_TRANSFER_REQUEST_MESSAGE,
   IN_FLIGHT_TRANSACTION_STATUSES,
   isDuplicateTransferRequestKeyError,
+  isTransactionSyncError,
   markTransactionFailed,
+  syncTransactionWithBlockchainResult,
 } from "../utils/transactionRequests.js";
 
 export const chatRouter = express.Router();
@@ -1196,10 +1198,7 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
 
     const result = await sendRemittance(recipientWallet, amountNumber);
 
-    txDoc.status = "success";
-    txDoc.txHash = result.txHash || null;
-    txDoc.failureReason = undefined;
-    await txDoc.save();
+    await syncTransactionWithBlockchainResult(txDoc, result);
 
     thread.lastMessageAt = new Date();
     await thread.save();
@@ -1228,6 +1227,8 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
         status: txDoc.status,
         txHash: txDoc.txHash || null,
         failureReason: txDoc.failureReason || null,
+        blockchainResultReceivedAt: txDoc.blockchainResultReceivedAt || null,
+        blockchainSyncedAt: txDoc.blockchainSyncedAt || null,
         amount: txDoc.amount,
         note: txDoc.note || "",
         assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
@@ -1241,7 +1242,11 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       return next(new Error(DUPLICATE_TRANSFER_REQUEST_MESSAGE));
     }
 
-    if (txDoc) {
+    if (isTransactionSyncError(err)) {
+      return next(err);
+    }
+
+    if (txDoc && !["success", "failed"].includes(txDoc.status)) {
       await markTransactionFailed(txDoc, err);
     }
     next(err);
@@ -1377,10 +1382,7 @@ chatRouter.post(
 
       const result = await sendRemittance(requesterWallet, requestAmountNumber);
 
-      txDoc.status = "success";
-      txDoc.txHash = result.txHash || null;
-      txDoc.failureReason = undefined;
-      await txDoc.save();
+      await syncTransactionWithBlockchainResult(txDoc, result);
 
       const paidRequest = await ChatRequest.findOneAndUpdate(
         { _id: lockedRequest._id, status: "processing" },
@@ -1445,13 +1447,19 @@ chatRouter.post(
           status: txDoc.status,
           txHash: txDoc.txHash || null,
           failureReason: txDoc.failureReason || null,
+          blockchainResultReceivedAt: txDoc.blockchainResultReceivedAt || null,
+          blockchainSyncedAt: txDoc.blockchainSyncedAt || null,
           senderWallet: txDoc.senderWallet,
           receiverWallet: txDoc.receiverWallet,
           createdAt: txDoc.createdAt,
         },
       });
     } catch (err) {
-      if (txDoc && txDoc.status !== "success") {
+      if (isTransactionSyncError(err)) {
+        return next(err);
+      }
+
+      if (txDoc && !["success", "failed"].includes(txDoc.status)) {
         await markTransactionFailed(txDoc, err);
       }
 

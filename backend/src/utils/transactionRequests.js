@@ -1,6 +1,7 @@
 import crypto from "crypto";
 
 export const IN_FLIGHT_TRANSACTION_STATUSES = ["pending"];
+export const TRANSACTION_SYNC_TIMEOUT_MS = 2000;
 
 export const DUPLICATE_TRANSFER_REQUEST_MESSAGE =
   "An identical transfer is already processing. Wait until the current transfer is completed or cancelled before submitting it again.";
@@ -16,6 +17,60 @@ function normalizeFailureText(value) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, MAX_FAILURE_REASON_LENGTH);
+}
+
+function asDate(value) {
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : new Date();
+}
+
+function createTransactionSyncTimeoutError(receivedAt) {
+  const err = new Error(
+    "Transaction database synchronization exceeded 2 seconds after blockchain execution result."
+  );
+  err.statusCode = 500;
+  err.isTransactionSyncError = true;
+  err.blockchainResultReceivedAt = receivedAt;
+  return err;
+}
+
+function getBlockchainResultTxHash(result) {
+  return (
+    stablePart(result?.txHash) ||
+    stablePart(result?.hash) ||
+    stablePart(result?.receipt?.hash) ||
+    null
+  );
+}
+
+function didBlockchainExecutionSucceed(result) {
+  const status = result?.status;
+  return !(status === 0 || status === "0" || status === false);
+}
+
+async function saveTransactionWithinSyncWindow(txDoc, receivedAt) {
+  const elapsedMs = Date.now() - receivedAt.getTime();
+  const remainingMs = TRANSACTION_SYNC_TIMEOUT_MS - elapsedMs;
+
+  if (remainingMs <= 0) {
+    throw createTransactionSyncTimeoutError(receivedAt);
+  }
+
+  let timeoutId;
+  try {
+    await Promise.race([
+      txDoc.save(),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(createTransactionSyncTimeoutError(receivedAt)),
+          remainingMs
+        );
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 export function createTransferRequestKey({
@@ -48,6 +103,10 @@ export function isDuplicateTransferRequestKeyError(err) {
   );
 }
 
+export function isTransactionSyncError(err) {
+  return Boolean(err?.isTransactionSyncError);
+}
+
 export function getTransactionFailureReason(err) {
   return (
     normalizeFailureText(err?.shortMessage) ||
@@ -69,12 +128,48 @@ export function getTransactionFailureTxHash(err) {
 export async function markTransactionFailed(txDoc, err) {
   if (!txDoc || txDoc.status === "success") return;
 
+  const receivedAt = new Date();
   const txHash = getTransactionFailureTxHash(err);
   txDoc.status = "failed";
   txDoc.failureReason = getTransactionFailureReason(err);
   if (txHash && !txDoc.txHash) {
     txDoc.txHash = txHash;
   }
+  txDoc.blockchainResultReceivedAt = receivedAt;
+  txDoc.blockchainSyncedAt = new Date();
 
-  await txDoc.save().catch(() => {});
+  await saveTransactionWithinSyncWindow(txDoc, receivedAt).catch(() => {});
+}
+
+export async function syncTransactionWithBlockchainResult(
+  txDoc,
+  result,
+  { receivedAt = new Date(), failureReason } = {}
+) {
+  if (!txDoc) return null;
+
+  const resultReceivedAt = asDate(receivedAt);
+  const txHash = getBlockchainResultTxHash(result);
+  const executionSucceeded = didBlockchainExecutionSucceed(result);
+
+  txDoc.status = executionSucceeded ? "success" : "failed";
+  if (txHash) {
+    txDoc.txHash = txHash;
+  }
+  txDoc.failureReason = executionSucceeded
+    ? undefined
+    : normalizeFailureText(failureReason) || "Blockchain execution failed.";
+  txDoc.blockchainResultReceivedAt = resultReceivedAt;
+  txDoc.blockchainSyncedAt = new Date();
+
+  await saveTransactionWithinSyncWindow(txDoc, resultReceivedAt);
+
+  if (!executionSucceeded) {
+    const err = new Error(txDoc.failureReason);
+    err.statusCode = 502;
+    err.blockchainExecutionFailed = true;
+    throw err;
+  }
+
+  return txDoc;
 }

@@ -58,6 +58,12 @@ const transactionSchema = new mongoose.Schema(
       trim: true,
       maxlength: 1000,
     },
+    blockchainResultReceivedAt: {
+      type: Date,
+    },
+    blockchainSyncedAt: {
+      type: Date,
+    },
     transferRequestKey: {
       type: String,
       trim: true,

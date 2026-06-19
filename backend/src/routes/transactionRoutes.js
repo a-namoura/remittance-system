@@ -31,7 +31,9 @@ import {
   DUPLICATE_TRANSFER_REQUEST_MESSAGE,
   IN_FLIGHT_TRANSACTION_STATUSES,
   isDuplicateTransferRequestKeyError,
+  isTransactionSyncError,
   markTransactionFailed,
+  syncTransactionWithBlockchainResult,
 } from "../utils/transactionRequests.js";
 
 export const transactionRouter = express.Router();
@@ -433,10 +435,7 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
 
     const result = await sendRemittance(receiverWallet, linkDoc.amount);
 
-    txDoc.status = "success";
-    txDoc.txHash = result.txHash || null;
-    txDoc.failureReason = undefined;
-    await txDoc.save();
+    await syncTransactionWithBlockchainResult(txDoc, result);
 
     linkDoc.status = "claimed";
     linkDoc.claimedByUserId = req.user._id;
@@ -451,13 +450,19 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
         status: txDoc.status,
         txHash: txDoc.txHash,
         failureReason: txDoc.failureReason || null,
+        blockchainResultReceivedAt: txDoc.blockchainResultReceivedAt || null,
+        blockchainSyncedAt: txDoc.blockchainSyncedAt || null,
         amount: txDoc.amount,
         assetSymbol: normalizeTransferAssetSymbol(txDoc.assetSymbol),
         receiverWallet: txDoc.receiverWallet,
       },
     });
   } catch (err) {
-    if (txDoc && txDoc.status !== "success") {
+    if (isTransactionSyncError(err)) {
+      return next(err);
+    }
+
+    if (txDoc && !["success", "failed"].includes(txDoc.status)) {
       await markTransactionFailed(txDoc, err);
     }
 
@@ -572,10 +577,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
     const result = await sendRemittance(normalizedReceiverWallet, amountNumber);
 
     // Update DB with success and tx hash
-    txDoc.status = "success";
-    txDoc.txHash = result.txHash;
-    txDoc.failureReason = undefined;
-    await txDoc.save();
+    await syncTransactionWithBlockchainResult(txDoc, result);
 
     try {
       await logAudit({
@@ -601,6 +603,8 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
         status: txDoc.status,
         txHash: txDoc.txHash,
         failureReason: txDoc.failureReason || null,
+        blockchainResultReceivedAt: txDoc.blockchainResultReceivedAt || null,
+        blockchainSyncedAt: txDoc.blockchainSyncedAt || null,
         assetSymbol: normalizeTransferAssetSymbol(txDoc.assetSymbol),
       },
     });
@@ -610,8 +614,12 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       return next(new Error(DUPLICATE_TRANSFER_REQUEST_MESSAGE));
     }
 
+    if (isTransactionSyncError(err)) {
+      return next(err);
+    }
+
     // If blockchain call failed, mark the transaction as failed
-    if (txDoc) {
+    if (txDoc && !["success", "failed"].includes(txDoc.status)) {
       await markTransactionFailed(txDoc, err);
     }
     next(err);
@@ -783,6 +791,8 @@ transactionRouter.get("/my", protect, async (req, res, next) => {
         status: t.status,
         txHash: t.txHash || null,
         failureReason: t.failureReason || null,
+        blockchainResultReceivedAt: t.blockchainResultReceivedAt || null,
+        blockchainSyncedAt: t.blockchainSyncedAt || null,
         createdAt: t.createdAt,
         direction,
         fiatAmountUsd,
@@ -857,6 +867,8 @@ transactionRouter.get("/:id", protect, async (req, res, next) => {
         status: tx.status,
         txHash: tx.txHash || null,
         failureReason: tx.failureReason || null,
+        blockchainResultReceivedAt: tx.blockchainResultReceivedAt || null,
+        blockchainSyncedAt: tx.blockchainSyncedAt || null,
         type: tx.type || null,
         direction,
         createdAt: tx.createdAt,

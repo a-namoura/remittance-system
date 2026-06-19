@@ -191,6 +191,8 @@ adminRouter.get("/transactions", async (req, res, next) => {
         status: t.status,
         txHash: t.txHash || null,
         failureReason: t.failureReason || null,
+        blockchainResultReceivedAt: t.blockchainResultReceivedAt || null,
+        blockchainSyncedAt: t.blockchainSyncedAt || null,
         createdAt: t.createdAt,
       })),
     });
