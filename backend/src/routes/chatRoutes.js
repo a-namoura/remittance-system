@@ -24,6 +24,7 @@ import {
   DUPLICATE_TRANSFER_REQUEST_MESSAGE,
   IN_FLIGHT_TRANSACTION_STATUSES,
   isDuplicateTransferRequestKeyError,
+  markTransactionFailed,
 } from "../utils/transactionRequests.js";
 
 export const chatRouter = express.Router();
@@ -1197,6 +1198,7 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
 
     txDoc.status = "success";
     txDoc.txHash = result.txHash || null;
+    txDoc.failureReason = undefined;
     await txDoc.save();
 
     thread.lastMessageAt = new Date();
@@ -1225,6 +1227,7 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
         id: txDoc._id,
         status: txDoc.status,
         txHash: txDoc.txHash || null,
+        failureReason: txDoc.failureReason || null,
         amount: txDoc.amount,
         note: txDoc.note || "",
         assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
@@ -1239,8 +1242,7 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
     }
 
     if (txDoc) {
-      txDoc.status = "failed";
-      await txDoc.save().catch(() => {});
+      await markTransactionFailed(txDoc, err);
     }
     next(err);
   }
@@ -1377,6 +1379,7 @@ chatRouter.post(
 
       txDoc.status = "success";
       txDoc.txHash = result.txHash || null;
+      txDoc.failureReason = undefined;
       await txDoc.save();
 
       const paidRequest = await ChatRequest.findOneAndUpdate(
@@ -1441,6 +1444,7 @@ chatRouter.post(
           amount: txDoc.amount,
           status: txDoc.status,
           txHash: txDoc.txHash || null,
+          failureReason: txDoc.failureReason || null,
           senderWallet: txDoc.senderWallet,
           receiverWallet: txDoc.receiverWallet,
           createdAt: txDoc.createdAt,
@@ -1448,8 +1452,7 @@ chatRouter.post(
       });
     } catch (err) {
       if (txDoc && txDoc.status !== "success") {
-        txDoc.status = "failed";
-        await txDoc.save().catch(() => {});
+        await markTransactionFailed(txDoc, err);
       }
 
       if (lockedRequest && lockedRequest.status === "processing") {

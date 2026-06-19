@@ -8,6 +8,7 @@ import {
   createInvalidWalletAddressMessage,
   normalizeEvmAddress,
 } from "../utils/walletAddress.js";
+import { markTransactionFailed } from "../utils/transactionRequests.js";
 
 const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
   .trim()
@@ -92,6 +93,7 @@ export async function sendTransaction(req, res, next) {
 
     txDoc.status = "success";
     txDoc.txHash = result?.txHash || null;
+    txDoc.failureReason = undefined;
     await txDoc.save();
 
     return res.json({
@@ -103,13 +105,13 @@ export async function sendTransaction(req, res, next) {
         assetSymbol: txDoc.assetSymbol,
         status: txDoc.status,
         txHash: txDoc.txHash || null,
+        failureReason: txDoc.failureReason || null,
         createdAt: txDoc.createdAt,
       },
     });
   } catch (err) {
     if (txDoc && txDoc.status !== "success") {
-      txDoc.status = "failed";
-      await txDoc.save().catch(() => {});
+      await markTransactionFailed(txDoc, err);
     }
     if (err?.statusCode) res.status(err.statusCode);
     next(err);
@@ -138,6 +140,7 @@ export async function getMyTransactions(req, res, next) {
         assetSymbol: t.assetSymbol || DEFAULT_ASSET_SYMBOL,
         status: t.status,
         txHash: t.txHash || null,
+        failureReason: t.failureReason || null,
         createdAt: t.createdAt,
       })),
     });

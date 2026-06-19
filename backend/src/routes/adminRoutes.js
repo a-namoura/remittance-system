@@ -190,6 +190,7 @@ adminRouter.get("/transactions", async (req, res, next) => {
         assetSymbol: t.assetSymbol || null,
         status: t.status,
         txHash: t.txHash || null,
+        failureReason: t.failureReason || null,
         createdAt: t.createdAt,
       })),
     });

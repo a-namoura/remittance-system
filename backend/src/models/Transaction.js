@@ -53,6 +53,11 @@ const transactionSchema = new mongoose.Schema(
       default: "pending",
     },
     txHash: { type: String, trim: true },
+    failureReason: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+    },
     transferRequestKey: {
       type: String,
       trim: true,

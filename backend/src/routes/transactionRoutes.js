@@ -31,6 +31,7 @@ import {
   DUPLICATE_TRANSFER_REQUEST_MESSAGE,
   IN_FLIGHT_TRANSACTION_STATUSES,
   isDuplicateTransferRequestKeyError,
+  markTransactionFailed,
 } from "../utils/transactionRequests.js";
 
 export const transactionRouter = express.Router();
@@ -434,6 +435,7 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
 
     txDoc.status = "success";
     txDoc.txHash = result.txHash || null;
+    txDoc.failureReason = undefined;
     await txDoc.save();
 
     linkDoc.status = "claimed";
@@ -448,6 +450,7 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
         id: txDoc._id,
         status: txDoc.status,
         txHash: txDoc.txHash,
+        failureReason: txDoc.failureReason || null,
         amount: txDoc.amount,
         assetSymbol: normalizeTransferAssetSymbol(txDoc.assetSymbol),
         receiverWallet: txDoc.receiverWallet,
@@ -455,8 +458,7 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
     });
   } catch (err) {
     if (txDoc && txDoc.status !== "success") {
-      txDoc.status = "failed";
-      await txDoc.save().catch(() => {});
+      await markTransactionFailed(txDoc, err);
     }
 
     if (linkDoc && linkDoc.status === "claiming") {
@@ -572,6 +574,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
     // Update DB with success and tx hash
     txDoc.status = "success";
     txDoc.txHash = result.txHash;
+    txDoc.failureReason = undefined;
     await txDoc.save();
 
     try {
@@ -597,6 +600,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
         id: txDoc._id,
         status: txDoc.status,
         txHash: txDoc.txHash,
+        failureReason: txDoc.failureReason || null,
         assetSymbol: normalizeTransferAssetSymbol(txDoc.assetSymbol),
       },
     });
@@ -608,8 +612,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
 
     // If blockchain call failed, mark the transaction as failed
     if (txDoc) {
-      txDoc.status = "failed";
-      await txDoc.save().catch(() => {});
+      await markTransactionFailed(txDoc, err);
     }
     next(err);
   }
@@ -779,6 +782,7 @@ transactionRouter.get("/my", protect, async (req, res, next) => {
         assetSymbol,
         status: t.status,
         txHash: t.txHash || null,
+        failureReason: t.failureReason || null,
         createdAt: t.createdAt,
         direction,
         fiatAmountUsd,
@@ -852,6 +856,7 @@ transactionRouter.get("/:id", protect, async (req, res, next) => {
         assetSymbol,
         status: tx.status,
         txHash: tx.txHash || null,
+        failureReason: tx.failureReason || null,
         type: tx.type || null,
         direction,
         createdAt: tx.createdAt,
