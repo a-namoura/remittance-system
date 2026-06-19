@@ -7,6 +7,7 @@ pragma solidity ^0.8.20;
 /// information, session tokens, password-reset tokens, or other off-chain account data.
 contract Remittance {
     error InvalidReceiver();
+    error SelfTransfer();
     error ZeroAmount();
 
     event Transfer(
@@ -18,6 +19,7 @@ contract Remittance {
 
     function transfer(address payable receiver) external payable {
         if (receiver == address(0)) revert InvalidReceiver();
+        if (receiver == msg.sender) revert SelfTransfer();
         if (msg.value == 0) revert ZeroAmount();
 
         receiver.transfer(msg.value);

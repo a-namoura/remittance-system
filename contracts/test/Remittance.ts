@@ -44,4 +44,14 @@ describe("Remittance", function () {
       remittance.connect(sender).transfer(ethers.ZeroAddress, { value: 1 })
     ).to.be.revertedWithCustomError(remittance, "InvalidReceiver");
   });
+
+  it("reverts on self-transfer", async function () {
+    const [sender] = await ethers.getSigners();
+
+    const remittance = await ethers.deployContract("Remittance");
+
+    await expect(
+      remittance.connect(sender).transfer(sender.address, { value: 1 })
+    ).to.be.revertedWithCustomError(remittance, "SelfTransfer");
+  });
 });

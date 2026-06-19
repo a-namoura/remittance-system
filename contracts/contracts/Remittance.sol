@@ -10,10 +10,12 @@ contract Remittance {
     );
 
     error InvalidReceiver();
+    error SelfTransfer();
     error ZeroAmount();
 
     function transfer(address payable receiver) external payable {
         if (receiver == address(0)) revert InvalidReceiver();
+        if (receiver == msg.sender) revert SelfTransfer();
         if (msg.value == 0) revert ZeroAmount();
 
         (bool ok, ) = receiver.call{value: msg.value}("");

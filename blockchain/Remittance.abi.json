@@ -6,6 +6,11 @@
   },
   {
     "inputs": [],
+    "name": "SelfTransfer",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "ZeroAmount",
     "type": "error"
   },
