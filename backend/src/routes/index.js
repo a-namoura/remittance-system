@@ -27,7 +27,7 @@ apiRouter.use("/chats", chatRouter);
 
 apiRouter.use("/admin", protect, requireAdmin, adminRouter);
 
-apiRouter.get("/db-test", async (req, res) => {
+apiRouter.get("/db-test", protect, requireAdmin, async (req, res) => {
   const [usersCount, walletsCount, txCount, adminsCount] = await Promise.all([
     User.countDocuments(),
     Wallet.countDocuments(),
