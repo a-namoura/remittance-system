@@ -349,6 +349,7 @@ export default function Chat() {
   const historySyncBusyRef = useRef(false);
   const friendSyncTimerRef = useRef(null);
   const friendSyncBusyRef = useRef(false);
+  const transferSubmittingRef = useRef(false);
   const friendPreviewByMessageRef = useRef({});
   const plaintextCacheAttemptedRef = useRef(new Set());
   const timelineStickToBottomRef = useRef(true);
@@ -1568,6 +1569,7 @@ export default function Chat() {
 
   async function handleSendTransfer(event) {
     event.preventDefault();
+    if (transferSubmittingRef.current) return;
 
     const draft = validateSendTransferDraft();
     if (!draft) return;
@@ -1579,6 +1581,7 @@ export default function Chat() {
     }
 
     try {
+      transferSubmittingRef.current = true;
       setSendingTransfer(true);
       setTimelineError("");
       setTimelineInfo("");
@@ -1607,6 +1610,7 @@ export default function Chat() {
     } catch (err) {
       setTimelineError(getUserErrorMessage(err, "Failed to send payment."));
     } finally {
+      transferSubmittingRef.current = false;
       setSendingTransfer(false);
     }
   }
@@ -2552,7 +2556,8 @@ export default function Chat() {
                     <button
                       type="button"
                       onClick={cancelSendTransferSummary}
-                      className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      disabled={sendingTransfer}
+                      className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Cancel transfer
                     </button>

@@ -4,6 +4,7 @@ import {
   formatWalletAddressForStorage,
   isValidEvmAddress,
 } from "../utils/walletAddress.js";
+import { IN_FLIGHT_TRANSACTION_STATUSES } from "../utils/transactionRequests.js";
 
 const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
   .trim()
@@ -52,6 +53,10 @@ const transactionSchema = new mongoose.Schema(
       default: "pending",
     },
     txHash: { type: String, trim: true },
+    transferRequestKey: {
+      type: String,
+      trim: true,
+    },
 
     // helpful for filters later (sent/received)
     type: {
@@ -60,6 +65,18 @@ const transactionSchema = new mongoose.Schema(
     },
   },
   { timestamps: true }
+);
+
+transactionSchema.index(
+  { transferRequestKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      transferRequestKey: { $exists: true },
+      status: { $in: IN_FLIGHT_TRANSACTION_STATUSES },
+    },
+    name: "unique_in_flight_transfer_request",
+  }
 );
 
 export const Transaction = mongoose.model("Transaction", transactionSchema);

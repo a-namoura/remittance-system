@@ -27,6 +27,12 @@ import {
   createInvalidWalletAddressMessage,
   normalizeEvmAddress,
 } from "../utils/walletAddress.js";
+import {
+  createTransferRequestKey,
+  DUPLICATE_TRANSFER_REQUEST_MESSAGE,
+  IN_FLIGHT_TRANSACTION_STATUSES,
+  isDuplicateTransferRequestKeyError,
+} from "../utils/transactionRequests.js";
 
 export const transactionRouter = express.Router();
 
@@ -42,9 +48,28 @@ function requireRouteEvmAddress(res, value, fieldName) {
   return normalizedAddress;
 }
 
+function rejectSelfTransfer(res, senderWallet, receiverWallet) {
+  if (senderWallet === receiverWallet) {
+    res.status(400);
+    throw new Error("You cannot transfer funds to your own wallet address.");
+  }
+}
+
 function normalizeTransferAssetSymbol(rawSymbol) {
   const normalized = normalizeCurrencySymbol(rawSymbol);
   return normalized || DEFAULT_ASSET_SYMBOL;
+}
+
+async function rejectInFlightDuplicateTransfer(res, transferRequestKey) {
+  const duplicate = await Transaction.exists({
+    transferRequestKey,
+    status: { $in: IN_FLIGHT_TRANSACTION_STATUSES },
+  });
+
+  if (duplicate) {
+    res.status(409);
+    throw new Error(DUPLICATE_TRANSFER_REQUEST_MESSAGE);
+  }
 }
 
 function parseCurrencySymbols(rawValue) {
@@ -386,6 +411,7 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
       senderWallet = getRemittanceClient().wallet.address;
     }
     senderWallet = requireRouteEvmAddress(res, senderWallet, "senderWallet");
+    rejectSelfTransfer(res, senderWallet, receiverWallet);
 
     txDoc = await Transaction.create({
       senderUserId: linkDoc.creatorUserId,
@@ -474,12 +500,22 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       walletDoc.address,
       "linked wallet address"
     );
+    rejectSelfTransfer(res, senderWallet, normalizedReceiverWallet);
 
     const amountNumber = Number(amountEth);
     if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
       res.status(400);
       throw new Error("amountEth must be a positive number.");
     }
+
+    const transferRequestKey = createTransferRequestKey({
+      senderUserId: req.user._id,
+      senderWallet,
+      receiverWallet: normalizedReceiverWallet,
+      amount: amountNumber,
+      assetSymbol,
+    });
+    await rejectInFlightDuplicateTransfer(res, transferRequestKey);
 
     const availableBalance = await getEthBalance(senderWallet);
     if (amountNumber > availableBalance) {
@@ -521,6 +557,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       assetSymbol,
       status: "pending",
       type: "sent",
+      transferRequestKey,
     });
 
     // Call blockchain
@@ -558,6 +595,11 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       },
     });
   } catch (err) {
+    if (isDuplicateTransferRequestKeyError(err)) {
+      res.status(409);
+      return next(new Error(DUPLICATE_TRANSFER_REQUEST_MESSAGE));
+    }
+
     // If blockchain call failed, mark the transaction as failed
     if (txDoc) {
       txDoc.status = "failed";

@@ -17,7 +17,7 @@ import {
 } from "../services/transactionApi.js";
 import { readWalletState, requireAuthToken, writeWalletState } from "../services/session.js";
 import { searchUsers } from "../services/userApi.js";
-import { isValidEvmAddress } from "../utils/security.js";
+import { isValidEvmAddress, normalizeEvmAddress } from "../utils/security.js";
 import { copyText, getQrImageUrl, shortWallet } from "../utils/paylink.js";
 import { useSuccessTransitionMessage } from "../utils/successTransition.js";
 
@@ -283,6 +283,7 @@ export default function SendMoney() {
   const [verificationChannel, setVerificationChannel] = useState("email");
   const [verificationDestination, setVerificationDestination] = useState("");
   const [codeSending, setCodeSending] = useState(false);
+  const transferSubmittingRef = useRef(false);
 
   const friendParam = searchParams.get("friend");
   const requestToParam = String(searchParams.get("to") || "").trim();
@@ -588,6 +589,13 @@ export default function SendMoney() {
       return null;
     }
 
+    const normalizedDestination = normalizeEvmAddress(destination);
+    const myWallet = normalizeEvmAddress(me?.wallet?.address);
+    if (myWallet && normalizedDestination === myWallet) {
+      setMethodError("You cannot transfer funds to your own wallet address.");
+      return null;
+    }
+
     const amount = Number(String(amountEth).trim());
     if (!Number.isFinite(amount) || amount <= 0) {
       setMethodError("Amount must be a positive number.");
@@ -611,7 +619,7 @@ export default function SendMoney() {
       return null;
     }
 
-    return { destination, amount };
+    return { destination: normalizedDestination, amount };
   }
 
   function goToAddressVerification() {
@@ -627,6 +635,7 @@ export default function SendMoney() {
 
   async function handleSendDirect(event) {
     event.preventDefault();
+    if (transferSubmittingRef.current) return;
     setMethodError("");
     setMethodSuccess("");
 
@@ -643,6 +652,13 @@ export default function SendMoney() {
 
     if (!isValidEvmAddress(wallet)) {
       setMethodError("Selected recipient has an invalid wallet address.");
+      return;
+    }
+
+    const normalizedWallet = normalizeEvmAddress(wallet);
+    const myWallet = normalizeEvmAddress(me?.wallet?.address);
+    if (myWallet && normalizedWallet === myWallet) {
+      setMethodError("You cannot transfer funds to your own wallet address.");
       return;
     }
 
@@ -682,10 +698,11 @@ export default function SendMoney() {
     }
 
     try {
+      transferSubmittingRef.current = true;
       setSending(true);
       const result = await sendTransaction({
         token,
-        receiverWallet: wallet,
+        receiverWallet: normalizedWallet,
         amountEth: amount,
         verificationCode: normalizedCode,
       });
@@ -700,12 +717,14 @@ export default function SendMoney() {
     } catch (err) {
       setMethodError(getUserErrorMessage(err, "Failed to send transaction."));
     } finally {
+      transferSubmittingRef.current = false;
       setSending(false);
     }
   }
 
   async function handleSendByAddress(event) {
     event.preventDefault();
+    if (transferSubmittingRef.current) return;
     setMethodError("");
     setMethodSuccess("");
 
@@ -732,6 +751,7 @@ export default function SendMoney() {
     }
 
     try {
+      transferSubmittingRef.current = true;
       setSending(true);
       const result = await sendTransaction({
         token,
@@ -750,6 +770,7 @@ export default function SendMoney() {
     } catch (err) {
       setMethodError(getUserErrorMessage(err, "Failed to send transaction."));
     } finally {
+      transferSubmittingRef.current = false;
       setSending(false);
     }
   }
@@ -1371,7 +1392,8 @@ export default function SendMoney() {
                     <button
                       type="button"
                       onClick={cancelTransferSummary}
-                      className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline"
+                      disabled={sending}
+                      className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
                     >
                       Cancel transfer
                     </button>

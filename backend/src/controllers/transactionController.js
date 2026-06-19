@@ -65,6 +65,10 @@ export async function sendTransaction(req, res, next) {
       res.status(400);
       throw new Error(createInvalidWalletAddressMessage("linked wallet address"));
     }
+    if (senderWallet === receiver) {
+      res.status(400);
+      throw new Error("You cannot transfer funds to your own wallet address.");
+    }
 
     const availableBalance = await getEthBalance(senderWallet);
     if (amountNumber > availableBalance) {

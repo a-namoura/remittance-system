@@ -19,6 +19,12 @@ import {
   createInvalidWalletAddressMessage,
   normalizeEvmAddress,
 } from "../utils/walletAddress.js";
+import {
+  createTransferRequestKey,
+  DUPLICATE_TRANSFER_REQUEST_MESSAGE,
+  IN_FLIGHT_TRANSACTION_STATUSES,
+  isDuplicateTransferRequestKeyError,
+} from "../utils/transactionRequests.js";
 
 export const chatRouter = express.Router();
 const DEFAULT_CHAT_ASSET_SYMBOL = getNativeAssetSymbol();
@@ -35,6 +41,25 @@ function requireChatEvmAddress(res, value, fieldName) {
     throw new Error(createInvalidWalletAddressMessage(fieldName));
   }
   return normalizedAddress;
+}
+
+function rejectChatSelfTransfer(res, senderWallet, receiverWallet) {
+  if (senderWallet === receiverWallet) {
+    res.status(400);
+    throw new Error("You cannot transfer funds to your own wallet address.");
+  }
+}
+
+async function rejectInFlightDuplicateTransfer(res, transferRequestKey) {
+  const duplicate = await Transaction.exists({
+    transferRequestKey,
+    status: { $in: IN_FLIGHT_TRANSACTION_STATUSES },
+  });
+
+  if (duplicate) {
+    res.status(409);
+    throw new Error(DUPLICATE_TRANSFER_REQUEST_MESSAGE);
+  }
 }
 
 function escapeRegex(value) {
@@ -1134,6 +1159,16 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       recipientWalletDoc.address,
       "receiverWallet"
     );
+    rejectChatSelfTransfer(res, senderWallet, recipientWallet);
+
+    const transferRequestKey = createTransferRequestKey({
+      senderUserId,
+      senderWallet,
+      receiverWallet: recipientWallet,
+      amount: amountNumber,
+      assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
+    });
+    await rejectInFlightDuplicateTransfer(res, transferRequestKey);
 
     const availableBalance = await getEthBalance(senderWallet);
     if (amountNumber > availableBalance) {
@@ -1155,6 +1190,7 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
       status: "pending",
       type: "sent",
+      transferRequestKey,
     });
 
     const result = await sendRemittance(recipientWallet, amountNumber);
@@ -1197,6 +1233,11 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       },
     });
   } catch (err) {
+    if (isDuplicateTransferRequestKeyError(err)) {
+      res.status(409);
+      return next(new Error(DUPLICATE_TRANSFER_REQUEST_MESSAGE));
+    }
+
     if (txDoc) {
       txDoc.status = "failed";
       await txDoc.save().catch(() => {});
@@ -1291,6 +1332,7 @@ chatRouter.post(
         requesterWalletDoc.address,
         "receiverWallet"
       );
+      rejectChatSelfTransfer(res, payerWallet, requesterWallet);
 
       const availableBalance = await getEthBalance(payerWallet);
       if (requestAmountNumber > availableBalance) {
