@@ -4,7 +4,6 @@ import { protect } from "../middleware/authMiddleware.js";
 import {
   sendRemittance,
   getEthBalance,
-  getRemittanceClient,
 } from "../blockchain/remittanceClient.js";
 import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
@@ -406,11 +405,18 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
       .select("address")
       .lean();
 
-    let senderWallet = creatorWalletDoc?.address || "";
-    if (!senderWallet) {
-      senderWallet = getRemittanceClient().wallet.address;
+    if (!creatorWalletDoc?.address) {
+      res.status(409);
+      throw new Error(
+        "Transfer creator must have a verified connected wallet before this link can be claimed."
+      );
     }
-    senderWallet = requireRouteEvmAddress(res, senderWallet, "senderWallet");
+
+    const senderWallet = requireRouteEvmAddress(
+      res,
+      creatorWalletDoc.address,
+      "senderWallet"
+    );
     rejectSelfTransfer(res, senderWallet, receiverWallet);
 
     txDoc = await Transaction.create({
