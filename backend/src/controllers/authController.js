@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 import { User } from "../models/User.js";
-import { logAudit } from "../utils/audit.js";
+import { hashAuditIdentifier, logAudit } from "../utils/audit.js";
 import {
   sendLoginCodeEmail,
   sendPasswordResetLinkEmail,
@@ -71,6 +71,42 @@ function verifyPurposeToken(rawToken, expectedPurpose) {
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+async function logLoginFailure({
+  req,
+  user,
+  identifier,
+  authMethod,
+  stage,
+  reason,
+}) {
+  await logAudit({
+    user,
+    action: "LOGIN_FAILED",
+    metadata: {
+      identifierHash: hashAuditIdentifier(identifier),
+      authMethod: String(authMethod || "identifier"),
+      stage,
+      reason,
+    },
+    req,
+  });
+}
+
+async function respondLoginFailure(
+  res,
+  { req, user, identifier, authMethod, stage, reason, status, message }
+) {
+  await logLoginFailure({
+    req,
+    user,
+    identifier,
+    authMethod,
+    stage,
+    reason,
+  });
+  return res.status(status).json({ message });
 }
 
 function isValidEmail(value) {
@@ -460,27 +496,81 @@ export async function loginOptions(req, res) {
   const { identifier, password, authMethod: rawAuthMethod } = req.body || {};
 
   if (!identifier || !password) {
-    return res.status(400).json({ message: "Missing credentials" });
+    return respondLoginFailure(res, {
+      req,
+      identifier,
+      authMethod: rawAuthMethod,
+      stage: "credentials",
+      reason: "missing_credentials",
+      status: 400,
+      message: "Missing credentials",
+    });
   }
 
   const authMethod = normalizeAuthMethod(rawAuthMethod);
   const { query, error } = getLoginQuery({ identifier, authMethod });
 
   if (error) {
-    return res.status(400).json({ message: error });
+    return respondLoginFailure(res, {
+      req,
+      identifier,
+      authMethod,
+      stage: "credentials",
+      reason: "invalid_identifier",
+      status: 400,
+      message: error,
+    });
   }
   if (!query) {
-    return res.status(400).json({ message: "Invalid credentials" });
+    return respondLoginFailure(res, {
+      req,
+      identifier,
+      authMethod,
+      stage: "credentials",
+      reason: "invalid_identifier",
+      status: 400,
+      message: "Invalid credentials",
+    });
   }
 
   const user = await User.findOne(query).select("+passwordHash");
-  if (!user) return res.status(401).json({ message: "Invalid credentials" });
+  if (!user) {
+    return respondLoginFailure(res, {
+      req,
+      identifier,
+      authMethod,
+      stage: "credentials",
+      reason: "user_not_found",
+      status: 401,
+      message: "Invalid credentials",
+    });
+  }
   if (user.isDisabled) {
-    return res.status(403).json({ message: "Account is disabled." });
+    return respondLoginFailure(res, {
+      req,
+      user,
+      identifier,
+      authMethod,
+      stage: "credentials",
+      reason: "account_disabled",
+      status: 403,
+      message: "Account is disabled.",
+    });
   }
 
   const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+  if (!ok) {
+    return respondLoginFailure(res, {
+      req,
+      user,
+      identifier,
+      authMethod,
+      stage: "credentials",
+      reason: "invalid_password",
+      status: 401,
+      message: "Invalid credentials",
+    });
+  }
 
   const channels = getAvailableChannels(user);
 
@@ -502,7 +592,15 @@ export async function login(req, res) {
   } = req.body || {};
 
   if (!identifier || !password) {
-    return res.status(400).json({ message: "Missing credentials" });
+    return respondLoginFailure(res, {
+      req,
+      identifier,
+      authMethod: rawAuthMethod,
+      stage: "credentials",
+      reason: "missing_credentials",
+      status: 400,
+      message: "Missing credentials",
+    });
   }
 
   const authMethod = normalizeAuthMethod(rawAuthMethod);
@@ -510,20 +608,66 @@ export async function login(req, res) {
   const { query, error } = getLoginQuery({ identifier, authMethod });
 
   if (error) {
-    return res.status(400).json({ message: error });
+    return respondLoginFailure(res, {
+      req,
+      identifier,
+      authMethod,
+      stage: "credentials",
+      reason: "invalid_identifier",
+      status: 400,
+      message: error,
+    });
   }
   if (!query) {
-    return res.status(400).json({ message: "Invalid credentials" });
+    return respondLoginFailure(res, {
+      req,
+      identifier,
+      authMethod,
+      stage: "credentials",
+      reason: "invalid_identifier",
+      status: 400,
+      message: "Invalid credentials",
+    });
   }
 
   const user = await User.findOne(query).select("+passwordHash");
-  if (!user) return res.status(401).json({ message: "Invalid credentials" });
+  if (!user) {
+    return respondLoginFailure(res, {
+      req,
+      identifier,
+      authMethod,
+      stage: "credentials",
+      reason: "user_not_found",
+      status: 401,
+      message: "Invalid credentials",
+    });
+  }
   if (user.isDisabled) {
-    return res.status(403).json({ message: "Account is disabled." });
+    return respondLoginFailure(res, {
+      req,
+      user,
+      identifier,
+      authMethod,
+      stage: "credentials",
+      reason: "account_disabled",
+      status: 403,
+      message: "Account is disabled.",
+    });
   }
 
   const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+  if (!ok) {
+    return respondLoginFailure(res, {
+      req,
+      user,
+      identifier,
+      authMethod,
+      stage: "credentials",
+      reason: "invalid_password",
+      status: 401,
+      message: "Invalid credentials",
+    });
+  }
 
   const code = generateCode();
   setLoginCode(user, code);
@@ -535,6 +679,15 @@ export async function login(req, res) {
   } catch (err) {
     clearLoginCode(user);
     await user.save();
+
+    await logLoginFailure({
+      req,
+      user,
+      identifier,
+      authMethod,
+      stage: "verification_delivery",
+      reason: "verification_delivery_failed",
+    });
 
     return res
       .status(err.statusCode || 400)
@@ -555,26 +708,65 @@ export async function verifyCode(req, res) {
   const user = req.user;
   const { code } = req.body;
 
-  if (!code) return res.status(400).json({ message: "Code required" });
+  if (!code) {
+    return respondLoginFailure(res, {
+      req,
+      user,
+      identifier: user.email,
+      stage: "verification_code",
+      reason: "code_missing",
+      status: 400,
+      message: "Code required",
+    });
+  }
 
   if (!user.loginCode || !user.loginCodeExpiresAt) {
-    return res.status(400).json({ message: "No active code" });
+    return respondLoginFailure(res, {
+      req,
+      user,
+      identifier: user.email,
+      stage: "verification_code",
+      reason: "no_active_code",
+      status: 400,
+      message: "No active code",
+    });
   }
 
   if (Date.now() > user.loginCodeExpiresAt.getTime()) {
     clearLoginCode(user);
     await user.save();
-    return res.status(400).json({ message: "Code expired" });
+    return respondLoginFailure(res, {
+      req,
+      user,
+      identifier: user.email,
+      stage: "verification_code",
+      reason: "code_expired",
+      status: 400,
+      message: "Code expired",
+    });
   }
 
   if (user.loginCode !== String(code).trim()) {
-    return res.status(400).json({ message: "Invalid code" });
+    return respondLoginFailure(res, {
+      req,
+      user,
+      identifier: user.email,
+      stage: "verification_code",
+      reason: "invalid_code",
+      status: 400,
+      message: "Invalid code",
+    });
   }
 
   clearLoginCode(user);
   await user.save();
 
-  await logAudit({ user, action: "LOGIN_VERIFIED", req });
+  await logAudit({
+    user,
+    action: "LOGIN_SUCCESS",
+    metadata: { stage: "verification_code" },
+    req,
+  });
 
   res.json({ ok: true });
 }

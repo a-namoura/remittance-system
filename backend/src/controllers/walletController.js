@@ -7,6 +7,7 @@ import {
   createInvalidWalletAddressMessage,
   normalizeEvmAddress,
 } from "../utils/walletAddress.js";
+import { logAudit } from "../utils/audit.js";
 
 const WALLET_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
@@ -16,6 +17,45 @@ function hashChallengeMessage(message) {
 
 function normalizeWalletAddress(address) {
   return normalizeEvmAddress(address);
+}
+
+async function logWalletConnectionEvent({
+  req,
+  operation,
+  outcome,
+  walletAddress,
+  reason,
+  metadata = {},
+}) {
+  await logAudit({
+    user: req.user,
+    action:
+      outcome === "attempt"
+        ? "WALLET_CONNECTION_ATTEMPT"
+        : "WALLET_CONNECTION_RESULT",
+    metadata: {
+      operation,
+      outcome,
+      walletAddress: walletAddress || null,
+      reason: reason || null,
+      ...metadata,
+    },
+    req,
+  });
+}
+
+async function respondWalletConnectionFailure(
+  res,
+  { req, operation, walletAddress, reason, status, message }
+) {
+  await logWalletConnectionEvent({
+    req,
+    operation,
+    outcome: "failed",
+    walletAddress,
+    reason,
+  });
+  return res.status(status).json({ message });
 }
 
 function buildWalletChallengeMessage({ userId, nonce, expiresAt }) {
@@ -32,10 +72,22 @@ function buildWalletChallengeMessage({ userId, nonce, expiresAt }) {
 // body: { address }
 export async function createWalletChallenge(req, res) {
   const address = normalizeWalletAddress(req.body?.address);
+  await logWalletConnectionEvent({
+    req,
+    operation: "challenge",
+    outcome: "attempt",
+    walletAddress: address,
+  });
+
   if (!address) {
-    return res
-      .status(400)
-      .json({ message: createInvalidWalletAddressMessage("address") });
+    return respondWalletConnectionFailure(res, {
+      req,
+      operation: "challenge",
+      walletAddress: null,
+      reason: "invalid_address",
+      status: 400,
+      message: createInvalidWalletAddressMessage("address"),
+    });
   }
 
   const userId = req.user._id;
@@ -59,6 +111,14 @@ export async function createWalletChallenge(req, res) {
     expiresAt,
   });
 
+  await logWalletConnectionEvent({
+    req,
+    operation: "challenge",
+    outcome: "success",
+    walletAddress: address,
+    metadata: { challengeId: String(challenge._id) },
+  });
+
   return res.status(201).json({
     ok: true,
     challengeId: challenge._id,
@@ -71,22 +131,44 @@ export async function createWalletChallenge(req, res) {
 // body: { address, signature, message, challengeId }
 export async function linkWallet(req, res) {
   const { address, signature, message, challengeId } = req.body;
+  const normalizedAddress = normalizeWalletAddress(address);
+
+  await logWalletConnectionEvent({
+    req,
+    operation: "link",
+    outcome: "attempt",
+    walletAddress: normalizedAddress,
+  });
 
   if (!address || !signature || !message || !challengeId) {
-    return res.status(400).json({
+    return respondWalletConnectionFailure(res, {
+      req,
+      operation: "link",
+      walletAddress: normalizedAddress,
+      reason: "missing_required_fields",
+      status: 400,
       message: "address, signature, message, and challengeId are required",
     });
   }
 
-  const normalizedAddress = normalizeWalletAddress(address);
   if (!normalizedAddress) {
-    return res
-      .status(400)
-      .json({ message: createInvalidWalletAddressMessage("address") });
+    return respondWalletConnectionFailure(res, {
+      req,
+      operation: "link",
+      walletAddress: null,
+      reason: "invalid_address",
+      status: 400,
+      message: createInvalidWalletAddressMessage("address"),
+    });
   }
 
   if (!mongoose.Types.ObjectId.isValid(String(challengeId))) {
-    return res.status(400).json({
+    return respondWalletConnectionFailure(res, {
+      req,
+      operation: "link",
+      walletAddress: normalizedAddress,
+      reason: "invalid_challenge_id",
+      status: 400,
       message: "Wallet ownership verification failed. The challenge is invalid.",
     });
   }
@@ -99,21 +181,36 @@ export async function linkWallet(req, res) {
   });
 
   if (!challenge) {
-    return res.status(400).json({
+    return respondWalletConnectionFailure(res, {
+      req,
+      operation: "link",
+      walletAddress: normalizedAddress,
+      reason: "challenge_missing_or_used",
+      status: 400,
       message:
         "Wallet ownership verification failed. The challenge is invalid or already used.",
     });
   }
 
   if (challenge.expiresAt.getTime() <= Date.now()) {
-    return res.status(400).json({
+    return respondWalletConnectionFailure(res, {
+      req,
+      operation: "link",
+      walletAddress: normalizedAddress,
+      reason: "challenge_expired",
+      status: 400,
       message:
         "Wallet ownership verification failed. The challenge has expired. Please try again.",
     });
   }
 
   if (challenge.messageHash !== hashChallengeMessage(message)) {
-    return res.status(400).json({
+    return respondWalletConnectionFailure(res, {
+      req,
+      operation: "link",
+      walletAddress: normalizedAddress,
+      reason: "challenge_message_mismatch",
+      status: 400,
       message:
         "Wallet ownership verification failed. The signed message does not match the active challenge.",
     });
@@ -123,19 +220,27 @@ export async function linkWallet(req, res) {
   try {
     recovered = ethers.verifyMessage(message, signature);
   } catch (e) {
-    return res.status(400).json({
+    return respondWalletConnectionFailure(res, {
+      req,
+      operation: "link",
+      walletAddress: normalizedAddress,
+      reason: "invalid_signature_format",
+      status: 400,
       message:
         "Wallet ownership verification failed. The signature format is invalid.",
     });
   }
 
   if (normalizeWalletAddress(recovered) !== normalizedAddress) {
-    return res
-      .status(400)
-      .json({
-        message:
-          "Wallet ownership verification failed. The signed message does not match the selected wallet address.",
-      });
+    return respondWalletConnectionFailure(res, {
+      req,
+      operation: "link",
+      walletAddress: normalizedAddress,
+      reason: "signature_address_mismatch",
+      status: 400,
+      message:
+        "Wallet ownership verification failed. The signed message does not match the selected wallet address.",
+    });
   }
 
   const userId = req.user._id;
@@ -153,7 +258,12 @@ export async function linkWallet(req, res) {
   );
 
   if (!consumedChallenge) {
-    return res.status(400).json({
+    return respondWalletConnectionFailure(res, {
+      req,
+      operation: "link",
+      walletAddress: normalizedAddress,
+      reason: "challenge_expired_or_used",
+      status: 400,
       message:
         "Wallet ownership verification failed. The challenge has expired or was already used.",
     });
@@ -167,7 +277,12 @@ export async function linkWallet(req, res) {
     existingForAddress &&
     existingForAddress.userId.toString() !== userId.toString()
   ) {
-    return res.status(409).json({
+    return respondWalletConnectionFailure(res, {
+      req,
+      operation: "link",
+      walletAddress: normalizedAddress,
+      reason: "address_linked_to_another_user",
+      status: 409,
       message:
         "This wallet address is already linked to another account. A wallet can only be linked to one user.",
     });
@@ -184,6 +299,13 @@ export async function linkWallet(req, res) {
     { new: true, runValidators: true, upsert: true }
   );
 
+  await logWalletConnectionEvent({
+    req,
+    operation: "link",
+    outcome: "success",
+    walletAddress: doc.address,
+  });
+
   return res.json({
     ok: true,
     message: "Wallet successfully verified and linked to your account.",
@@ -199,7 +321,21 @@ export async function linkWallet(req, res) {
 export async function unlinkWallet(req, res) {
   const userId = req.user._id;
 
-  await Wallet.findOneAndDelete({ userId });
+  await logWalletConnectionEvent({
+    req,
+    operation: "unlink",
+    outcome: "attempt",
+  });
+
+  const walletDoc = await Wallet.findOneAndDelete({ userId });
+
+  await logWalletConnectionEvent({
+    req,
+    operation: "unlink",
+    outcome: "success",
+    walletAddress: walletDoc?.address || null,
+    metadata: { walletExisted: Boolean(walletDoc) },
+  });
 
   return res.json({
     ok: true,

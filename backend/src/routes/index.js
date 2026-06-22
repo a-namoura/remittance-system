@@ -11,6 +11,7 @@ import { transactionRouter } from "./transactionRoutes.js";
 import { adminRouter } from "./adminRoutes.js";
 import { friendRouter } from "./friendRoutes.js";
 import { chatRouter } from "./chatRoutes.js";
+import { logAudit } from "../utils/audit.js";
 
 export const apiRouter = express.Router();
 
@@ -28,6 +29,13 @@ apiRouter.use("/chats", chatRouter);
 apiRouter.use("/admin", protect, requireAdmin, adminRouter);
 
 apiRouter.get("/db-test", protect, requireAdmin, async (req, res) => {
+  await logAudit({
+    user: req.user,
+    action: "ADMIN_VIEW",
+    metadata: { endpoint: "/api/db-test" },
+    req,
+  });
+
   const [usersCount, walletsCount, txCount, adminsCount] = await Promise.all([
     User.countDocuments(),
     Wallet.countDocuments(),

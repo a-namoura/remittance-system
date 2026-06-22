@@ -73,6 +73,7 @@ PORT=5000
 MONGODB_URI=mongodb://127.0.0.1:27017/remittance
 JWT_SECRET=replace-with-a-strong-secret
 NODE_ENV=development
+TRANSACTION_SYNC_TIMEOUT_MS=2000
 ```
 
 Required for on-chain transfer flows (`/api/transactions/send`, claim, balance):

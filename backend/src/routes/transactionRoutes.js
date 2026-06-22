@@ -9,7 +9,11 @@ import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
 import { PaymentLink } from "../models/PaymentLink.js";
 import { User } from "../models/User.js";
-import { logAudit } from "../utils/audit.js";
+import {
+  logAudit,
+  logTransferAttempt,
+  logTransferResult,
+} from "../utils/audit.js";
 import {
   requireAndConsumePaymentCode,
   sendPaymentVerificationCode,
@@ -326,9 +330,17 @@ transactionRouter.get("/link/resolve", async (req, res, next) => {
 transactionRouter.post("/link/claim", protect, async (req, res, next) => {
   let linkDoc;
   let txDoc;
+  let transferResultLogged = false;
 
   try {
     const token = String(req.body?.token || "").trim();
+    await logTransferAttempt({
+      user: req.user,
+      req,
+      flow: "transfer_link_claim",
+      metadata: { tokenProvided: Boolean(token) },
+    });
+
     if (!token) {
       res.status(400);
       throw new Error("token is required.");
@@ -437,6 +449,19 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
 
     await syncTransactionWithBlockchainResult(txDoc, result);
 
+    await logTransferResult({
+      user: req.user,
+      req,
+      flow: "transfer_link_claim",
+      transaction: txDoc,
+      metadata: {
+        senderWallet,
+        receiverWallet,
+        amount: linkDoc.amount,
+      },
+    });
+    transferResultLogged = true;
+
     linkDoc.status = "claimed";
     linkDoc.claimedByUserId = req.user._id;
     linkDoc.claimedAt = new Date();
@@ -459,11 +484,30 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
     });
   } catch (err) {
     if (isTransactionSyncError(err)) {
+      if (!transferResultLogged) {
+        await logTransferResult({
+          user: req.user,
+          req,
+          flow: "transfer_link_claim",
+          transaction: txDoc,
+          error: err,
+        });
+      }
       return next(err);
     }
 
     if (txDoc && !["success", "failed"].includes(txDoc.status)) {
       await markTransactionFailed(txDoc, err);
+    }
+
+    if (!transferResultLogged) {
+      await logTransferResult({
+        user: req.user,
+        req,
+        flow: "transfer_link_claim",
+        transaction: txDoc,
+        error: err,
+      });
     }
 
     if (linkDoc && linkDoc.status === "claiming") {
@@ -482,10 +526,22 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
 // POST /api/transactions/send
 transactionRouter.post("/send", protect, async (req, res, next) => {
   let txDoc;
+  let transferResultLogged = false;
 
   try {
     const { receiverWallet, amountEth, verificationCode } = req.body;
     const assetSymbol = normalizeTransferAssetSymbol(req.body?.assetSymbol);
+
+    await logTransferAttempt({
+      user: req.user,
+      req,
+      flow: "direct_send",
+      metadata: {
+        receiverWallet: String(receiverWallet || "").trim() || null,
+        amount: Number.isFinite(Number(amountEth)) ? Number(amountEth) : null,
+        assetSymbol,
+      },
+    });
 
     if (!receiverWallet || !amountEth) {
       res.status(400);
@@ -579,22 +635,19 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
     // Update DB with success and tx hash
     await syncTransactionWithBlockchainResult(txDoc, result);
 
-    try {
-      await logAudit({
-        user: req.user,
-        action: "SEND_REMITTANCE",
-        metadata: {
-          txId: txDoc._id.toString(),
-          amountEth: amountNumber,
-          senderWallet,
-          receiverWallet: normalizedReceiverWallet,
-          txHash: result.txHash,
-        },
-        req,
-      });
-    } catch (err) {
-      console.error("Failed to write SEND_REMITTANCE audit log:", err.message);
-    }
+    await logTransferResult({
+      user: req.user,
+      req,
+      flow: "direct_send",
+      transaction: txDoc,
+      metadata: {
+        amount: amountNumber,
+        assetSymbol,
+        senderWallet,
+        receiverWallet: normalizedReceiverWallet,
+      },
+    });
+    transferResultLogged = true;
 
     res.status(201).json({
       ok: true,
@@ -610,17 +663,45 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
     });
   } catch (err) {
     if (isDuplicateTransferRequestKeyError(err)) {
+      if (!transferResultLogged) {
+        await logTransferResult({
+          user: req.user,
+          req,
+          flow: "direct_send",
+          transaction: txDoc,
+          error: err,
+        });
+      }
       res.status(409);
       return next(new Error(DUPLICATE_TRANSFER_REQUEST_MESSAGE));
     }
 
     if (isTransactionSyncError(err)) {
+      if (!transferResultLogged) {
+        await logTransferResult({
+          user: req.user,
+          req,
+          flow: "direct_send",
+          transaction: txDoc,
+          error: err,
+        });
+      }
       return next(err);
     }
 
     // If blockchain call failed, mark the transaction as failed
     if (txDoc && !["success", "failed"].includes(txDoc.status)) {
       await markTransactionFailed(txDoc, err);
+    }
+
+    if (!transferResultLogged) {
+      await logTransferResult({
+        user: req.user,
+        req,
+        flow: "direct_send",
+        transaction: txDoc,
+        error: err,
+      });
     }
     next(err);
   }

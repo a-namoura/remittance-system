@@ -13,7 +13,11 @@ import {
   getEthBalance,
   sendRemittance,
 } from "../blockchain/remittanceClient.js";
-import { logAudit } from "../utils/audit.js";
+import {
+  logAudit,
+  logTransferAttempt,
+  logTransferResult,
+} from "../utils/audit.js";
 import { getNativeAssetSymbol } from "../utils/currency.js";
 import {
   createInvalidWalletAddressMessage,
@@ -1088,9 +1092,22 @@ chatRouter.post(
 
 chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
   let txDoc = null;
+  let transferResultLogged = false;
 
   try {
     const threadId = asObjectId(req.params.threadId);
+    await logTransferAttempt({
+      user: req.user,
+      req,
+      flow: "chat_direct_send",
+      metadata: {
+        threadId: String(req.params.threadId || "") || null,
+        amount: Number.isFinite(Number(req.body?.amountEth))
+          ? Number(req.body.amountEth)
+          : null,
+      },
+    });
+
     if (!threadId) {
       res.status(400);
       throw new Error("Invalid thread id.");
@@ -1200,25 +1217,23 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
 
     await syncTransactionWithBlockchainResult(txDoc, result);
 
+    await logTransferResult({
+      user: req.user,
+      req,
+      flow: "chat_direct_send",
+      transaction: txDoc,
+      metadata: {
+        threadId: String(thread._id),
+        amount: amountNumber,
+        assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
+        senderWallet,
+        receiverWallet: recipientWallet,
+      },
+    });
+    transferResultLogged = true;
+
     thread.lastMessageAt = new Date();
     await thread.save();
-
-    try {
-      await logAudit({
-        user: req.user,
-        action: "SEND_CHAT_TRANSFER",
-        metadata: {
-          threadId: String(thread._id),
-          txId: String(txDoc._id),
-          amount: amountNumber,
-          assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
-          txHash: txDoc.txHash || null,
-        },
-        req,
-      });
-    } catch (auditErr) {
-      console.error("Failed to write SEND_CHAT_TRANSFER audit log:", auditErr.message);
-    }
 
     res.status(201).json({
       ok: true,
@@ -1238,16 +1253,47 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
     });
   } catch (err) {
     if (isDuplicateTransferRequestKeyError(err)) {
+      if (!transferResultLogged) {
+        await logTransferResult({
+          user: req.user,
+          req,
+          flow: "chat_direct_send",
+          transaction: txDoc,
+          error: err,
+          metadata: { threadId: String(req.params.threadId || "") || null },
+        });
+      }
       res.status(409);
       return next(new Error(DUPLICATE_TRANSFER_REQUEST_MESSAGE));
     }
 
     if (isTransactionSyncError(err)) {
+      if (!transferResultLogged) {
+        await logTransferResult({
+          user: req.user,
+          req,
+          flow: "chat_direct_send",
+          transaction: txDoc,
+          error: err,
+          metadata: { threadId: String(req.params.threadId || "") || null },
+        });
+      }
       return next(err);
     }
 
     if (txDoc && !["success", "failed"].includes(txDoc.status)) {
       await markTransactionFailed(txDoc, err);
+    }
+
+    if (!transferResultLogged) {
+      await logTransferResult({
+        user: req.user,
+        req,
+        flow: "chat_direct_send",
+        transaction: txDoc,
+        error: err,
+        metadata: { threadId: String(req.params.threadId || "") || null },
+      });
     }
     next(err);
   }
@@ -1259,10 +1305,21 @@ chatRouter.post(
   async (req, res, next) => {
     let txDoc = null;
     let lockedRequest = null;
+    let transferResultLogged = false;
 
     try {
       const threadId = asObjectId(req.params.threadId);
       const requestId = asObjectId(req.params.requestId);
+
+      await logTransferAttempt({
+        user: req.user,
+        req,
+        flow: "chat_request_payment",
+        metadata: {
+          threadId: String(req.params.threadId || "") || null,
+          requestId: String(req.params.requestId || "") || null,
+        },
+      });
 
       if (!threadId || !requestId) {
         res.status(400);
@@ -1384,6 +1441,21 @@ chatRouter.post(
 
       await syncTransactionWithBlockchainResult(txDoc, result);
 
+      await logTransferResult({
+        user: req.user,
+        req,
+        flow: "chat_request_payment",
+        transaction: txDoc,
+        metadata: {
+          threadId: String(thread._id),
+          requestId: String(lockedRequest._id),
+          amount: requestAmountNumber,
+          senderWallet: payerWallet,
+          receiverWallet: requesterWallet,
+        },
+      });
+      transferResultLogged = true;
+
       const paidRequest = await ChatRequest.findOneAndUpdate(
         { _id: lockedRequest._id, status: "processing" },
         {
@@ -1406,23 +1478,6 @@ chatRouter.post(
 
       thread.lastMessageAt = new Date();
       await thread.save();
-
-      try {
-        await logAudit({
-          user: req.user,
-          action: "PAY_CHAT_REQUEST",
-          metadata: {
-            threadId: String(thread._id),
-            requestId: String(paidRequest._id),
-            txId: String(txDoc._id),
-            amount: paidRequest.amount,
-            txHash: txDoc.txHash || null,
-          },
-          req,
-        });
-      } catch (auditErr) {
-        console.error("Failed to write PAY_CHAT_REQUEST audit log:", auditErr.message);
-      }
 
       res.status(201).json({
         ok: true,
@@ -1456,11 +1511,38 @@ chatRouter.post(
       });
     } catch (err) {
       if (isTransactionSyncError(err)) {
+        if (!transferResultLogged) {
+          await logTransferResult({
+            user: req.user,
+            req,
+            flow: "chat_request_payment",
+            transaction: txDoc,
+            error: err,
+            metadata: {
+              threadId: String(req.params.threadId || "") || null,
+              requestId: String(req.params.requestId || "") || null,
+            },
+          });
+        }
         return next(err);
       }
 
       if (txDoc && !["success", "failed"].includes(txDoc.status)) {
         await markTransactionFailed(txDoc, err);
+      }
+
+      if (!transferResultLogged) {
+        await logTransferResult({
+          user: req.user,
+          req,
+          flow: "chat_request_payment",
+          transaction: txDoc,
+          error: err,
+          metadata: {
+            threadId: String(req.params.threadId || "") || null,
+            requestId: String(req.params.requestId || "") || null,
+          },
+        });
       }
 
       if (lockedRequest && lockedRequest.status === "processing") {

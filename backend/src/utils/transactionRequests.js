@@ -1,11 +1,11 @@
 import crypto from "crypto";
 
 export const IN_FLIGHT_TRANSACTION_STATUSES = ["pending"];
-export const TRANSACTION_SYNC_TIMEOUT_MS = 2000;
 
 export const DUPLICATE_TRANSFER_REQUEST_MESSAGE =
   "An identical transfer is already processing. Wait until the current transfer is completed or cancelled before submitting it again.";
 
+const DEFAULT_TRANSACTION_SYNC_TIMEOUT_MS = 2000;
 const MAX_FAILURE_REASON_LENGTH = 1000;
 
 function stablePart(value) {
@@ -26,13 +26,23 @@ function asDate(value) {
 }
 
 function createTransactionSyncTimeoutError(receivedAt) {
+  const timeoutMs = getTransactionSyncTimeoutMs();
   const err = new Error(
-    "Transaction database synchronization exceeded 2 seconds after blockchain execution result."
+    `Transaction database synchronization exceeded ${timeoutMs}ms after blockchain execution result.`
   );
   err.statusCode = 500;
   err.isTransactionSyncError = true;
   err.blockchainResultReceivedAt = receivedAt;
   return err;
+}
+
+export function getTransactionSyncTimeoutMs() {
+  const configuredValue = Number(process.env.TRANSACTION_SYNC_TIMEOUT_MS);
+  if (!Number.isFinite(configuredValue) || configuredValue <= 0) {
+    return DEFAULT_TRANSACTION_SYNC_TIMEOUT_MS;
+  }
+
+  return Math.floor(configuredValue);
 }
 
 function getBlockchainResultTxHash(result) {
@@ -51,7 +61,7 @@ function didBlockchainExecutionSucceed(result) {
 
 async function saveTransactionWithinSyncWindow(txDoc, receivedAt) {
   const elapsedMs = Date.now() - receivedAt.getTime();
-  const remainingMs = TRANSACTION_SYNC_TIMEOUT_MS - elapsedMs;
+  const remainingMs = getTransactionSyncTimeoutMs() - elapsedMs;
 
   if (remainingMs <= 0) {
     throw createTransactionSyncTimeoutError(receivedAt);
