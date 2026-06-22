@@ -17,6 +17,9 @@ const blockchainDir = path.join(rootDir, "blockchain");
 // Load ABI from blockchain/Remittance.abi.json
 const abiPath = path.join(blockchainDir, "Remittance.abi.json");
 let REMITTANCE_ABI;
+let providerInstance;
+let readContractInstance;
+let readContractAddress;
 
 try {
   const abiRaw = fs.readFileSync(abiPath, "utf8");
@@ -32,31 +35,62 @@ try {
  * - wallet: signer wallet
  */
 export function getRemittanceClient() {
-  const RPC_URL = process.env.BSC_TESTNET_RPC_URL;
   const PRIVATE_KEY = process.env.BSC_TESTNET_PRIVATE_KEY;
-  const CONTRACT_ADDRESS = process.env.REM_CONTRACT_ADDRESS;
 
-  if (!RPC_URL) {
-    throw new Error("BSC_TESTNET_RPC_URL is not set in backend/.env");
-  }
   if (!PRIVATE_KEY) {
     throw new Error("BSC_TESTNET_PRIVATE_KEY is not set in backend/.env");
   }
-  if (!CONTRACT_ADDRESS) {
+
+  const provider = getRemittanceProvider();
+  const wallet = new Wallet(PRIVATE_KEY, provider);
+  const contract = new Contract(
+    getRemittanceContractAddress(),
+    REMITTANCE_ABI,
+    wallet
+  );
+
+  return { contract, wallet };
+}
+
+export function getRemittanceProvider() {
+  const rpcUrl = process.env.BSC_TESTNET_RPC_URL;
+  if (!rpcUrl) {
+    throw new Error("BSC_TESTNET_RPC_URL is not set in backend/.env");
+  }
+
+  if (!providerInstance) {
+    providerInstance = new JsonRpcProvider(rpcUrl);
+  }
+
+  return providerInstance;
+}
+
+export function getRemittanceContractAddress() {
+  const contractAddress = process.env.REM_CONTRACT_ADDRESS;
+  if (!contractAddress) {
     throw new Error("REM_CONTRACT_ADDRESS is not set in backend/.env");
   }
 
-  const normalizedContractAddress = normalizeEvmAddress(CONTRACT_ADDRESS);
+  const normalizedContractAddress = normalizeEvmAddress(contractAddress);
   if (!normalizedContractAddress) {
-    throw new Error(`Invalid REM_CONTRACT_ADDRESS: ${CONTRACT_ADDRESS}`);
+    throw new Error(`Invalid REM_CONTRACT_ADDRESS: ${contractAddress}`);
   }
 
-  const provider = new JsonRpcProvider(RPC_URL);
-  const wallet = new Wallet(PRIVATE_KEY, provider);
+  return normalizedContractAddress;
+}
 
-  const contract = new Contract(normalizedContractAddress, REMITTANCE_ABI, wallet);
+export function getRemittanceReadContract() {
+  const contractAddress = getRemittanceContractAddress();
+  if (!readContractInstance || readContractAddress !== contractAddress) {
+    readContractInstance = new Contract(
+      contractAddress,
+      REMITTANCE_ABI,
+      getRemittanceProvider()
+    );
+    readContractAddress = contractAddress;
+  }
 
-  return { contract, wallet };
+  return readContractInstance;
 }
 
 /**
@@ -64,7 +98,11 @@ export function getRemittanceClient() {
  * receiver: string (0x...)
  * amountEth: string or number (e.g. "0.01")
  */
-export async function sendRemittance(receiver, amountEth) {
+export async function sendRemittance(
+  receiver,
+  amountEth,
+  { onSubmitted } = {}
+) {
   const normalizedReceiver = normalizeEvmAddress(receiver);
   if (!normalizedReceiver) {
     throw new Error("Receiver must be a valid address.");
@@ -75,6 +113,21 @@ export async function sendRemittance(receiver, amountEth) {
   const value = parseEther(String(amountEth));
 
   const tx = await contract.transfer(normalizedReceiver, { value });
+
+  if (typeof onSubmitted === "function") {
+    try {
+      await onSubmitted({
+        from: wallet.address,
+        to: normalizedReceiver,
+        value: amountEth,
+        txHash: tx.hash,
+        submittedAt: new Date(),
+      });
+    } catch (err) {
+      console.error("Failed to persist submitted transaction hash:", err.message);
+    }
+  }
+
   const receipt = await tx.wait();
 
   return {
@@ -97,12 +150,7 @@ export async function getEthBalance(address) {
     throw new Error("Address must be a valid EVM address.");
   }
 
-  const RPC_URL = process.env.BSC_TESTNET_RPC_URL;
-  if (!RPC_URL) {
-    throw new Error("BSC_TESTNET_RPC_URL is not set in backend/.env");
-  }
-
-  const provider = new JsonRpcProvider(RPC_URL);
+  const provider = getRemittanceProvider();
   const balanceWei = await provider.getBalance(normalizedAddress);
   const balanceEth = Number(formatEther(balanceWei));
 

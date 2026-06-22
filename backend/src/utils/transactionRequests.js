@@ -151,6 +151,18 @@ export async function markTransactionFailed(txDoc, err) {
   await saveTransactionWithinSyncWindow(txDoc, receivedAt).catch(() => {});
 }
 
+export async function recordTransactionSubmission(txDoc, submission) {
+  const txHash = stablePart(submission?.txHash);
+  if (!txDoc || !txHash) return txDoc;
+
+  txDoc.txHash = txHash;
+  txDoc.blockchainSubmittedAt = asDate(submission?.submittedAt || new Date());
+  txDoc.reconciliationMissCount = 0;
+  txDoc.reconciliationError = undefined;
+  await txDoc.save();
+  return txDoc;
+}
+
 export async function syncTransactionWithBlockchainResult(
   txDoc,
   result,
@@ -160,17 +172,23 @@ export async function syncTransactionWithBlockchainResult(
 
   const resultReceivedAt = asDate(receivedAt);
   const txHash = getBlockchainResultTxHash(result);
+  const blockNumber = Number(result?.blockNumber);
   const executionSucceeded = didBlockchainExecutionSucceed(result);
 
   txDoc.status = executionSucceeded ? "success" : "failed";
   if (txHash) {
     txDoc.txHash = txHash;
   }
+  if (Number.isInteger(blockNumber) && blockNumber >= 0) {
+    txDoc.blockNumber = blockNumber;
+  }
   txDoc.failureReason = executionSucceeded
     ? undefined
     : normalizeFailureText(failureReason) || "Blockchain execution failed.";
   txDoc.blockchainResultReceivedAt = resultReceivedAt;
   txDoc.blockchainSyncedAt = new Date();
+  txDoc.reconciliationMissCount = 0;
+  txDoc.reconciliationError = undefined;
 
   await saveTransactionWithinSyncWindow(txDoc, resultReceivedAt);
 

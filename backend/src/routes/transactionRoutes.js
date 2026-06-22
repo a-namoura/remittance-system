@@ -37,6 +37,7 @@ import {
   isDuplicateTransferRequestKeyError,
   isTransactionSyncError,
   markTransactionFailed,
+  recordTransactionSubmission,
   syncTransactionWithBlockchainResult,
 } from "../utils/transactionRequests.js";
 
@@ -445,7 +446,10 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
       type: "sent",
     });
 
-    const result = await sendRemittance(receiverWallet, linkDoc.amount);
+    const result = await sendRemittance(receiverWallet, linkDoc.amount, {
+      onSubmitted: (submission) =>
+        recordTransactionSubmission(txDoc, submission),
+    });
 
     await syncTransactionWithBlockchainResult(txDoc, result);
 
@@ -630,7 +634,14 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
     });
 
     // Call blockchain
-    const result = await sendRemittance(normalizedReceiverWallet, amountNumber);
+    const result = await sendRemittance(
+      normalizedReceiverWallet,
+      amountNumber,
+      {
+        onSubmitted: (submission) =>
+          recordTransactionSubmission(txDoc, submission),
+      }
+    );
 
     // Update DB with success and tx hash
     await syncTransactionWithBlockchainResult(txDoc, result);

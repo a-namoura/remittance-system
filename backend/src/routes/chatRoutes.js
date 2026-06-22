@@ -30,6 +30,7 @@ import {
   isDuplicateTransferRequestKeyError,
   isTransactionSyncError,
   markTransactionFailed,
+  recordTransactionSubmission,
   syncTransactionWithBlockchainResult,
 } from "../utils/transactionRequests.js";
 
@@ -1213,7 +1214,10 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       transferRequestKey,
     });
 
-    const result = await sendRemittance(recipientWallet, amountNumber);
+    const result = await sendRemittance(recipientWallet, amountNumber, {
+      onSubmitted: (submission) =>
+        recordTransactionSubmission(txDoc, submission),
+    });
 
     await syncTransactionWithBlockchainResult(txDoc, result);
 
@@ -1437,7 +1441,14 @@ chatRouter.post(
         type: "sent",
       });
 
-      const result = await sendRemittance(requesterWallet, requestAmountNumber);
+      const result = await sendRemittance(
+        requesterWallet,
+        requestAmountNumber,
+        {
+          onSubmitted: (submission) =>
+            recordTransactionSubmission(txDoc, submission),
+        }
+      );
 
       await syncTransactionWithBlockchainResult(txDoc, result);
 

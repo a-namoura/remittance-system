@@ -74,6 +74,16 @@ MONGODB_URI=mongodb://127.0.0.1:27017/remittance
 JWT_SECRET=replace-with-a-strong-secret
 NODE_ENV=development
 TRANSACTION_SYNC_TIMEOUT_MS=2000
+TRANSACTION_RECONCILIATION_ENABLED=true
+TRANSACTION_RECONCILIATION_INTERVAL_MS=15000
+TRANSACTION_RECONCILIATION_BATCH_SIZE=100
+TRANSACTION_RECONCILIATION_RECHECK_MS=3600000
+TRANSACTION_RECONCILIATION_MISS_THRESHOLD=3
+TRANSACTION_PENDING_RECEIPT_TIMEOUT_MS=1800000
+TRANSACTION_EVENT_CONFIRMATIONS=3
+TRANSACTION_EVENT_BLOCK_BATCH_SIZE=1000
+TRANSACTION_EVENT_INITIAL_LOOKBACK_BLOCKS=5000
+TRANSACTION_EVENT_REORG_LOOKBACK_BLOCKS=12
 ```
 
 Required for on-chain transfer flows (`/api/transactions/send`, claim, balance):
@@ -82,6 +92,8 @@ Required for on-chain transfer flows (`/api/transactions/send`, claim, balance):
 BSC_TESTNET_RPC_URL=https://your-bsc-testnet-rpc
 BSC_TESTNET_PRIVATE_KEY=your-private-key
 REM_CONTRACT_ADDRESS=0xYourRemittanceContractAddress
+# Optional but recommended for complete historical event synchronization
+REM_CONTRACT_DEPLOYMENT_BLOCK=12345678
 ```
 
 Optional currency/email settings used by specific features:

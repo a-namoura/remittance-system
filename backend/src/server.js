@@ -6,6 +6,7 @@ import path from "node:path";
 import { connectDB } from "./config/db.js";
 import { apiRouter } from "./routes/index.js";
 import { notFound, errorHandler } from "./middleware/errorHandler.js";
+import { startTransactionReconciliation } from "./blockchain/transactionReconciliation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +37,7 @@ const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   await connectDB();
+  startTransactionReconciliation();
 
   app.listen(PORT, () => {
     console.log(`Backend running on http://localhost:${PORT}`);

@@ -11,6 +11,7 @@ import {
 import {
   isTransactionSyncError,
   markTransactionFailed,
+  recordTransactionSubmission,
   syncTransactionWithBlockchainResult,
 } from "../utils/transactionRequests.js";
 
@@ -93,7 +94,10 @@ export async function sendTransaction(req, res, next) {
       type: "sent",
     });
 
-    const result = await sendRemittance(receiver, amountNumber);
+    const result = await sendRemittance(receiver, amountNumber, {
+      onSubmitted: (submission) =>
+        recordTransactionSubmission(txDoc, submission),
+    });
 
     await syncTransactionWithBlockchainResult(txDoc, result);
 

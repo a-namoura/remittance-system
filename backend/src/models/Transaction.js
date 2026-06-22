@@ -61,8 +61,44 @@ const transactionSchema = new mongoose.Schema(
     blockchainResultReceivedAt: {
       type: Date,
     },
+    blockchainSubmittedAt: {
+      type: Date,
+    },
     blockchainSyncedAt: {
       type: Date,
+    },
+    blockNumber: {
+      type: Number,
+      min: 0,
+    },
+    blockHash: {
+      type: String,
+      trim: true,
+    },
+    eventLogIndex: {
+      type: Number,
+      min: 0,
+    },
+    blockchainTimestamp: {
+      type: Date,
+    },
+    recordSource: {
+      type: String,
+      enum: ["application", "blockchain"],
+      default: "application",
+    },
+    lastReconciledAt: {
+      type: Date,
+    },
+    reconciliationMissCount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    reconciliationError: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
     },
     transferRequestKey: {
       type: String,
@@ -87,6 +123,16 @@ transactionSchema.index(
       status: { $in: IN_FLIGHT_TRANSACTION_STATUSES },
     },
     name: "unique_in_flight_transfer_request",
+  }
+);
+
+transactionSchema.index({ status: 1, txHash: 1, updatedAt: 1 });
+transactionSchema.index(
+  { txHash: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { txHash: { $type: "string" } },
+    name: "unique_transaction_hash",
   }
 );
 
