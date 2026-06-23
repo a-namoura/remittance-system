@@ -255,7 +255,7 @@ export async function linkWallet(req, res) {
       expiresAt: { $gt: new Date() },
     },
     { $set: { consumedAt: new Date() } },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!consumedChallenge) {
@@ -297,7 +297,7 @@ export async function linkWallet(req, res) {
       isVerified: true,
       verifiedAt: new Date(),
     },
-    { new: true, runValidators: true, upsert: true }
+    { returnDocument: "after", runValidators: true, upsert: true }
   );
 
   await refreshWalletBalance(doc.address);

@@ -527,7 +527,7 @@ chatRouter.put("/keys/public", protect, async (req, res, next) => {
     const keyDoc = await ChatKey.findOneAndUpdate(
       { userId: req.user._id },
       { $set: { publicKeyJwk } },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      { returnDocument: "after", upsert: true, setDefaultsOnInsert: true }
     ).lean();
 
     res.json({
@@ -1423,7 +1423,7 @@ chatRouter.post(
             processingAt: new Date(),
           },
         },
-        { new: true }
+        { returnDocument: "after" }
       );
 
       if (!lockedRequest) {
@@ -1479,7 +1479,7 @@ chatRouter.post(
             processingAt: null,
           },
         },
-        { new: true }
+        { returnDocument: "after" }
       );
 
       if (!paidRequest) {
@@ -1648,7 +1648,7 @@ chatRouter.post(
             cancelledByUserId: req.user._id,
           },
         },
-        { new: true }
+        { returnDocument: "after" }
       );
 
       if (!cancelledRequest) {

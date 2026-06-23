@@ -40,7 +40,7 @@ export async function updateStoredWalletBalance(
       },
       $unset: { balanceSyncError: "" },
     },
-    { new: true, runValidators: true }
+    { returnDocument: "after", runValidators: true }
   );
 }
 

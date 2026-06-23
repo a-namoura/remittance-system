@@ -59,7 +59,9 @@ export function getRemittanceProvider() {
   }
 
   if (!providerInstance) {
-    providerInstance = new JsonRpcProvider(rpcUrl);
+    providerInstance = new JsonRpcProvider(rpcUrl, undefined, {
+      batchMaxCount: 1,
+    });
   }
 
   return providerInstance;

@@ -27,6 +27,7 @@ const DEFAULT_EVENT_REORG_LOOKBACK_BLOCKS = 12;
 
 let reconciliationTimer;
 let reconciliationRunning = false;
+let eventSyncWarningLogged = false;
 
 function positiveIntegerEnv(name, fallback) {
   const value = Number(process.env[name]);
@@ -42,6 +43,12 @@ function nonNegativeIntegerEnv(name, fallback) {
 
 function reconciliationEnabled() {
   return String(process.env.TRANSACTION_RECONCILIATION_ENABLED || "true")
+    .trim()
+    .toLowerCase() !== "false";
+}
+
+function eventSyncEnabled() {
+  return String(process.env.TRANSACTION_EVENT_SYNC_ENABLED || "true")
     .trim()
     .toLowerCase() !== "false";
 }
@@ -84,6 +91,7 @@ function getConfig() {
       "TRANSACTION_EVENT_REORG_LOOKBACK_BLOCKS",
       DEFAULT_EVENT_REORG_LOOKBACK_BLOCKS
     ),
+    eventSyncEnabled: eventSyncEnabled(),
     deploymentBlock: nonNegativeIntegerEnv(
       "REM_CONTRACT_DEPLOYMENT_BLOCK",
       null
@@ -92,10 +100,31 @@ function getConfig() {
 }
 
 function normalizeError(err) {
-  return String(err?.shortMessage || err?.reason || err?.message || err || "")
+  const nestedCode = err?.error?.code ?? err?.info?.error?.code;
+  const nestedMessage = err?.error?.message || err?.info?.error?.message;
+  const message = String(
+    nestedMessage ||
+      err?.shortMessage ||
+      err?.reason ||
+      err?.message ||
+      err ||
+      ""
+  )
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 1000);
+
+  return nestedCode == null ? message : `${nestedCode}: ${message}`;
+}
+
+function isRpcLogLimitError(err) {
+  const code = err?.error?.code ?? err?.info?.error?.code ?? err?.code;
+  const message = normalizeError(err).toLowerCase();
+  return (
+    code === -32005 ||
+    message.includes("limit exceeded") ||
+    message.includes("eth_getlogs")
+  );
 }
 
 function receiptStatus(receipt) {
@@ -342,6 +371,10 @@ async function ingestTransferEvent(event) {
 }
 
 async function syncTransferEvents(provider, config) {
+  if (!config.eventSyncEnabled) {
+    return { scanned: 0, ingested: 0, updated: 0, skipped: true, reason: "disabled" };
+  }
+
   const contract = getRemittanceReadContract();
   const contractAddress = getRemittanceContractAddress();
   const network = await provider.getNetwork();
@@ -378,11 +411,26 @@ async function syncTransferEvents(provider, config) {
       safeBlock,
       batchStart + config.eventBlockBatchSize - 1
     );
-    const events = await contract.queryFilter(
-      contract.filters.Transfer(),
-      batchStart,
-      batchEnd
-    );
+    let events;
+    try {
+      events = await contract.queryFilter(
+        contract.filters.Transfer(),
+        batchStart,
+        batchEnd
+      );
+    } catch (err) {
+      if (isRpcLogLimitError(err)) {
+        return {
+          scanned,
+          ingested,
+          updated,
+          skipped: true,
+          reason: "rpc_log_limit",
+          error: normalizeError(err),
+        };
+      }
+      throw err;
+    }
 
     scanned += events.length;
     for (const event of events) {
@@ -400,7 +448,7 @@ async function syncTransferEvents(provider, config) {
           lastProcessedBlock: batchEnd,
         },
       },
-      { upsert: true, new: true, runValidators: true }
+      { upsert: true, returnDocument: "after", runValidators: true }
     );
   }
 
@@ -494,6 +542,16 @@ export function startTransactionReconciliation() {
         result.events?.updated
       ) {
         console.log("Transaction reconciliation:", result);
+      }
+      if (
+        result.events?.reason === "rpc_log_limit" &&
+        !eventSyncWarningLogged
+      ) {
+        console.warn(
+          "Transaction event synchronization skipped: RPC endpoint rejected eth_getLogs.",
+          result.events.error
+        );
+        eventSyncWarningLogged = true;
       }
     } catch (err) {
       console.error("Transaction reconciliation failed:", normalizeError(err));

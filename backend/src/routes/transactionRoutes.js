@@ -371,7 +371,7 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
     linkDoc = await PaymentLink.findOneAndUpdate(
       { tokenHash, status: "active" },
       { $set: { status: "claiming" } },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!linkDoc) {
