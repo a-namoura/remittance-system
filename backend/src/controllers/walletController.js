@@ -8,6 +8,7 @@ import {
   normalizeEvmAddress,
 } from "../utils/walletAddress.js";
 import { logAudit } from "../utils/audit.js";
+import { refreshWalletBalance } from "../utils/walletBalances.js";
 
 const WALLET_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
@@ -299,6 +300,9 @@ export async function linkWallet(req, res) {
     { new: true, runValidators: true, upsert: true }
   );
 
+  await refreshWalletBalance(doc.address);
+  const walletForResponse = (await Wallet.findById(doc._id).lean()) || doc;
+
   await logWalletConnectionEvent({
     req,
     operation: "link",
@@ -310,9 +314,13 @@ export async function linkWallet(req, res) {
     ok: true,
     message: "Wallet successfully verified and linked to your account.",
     wallet: {
-      address: doc.address,
-      isVerified: doc.isVerified,
-      verifiedAt: doc.verifiedAt,
+      address: walletForResponse.address,
+      isVerified: walletForResponse.isVerified,
+      verifiedAt: walletForResponse.verifiedAt,
+      balance: walletForResponse.nativeBalance ?? null,
+      balanceSymbol: walletForResponse.nativeBalanceSymbol || null,
+      balanceUpdatedAt: walletForResponse.nativeBalanceUpdatedAt || null,
+      balanceSyncError: walletForResponse.balanceSyncError || null,
     },
   });
 }

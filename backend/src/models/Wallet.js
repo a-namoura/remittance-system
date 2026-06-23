@@ -30,6 +30,24 @@ const walletSchema = new mongoose.Schema(
     verifiedAt: {
       type: Date,
     },
+    nativeBalance: {
+      type: Number,
+      min: [0, "nativeBalance cannot be negative."],
+    },
+    nativeBalanceSymbol: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      maxlength: 10,
+    },
+    nativeBalanceUpdatedAt: {
+      type: Date,
+    },
+    balanceSyncError: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+    },
   },
   { timestamps: true }
 );

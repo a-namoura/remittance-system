@@ -40,6 +40,7 @@ import {
   recordTransactionSubmission,
   syncTransactionWithBlockchainResult,
 } from "../utils/transactionRequests.js";
+import { updateStoredWalletBalance } from "../utils/walletBalances.js";
 
 export const transactionRouter = express.Router();
 
@@ -748,6 +749,7 @@ transactionRouter.get("/balance", protect, async (req, res, next) => {
     }
 
     const nativeBalance = await getEthBalance(normalizedWallet);
+    await updateStoredWalletBalance(normalizedWallet, nativeBalance);
     const symbolsForBalances =
       requestedCurrencies.length > 0 ? requestedCurrencies : availableCurrencies;
     const { nativeCurrency, balances } = getBalancesForSymbols(

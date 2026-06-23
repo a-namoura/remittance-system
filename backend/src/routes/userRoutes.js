@@ -86,7 +86,9 @@ userRouter.get("/me", protect, async (req, res, next) => {
       userId: req.user._id,
       isVerified: true,
     })
-      .select("address isVerified verifiedAt")
+      .select(
+        "address isVerified verifiedAt nativeBalance nativeBalanceSymbol nativeBalanceUpdatedAt balanceSyncError"
+      )
       .lean();
 
     res.json({
@@ -105,12 +107,20 @@ userRouter.get("/me", protect, async (req, res, next) => {
               address: walletDoc.address,
               isVerified: Boolean(walletDoc.isVerified),
               verifiedAt: walletDoc.verifiedAt || null,
+              balance: walletDoc.nativeBalance ?? null,
+              balanceSymbol: walletDoc.nativeBalanceSymbol || null,
+              balanceUpdatedAt: walletDoc.nativeBalanceUpdatedAt || null,
+              balanceSyncError: walletDoc.balanceSyncError || null,
             }
           : {
               linked: false,
               address: "",
               isVerified: false,
               verifiedAt: null,
+              balance: null,
+              balanceSymbol: null,
+              balanceUpdatedAt: null,
+              balanceSyncError: null,
             },
       },
     });

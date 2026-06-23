@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { refreshTransactionWalletBalances } from "./walletBalances.js";
 
 export const IN_FLIGHT_TRANSACTION_STATUSES = ["pending"];
 
@@ -191,6 +192,12 @@ export async function syncTransactionWithBlockchainResult(
   txDoc.reconciliationError = undefined;
 
   await saveTransactionWithinSyncWindow(txDoc, resultReceivedAt);
+
+  if (executionSucceeded) {
+    await refreshTransactionWalletBalances(txDoc, {
+      syncedAt: txDoc.blockchainSyncedAt || new Date(),
+    }).catch(() => {});
+  }
 
   if (!executionSucceeded) {
     const err = new Error(txDoc.failureReason);

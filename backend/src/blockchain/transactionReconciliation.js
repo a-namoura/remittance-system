@@ -13,6 +13,7 @@ import {
   isTransactionSyncError,
   syncTransactionWithBlockchainResult,
 } from "../utils/transactionRequests.js";
+import { refreshTransactionWalletBalances } from "../utils/walletBalances.js";
 
 const DEFAULT_INTERVAL_MS = 15_000;
 const DEFAULT_BATCH_SIZE = 100;
@@ -331,6 +332,10 @@ async function ingestTransferEvent(event) {
       receiverWallet: txDoc.receiverWallet,
       amount: txDoc.amount,
     },
+  });
+
+  await refreshTransactionWalletBalances(txDoc, {
+    syncedAt: txDoc.blockchainSyncedAt || receivedAt,
   });
 
   return { ingested: true };
