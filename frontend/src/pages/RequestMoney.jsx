@@ -8,6 +8,13 @@ import {
 import SuccessTransition from "../components/SuccessTransition.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import { readWalletState, requireAuthToken, writeWalletState } from "../services/session.js";
+import {
+  FORM_FIELD_LABEL_CLASS,
+  FORM_INLINE_PRIMARY_BUTTON_CLASS,
+  FORM_INLINE_SECONDARY_BUTTON_CLASS,
+  FORM_INPUT_BASE_CLASS,
+  FORM_READONLY_INPUT_CLASS,
+} from "../styles/formClasses.js";
 import { copyText, getQrImageUrl } from "../utils/paylink.js";
 import { useSuccessTransitionMessage } from "../utils/successTransition.js";
 
@@ -191,7 +198,7 @@ export default function RequestMoney() {
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+              <label className={FORM_FIELD_LABEL_CLASS}>
                 Amount (required)
               </label>
               <input
@@ -204,12 +211,12 @@ export default function RequestMoney() {
                   setFieldErrors((current) => ({ ...current, amount: "" }));
                 }}
                 placeholder="0.00"
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-400 focus:outline-none"
+                className={FORM_INPUT_BASE_CLASS}
               />
               <FieldError>{fieldErrors.amount}</FieldError>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+              <label className={FORM_FIELD_LABEL_CLASS}>
                 Note (optional)
               </label>
               <input
@@ -217,7 +224,7 @@ export default function RequestMoney() {
                 value={linkNote}
                 onChange={(event) => setLinkNote(event.target.value)}
                 placeholder="Rent, split bill..."
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-purple-400 focus:outline-none"
+                className={FORM_INPUT_BASE_CLASS}
               />
             </div>
           </div>
@@ -226,7 +233,7 @@ export default function RequestMoney() {
             type="button"
             onClick={handleGenerateLink}
             disabled={!canSubmitRequestLink}
-            className="mt-4 rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+            className={`mt-4 ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
           >
             Generate link
           </button>
@@ -238,19 +245,19 @@ export default function RequestMoney() {
                   type="text"
                   readOnly
                   value={generatedLink}
-                  className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700"
+                  className={`min-w-0 flex-1 ${FORM_READONLY_INPUT_CLASS} text-xs`}
                 />
                 <button
                   type="button"
                   onClick={handleCopyLink}
-                  className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
                 >
                   {linkCopied ? "Copied" : "Copy"}
                 </button>
                 <button
                   type="button"
                   onClick={handleShareLink}
-                  className="rounded-xl bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700"
+                  className={FORM_INLINE_PRIMARY_BUTTON_CLASS}
                 >
                   Share
                 </button>

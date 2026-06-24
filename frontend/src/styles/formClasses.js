@@ -7,16 +7,40 @@ export const FORM_SELECT_BASE_CLASS =
 export const FORM_CODE_INPUT_CLASS =
   "app-control-surface w-full rounded-xl px-3 py-2 text-center font-mono text-sm tracking-[0.3em] focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500";
 
+export const FORM_READONLY_INPUT_CLASS =
+  "app-control-surface w-full rounded-xl px-3 py-2 text-sm text-gray-700 dark:text-gray-200";
+
+export const FORM_FIELD_LABEL_CLASS =
+  "mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-300";
+
+export const FORM_HELP_TEXT_CLASS =
+  "text-xs text-gray-500 dark:text-gray-400";
+
+export const FORM_FILTER_CONTROL_CLASS =
+  "app-control-surface rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500";
+
 export const FORM_PRIMARY_BUTTON_CLASS =
   "w-full rounded-full bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-400";
 
 export const FORM_PRIMARY_BUTTON_DISABLED_CLASS = `${FORM_PRIMARY_BUTTON_CLASS} disabled:opacity-60`;
 
+export const FORM_INLINE_PRIMARY_BUTTON_CLASS =
+  "rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-purple-500 dark:hover:bg-purple-400";
+
 export const FORM_SECONDARY_BUTTON_CLASS =
   "app-secondary-button w-full rounded-full px-4 py-2.5 text-sm font-semibold";
 
+export const FORM_INLINE_SECONDARY_BUTTON_CLASS =
+  "app-secondary-button rounded-xl px-3 py-2 text-sm font-semibold disabled:opacity-60";
+
+export const FORM_SMALL_SECONDARY_BUTTON_CLASS =
+  "app-secondary-button rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-60";
+
 export const FORM_MUTED_BUTTON_CLASS =
   "app-muted-action text-xs font-medium hover:underline disabled:opacity-60";
+
+export const FORM_DANGER_MUTED_BUTTON_CLASS =
+  "text-xs font-medium text-red-600 hover:text-red-700 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline dark:text-red-300 dark:hover:text-red-200";
 
 export function formChannelButtonClass({ selected, disabled = false }) {
   if (disabled) {

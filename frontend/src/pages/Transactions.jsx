@@ -9,6 +9,12 @@ import {
 } from "../components/PageLayout.jsx";
 import { getMyTransactions } from "../services/transactionApi.js";
 import { requireAuthToken } from "../services/session.js";
+import {
+  FORM_FIELD_LABEL_CLASS,
+  FORM_FILTER_CONTROL_CLASS,
+  FORM_INLINE_PRIMARY_BUTTON_CLASS,
+  FORM_SMALL_SECONDARY_BUTTON_CLASS,
+} from "../styles/formClasses.js";
 import { formatDateTime } from "../utils/datetime.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
@@ -161,11 +167,11 @@ export default function Transactions() {
           className="flex flex-wrap items-end gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4"
         >
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">
+            <label className={FORM_FIELD_LABEL_CLASS}>
               Status
             </label>
             <select
-              className="rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-sm"
+              className={FORM_FILTER_CONTROL_CLASS}
               value={status}
               onChange={(event) => setStatus(event.target.value)}
             >
@@ -177,11 +183,11 @@ export default function Transactions() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">
+            <label className={FORM_FIELD_LABEL_CLASS}>
               Direction
             </label>
             <select
-              className="rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-sm"
+              className={FORM_FILTER_CONTROL_CLASS}
               value={direction}
               onChange={(event) => setDirection(event.target.value)}
             >
@@ -192,13 +198,13 @@ export default function Transactions() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">
+            <label className={FORM_FIELD_LABEL_CLASS}>
               From date
             </label>
             <input
               type="date"
               max={todayDate}
-              className="rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-sm"
+              className={FORM_FILTER_CONTROL_CLASS}
               value={from}
               onChange={(event) => {
                 setFrom(event.target.value);
@@ -209,13 +215,13 @@ export default function Transactions() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">
+            <label className={FORM_FIELD_LABEL_CLASS}>
               To date
             </label>
             <input
               type="date"
               max={todayDate}
-              className="rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-sm"
+              className={FORM_FILTER_CONTROL_CLASS}
               value={to}
               onChange={(event) => {
                 setTo(event.target.value);
@@ -227,7 +233,7 @@ export default function Transactions() {
 
           <button
             type="submit"
-            className="ml-auto rounded-full bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700"
+            className={`ml-auto ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
           >
             Apply
           </button>
@@ -360,7 +366,7 @@ export default function Transactions() {
                 type="button"
                 onClick={handlePrev}
                 disabled={page === 1}
-                className="rounded-full border border-gray-200 px-3 py-1.5 disabled:opacity-50"
+                className={FORM_SMALL_SECONDARY_BUTTON_CLASS}
               >
                 Previous
               </button>
@@ -368,7 +374,7 @@ export default function Transactions() {
                 type="button"
                 onClick={handleNext}
                 disabled={page === totalPages}
-                className="rounded-full border border-gray-200 px-3 py-1.5 disabled:opacity-50"
+                className={FORM_SMALL_SECONDARY_BUTTON_CLASS}
               >
                 Next
               </button>

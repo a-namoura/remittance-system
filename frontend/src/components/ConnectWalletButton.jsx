@@ -6,6 +6,10 @@ import {
   unlinkWalletFromUser,
 } from "../services/walletApi.js";
 import { requireAuthToken } from "../services/session.js";
+import {
+  FORM_INLINE_PRIMARY_BUTTON_CLASS,
+  FORM_INLINE_SECONDARY_BUTTON_CLASS,
+} from "../styles/formClasses.js";
 import SuccessTransition from "./SuccessTransition.jsx";
 
 import { getUserErrorMessage } from "../utils/userError.js";
@@ -240,46 +244,40 @@ export default function ConnectWalletButton({
       <SuccessTransition message={walletSuccessMessage} />
 
       <div className="space-y-2">
-        <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={handleConnectAndVerify}
-          disabled={loading || connected}
-          className={`
-            inline-flex items-center justify-center
-            px-4 py-2 rounded-md text-sm font-semibold
-            transition-all
-            ${
-              connected
-                ? "bg-green-600 text-white hover:bg-green-600 cursor-default"
-                : "bg-gray-900 text-white hover:bg-gray-800 active:scale-95"
-            }
-            disabled:opacity-60 disabled:active:scale-100
-          `}
-        >
-          {label}
-        </button>
-
-        {connected && (
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={handleUnlink}
-            disabled={loading}
-            className="inline-flex items-center justify-center px-3 py-2 rounded-md text-xs font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
+            onClick={handleConnectAndVerify}
+            disabled={loading || connected}
+            className={`inline-flex items-center justify-center ${FORM_INLINE_PRIMARY_BUTTON_CLASS} ${
+              connected
+                ? "cursor-default bg-emerald-600 hover:bg-emerald-600 dark:bg-emerald-500 dark:hover:bg-emerald-500"
+                : ""
+            }`}
           >
-            Unlink wallet
+            {label}
           </button>
-        )}
+
+          {connected && (
+            <button
+              type="button"
+              onClick={handleUnlink}
+              disabled={loading}
+              className={`inline-flex items-center justify-center ${FORM_INLINE_SECONDARY_BUTTON_CLASS}`}
+            >
+              Unlink wallet
+            </button>
+          )}
         </div>
 
         {status && !error && (
-          <div className="text-xs text-green-700 bg-green-50 border border-green-100 rounded px-2 py-1">
+          <div className="app-page-success px-3 py-2 text-xs">
             {status}
           </div>
         )}
 
         {error && (
-          <div className="text-xs text-red-700 bg-red-50 border border-red-100 rounded px-2 py-1">
+          <div className="app-page-error px-3 py-2 text-xs">
             {error}
           </div>
         )}

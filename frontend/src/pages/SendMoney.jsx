@@ -17,6 +17,18 @@ import {
 } from "../services/transactionApi.js";
 import { readWalletState, requireAuthToken, writeWalletState } from "../services/session.js";
 import { searchUsers } from "../services/userApi.js";
+import {
+  FORM_CODE_INPUT_CLASS,
+  FORM_DANGER_MUTED_BUTTON_CLASS,
+  FORM_FIELD_LABEL_CLASS,
+  FORM_HELP_TEXT_CLASS,
+  FORM_INLINE_PRIMARY_BUTTON_CLASS,
+  FORM_INLINE_SECONDARY_BUTTON_CLASS,
+  FORM_INPUT_BASE_CLASS,
+  FORM_READONLY_INPUT_CLASS,
+  FORM_SELECT_BASE_CLASS,
+  FORM_SMALL_SECONDARY_BUTTON_CLASS,
+} from "../styles/formClasses.js";
 import { isValidEvmAddress, normalizeEvmAddress } from "../utils/security.js";
 import { copyText, getQrImageUrl, shortWallet } from "../utils/paylink.js";
 import { useSuccessTransitionMessage } from "../utils/successTransition.js";
@@ -1173,7 +1185,7 @@ export default function SendMoney() {
               <button
                 type="button"
                 onClick={closeMethod}
-                className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100"
+                className={FORM_SMALL_SECONDARY_BUTTON_CLASS}
                 aria-label="Close payment method page"
               >
                 Close
@@ -1253,34 +1265,44 @@ export default function SendMoney() {
 
                 {transferStep === "details" ? (
                   <div className="mt-3 space-y-3">
-                    <input
-                      type="text"
-                      value={manualAddress}
-                      onChange={(event) => {
-                        setManualAddress(event.target.value);
-                        setVerificationCode("");
-                        setVerificationDestination("");
-                      }}
-                      placeholder="Destination wallet address (0x...)"
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-mono text-gray-900 focus:border-gray-400 focus:outline-none"
-                    />
+                    <div>
+                      <label className={FORM_FIELD_LABEL_CLASS}>
+                        Destination wallet
+                      </label>
+                      <input
+                        type="text"
+                        value={manualAddress}
+                        onChange={(event) => {
+                          setManualAddress(event.target.value);
+                          setVerificationCode("");
+                          setVerificationDestination("");
+                        }}
+                        placeholder="0x..."
+                        className={`${FORM_INPUT_BASE_CLASS} font-mono`}
+                      />
+                    </div>
 
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.0001"
-                      value={amountEth}
-                      onChange={(event) => {
-                        setAmountEth(event.target.value);
-                        setVerificationCode("");
-                        setVerificationDestination("");
-                      }}
-                      placeholder="Amount (ETH)"
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
-                    />
+                    <div>
+                      <label className={FORM_FIELD_LABEL_CLASS}>
+                        Amount
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.0001"
+                        value={amountEth}
+                        onChange={(event) => {
+                          setAmountEth(event.target.value);
+                          setVerificationCode("");
+                          setVerificationDestination("");
+                        }}
+                        placeholder="0.00 ETH"
+                        className={FORM_INPUT_BASE_CLASS}
+                      />
+                    </div>
 
                     {!addressDetailsReady ? (
-                      <p className="text-xs text-gray-500">
+                      <p className={FORM_HELP_TEXT_CLASS}>
                         Enter destination address and amount to continue to verification.
                       </p>
                     ) : null}
@@ -1289,7 +1311,7 @@ export default function SendMoney() {
                       type="button"
                       onClick={goToAddressVerification}
                       disabled={!canRequestAddressVerification}
-                      className="w-full rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                      className={`w-full ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                     >
                       Continue to verification
                     </button>
@@ -1325,7 +1347,7 @@ export default function SendMoney() {
                       <button
                         type="button"
                         onClick={() => setTransferStep("details")}
-                        className="shrink-0 rounded-full border border-gray-300 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-100"
+                        className={`shrink-0 ${FORM_SMALL_SECONDARY_BUTTON_CLASS}`}
                       >
                         Edit
                       </button>
@@ -1333,13 +1355,13 @@ export default function SendMoney() {
 
                     <div className="grid gap-2 sm:grid-cols-[1fr,auto]">
                       <div>
-                        <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                        <label className={FORM_FIELD_LABEL_CLASS}>
                           Verification channel
                         </label>
                         <select
                           value={verificationChannel}
                           onChange={(event) => setVerificationChannel(event.target.value)}
-                          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-gray-400 focus:outline-none"
+                          className={FORM_SELECT_BASE_CLASS}
                         >
                           <option value="email">Email</option>
                           {canUsePhoneVerification ? <option value="phone">Phone</option> : null}
@@ -1349,32 +1371,37 @@ export default function SendMoney() {
                         type="button"
                         onClick={handleSendCode}
                         disabled={codeSending || !canRequestAddressVerification}
-                        className="rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                        className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
                       >
                         {codeSending ? "Sending code..." : "Send code"}
                       </button>
                     </div>
 
                     {verificationDestination ? (
-                      <p className="text-xs text-gray-600">
+                      <p className={FORM_HELP_TEXT_CLASS}>
                         Code sent to <span className="font-semibold">{verificationDestination}</span>
                       </p>
                     ) : (
-                      <p className="text-xs text-gray-500">Send a verification code to continue.</p>
+                      <p className={FORM_HELP_TEXT_CLASS}>Send a verification code to continue.</p>
                     )}
 
                     {verificationDestination ? (
-                      <div className="grid gap-2 sm:grid-cols-[1fr,auto]">
-                        <input
-                          type="text"
-                          value={verificationCode}
-                          onChange={(event) =>
-                            setVerificationCode(String(event.target.value || "").replace(/\D/g, ""))
-                          }
-                          maxLength={6}
-                          placeholder="6-digit verification code"
-                          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium tracking-normal text-gray-900 focus:border-gray-400 focus:outline-none"
-                        />
+                      <div className="grid gap-2 sm:grid-cols-[1fr,auto] sm:items-end">
+                        <div>
+                          <label className={FORM_FIELD_LABEL_CLASS}>
+                            Verification code
+                          </label>
+                          <input
+                            type="text"
+                            value={verificationCode}
+                            onChange={(event) =>
+                              setVerificationCode(String(event.target.value || "").replace(/\D/g, ""))
+                            }
+                            maxLength={6}
+                            placeholder="6 digits"
+                            className={FORM_CODE_INPUT_CLASS}
+                          />
+                        </div>
                         <button
                           type="submit"
                           disabled={
@@ -1382,7 +1409,7 @@ export default function SendMoney() {
                             !canRequestAddressVerification ||
                             String(verificationCode || "").trim().length < 6
                           }
-                          className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                          className={FORM_INLINE_PRIMARY_BUTTON_CLASS}
                         >
                           {sending ? "Sending..." : "Verify and send"}
                         </button>
@@ -1393,7 +1420,7 @@ export default function SendMoney() {
                       type="button"
                       onClick={cancelTransferSummary}
                       disabled={sending}
-                      className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+                      className={FORM_DANGER_MUTED_BUTTON_CLASS}
                     >
                       Cancel transfer
                     </button>
@@ -1404,25 +1431,28 @@ export default function SendMoney() {
 
             {(activeMethod === "bank" || activeMethod === "card") && (
               <form onSubmit={handleSendDirect} className="mt-4 space-y-3">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.0001"
-                  value={amountEth}
-                  onChange={(event) => setAmountEth(event.target.value)}
-                  placeholder="Amount (ETH)"
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
-                />
+                <div>
+                  <label className={FORM_FIELD_LABEL_CLASS}>Amount</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={amountEth}
+                    onChange={(event) => setAmountEth(event.target.value)}
+                    placeholder="0.00 ETH"
+                    className={FORM_INPUT_BASE_CLASS}
+                  />
+                </div>
 
                 <div className="grid gap-2 sm:grid-cols-[1fr,auto]">
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-                    <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                    <label className={FORM_FIELD_LABEL_CLASS}>
                       Verification channel
                     </label>
                     <select
                       value={verificationChannel}
                       onChange={(event) => setVerificationChannel(event.target.value)}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800 focus:border-gray-400 focus:outline-none"
+                      className={FORM_SELECT_BASE_CLASS}
                     >
                       <option value="email">Email</option>
                       {canUsePhoneVerification ? <option value="phone">Phone</option> : null}
@@ -1438,32 +1468,37 @@ export default function SendMoney() {
                       !canProceedWithBalance ||
                       !hasPositiveAmount
                     }
-                    className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                    className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
                   >
                     {codeSending ? "Sending code..." : "Send code"}
                   </button>
                 </div>
 
                 {verificationDestination ? (
-                  <p className="text-xs text-gray-600">
+                  <p className={FORM_HELP_TEXT_CLASS}>
                     Code sent to <span className="font-semibold">{verificationDestination}</span>
                   </p>
                 ) : (
-                  <p className="text-xs text-gray-500">Send a verification code to continue.</p>
+                  <p className={FORM_HELP_TEXT_CLASS}>Send a verification code to continue.</p>
                 )}
 
                 {verificationDestination ? (
                   <>
-                    <input
-                      type="text"
-                      value={verificationCode}
-                      onChange={(event) =>
-                        setVerificationCode(String(event.target.value || "").replace(/\D/g, ""))
-                      }
-                      maxLength={6}
-                      placeholder="6-digit verification code"
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium tracking-normal text-gray-900 focus:border-gray-400 focus:outline-none"
-                    />
+                    <div>
+                      <label className={FORM_FIELD_LABEL_CLASS}>
+                        Verification code
+                      </label>
+                      <input
+                        type="text"
+                        value={verificationCode}
+                        onChange={(event) =>
+                          setVerificationCode(String(event.target.value || "").replace(/\D/g, ""))
+                        }
+                        maxLength={6}
+                        placeholder="6 digits"
+                        className={FORM_CODE_INPUT_CLASS}
+                      />
+                    </div>
 
                     <button
                       type="submit"
@@ -1475,7 +1510,7 @@ export default function SendMoney() {
                         !hasPositiveAmount ||
                         String(verificationCode || "").trim().length < 6
                       }
-                      className="w-full rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                      className={`w-full ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                     >
                       {sending ? "Sending..." : "Send now"}
                     </button>
@@ -1486,28 +1521,34 @@ export default function SendMoney() {
 
             {(activeMethod === "link" || activeMethod === "qr") && (
               <form onSubmit={handleGenerateClaimLink} className="mt-4 space-y-3">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.0001"
-                  value={amountEth}
-                  onChange={(event) => setAmountEth(event.target.value)}
-                  placeholder="Amount (ETH)"
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
-                />
+                <div>
+                  <label className={FORM_FIELD_LABEL_CLASS}>Amount</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={amountEth}
+                    onChange={(event) => setAmountEth(event.target.value)}
+                    placeholder="0.00 ETH"
+                    className={FORM_INPUT_BASE_CLASS}
+                  />
+                </div>
 
-                <input
-                  type="text"
-                  value={linkNote}
-                  onChange={(event) => setLinkNote(event.target.value)}
-                  placeholder="Note (optional)"
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
-                />
+                <div>
+                  <label className={FORM_FIELD_LABEL_CLASS}>Note</label>
+                  <input
+                    type="text"
+                    value={linkNote}
+                    onChange={(event) => setLinkNote(event.target.value)}
+                    placeholder="Optional"
+                    className={FORM_INPUT_BASE_CLASS}
+                  />
+                </div>
 
                 <button
                   type="submit"
                   disabled={linkLoading || !canProceedWithBalance || !hasPositiveAmount}
-                  className="w-full rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                  className={`w-full ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                 >
                   {linkLoading ? "Generating..." : "Generate"}
                 </button>
@@ -1519,19 +1560,19 @@ export default function SendMoney() {
                         type="text"
                         readOnly
                         value={generatedLink}
-                        className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700"
+                        className={`min-w-0 flex-1 ${FORM_READONLY_INPUT_CLASS} text-xs`}
                       />
                       <button
                         type="button"
                         onClick={handleCopyLink}
-                        className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                        className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
                       >
                         {linkCopied ? "Copied" : "Copy"}
                       </button>
                       <button
                         type="button"
                         onClick={handleShareLink}
-                        className="rounded-xl bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700"
+                        className={FORM_INLINE_PRIMARY_BUTTON_CLASS}
                       >
                         Share
                       </button>
