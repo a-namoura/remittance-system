@@ -241,12 +241,18 @@ export default function RequestMoney() {
           {generatedLink && (
             <div className="mt-4 space-y-3 rounded-2xl border border-gray-200 bg-white p-3">
               <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  type="text"
-                  readOnly
-                  value={generatedLink}
-                  className={`min-w-0 flex-1 ${FORM_READONLY_INPUT_CLASS} text-xs`}
-                />
+                <div className="min-w-0 flex-1">
+                  <label htmlFor="request-generated-link" className={FORM_FIELD_LABEL_CLASS}>
+                    Request link
+                  </label>
+                  <input
+                    id="request-generated-link"
+                    type="text"
+                    readOnly
+                    value={generatedLink}
+                    className={`min-w-0 ${FORM_READONLY_INPUT_CLASS} text-xs`}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={handleCopyLink}

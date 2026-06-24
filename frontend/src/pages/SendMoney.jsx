@@ -969,6 +969,12 @@ export default function SendMoney() {
 
       <section className="rounded-[2.2rem] border border-gray-200 bg-white p-5 shadow-sm sm:p-8">
         <div ref={searchContainerRef}>
+          <label htmlFor="send-recipient-search" className={FORM_FIELD_LABEL_CLASS}>
+            Recipient
+          </label>
+          <p className={`${FORM_HELP_TEXT_CLASS} mb-2`}>
+            Search by name, username, or linked wallet.
+          </p>
           <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 focus-within:border-purple-300 focus-within:ring-2 focus-within:ring-purple-200">
             <svg
               viewBox="0 0 24 24"
@@ -980,6 +986,7 @@ export default function SendMoney() {
               <path d="m16 16 4 4" strokeWidth="1.8" />
             </svg>
             <input
+              id="send-recipient-search"
               ref={searchInputRef}
               type="text"
               value={search}
@@ -1556,12 +1563,18 @@ export default function SendMoney() {
                 {generatedLink && (
                   <div className="space-y-3 rounded-xl border border-gray-200 p-3">
                     <div className="flex flex-col gap-2 sm:flex-row">
-                      <input
-                        type="text"
-                        readOnly
-                        value={generatedLink}
-                        className={`min-w-0 flex-1 ${FORM_READONLY_INPUT_CLASS} text-xs`}
-                      />
+                      <div className="min-w-0 flex-1">
+                        <label htmlFor="send-generated-link" className={FORM_FIELD_LABEL_CLASS}>
+                          Claim link
+                        </label>
+                        <input
+                          id="send-generated-link"
+                          type="text"
+                          readOnly
+                          value={generatedLink}
+                          className={`min-w-0 ${FORM_READONLY_INPUT_CLASS} text-xs`}
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={handleCopyLink}

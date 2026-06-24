@@ -26,6 +26,11 @@ import { requireAuthToken } from "../services/session.js";
 import {
   getWalletBalance,
 } from "../services/transactionApi.js";
+import {
+  FORM_FIELD_LABEL_CLASS,
+  FORM_HELP_TEXT_CLASS,
+  FORM_INPUT_BASE_CLASS,
+} from "../styles/formClasses.js";
 import { useSuccessTransitionMessage } from "../utils/successTransition.js";
 import {
   decryptChatPayload,
@@ -1794,16 +1799,19 @@ export default function Chat() {
         <div className="grid gap-3 md:h-full md:grid-cols-[minmax(300px,_0.85fr)_minmax(0,_1.45fr)]">
           <aside className="flex min-h-[36rem] flex-col rounded-3xl border border-gray-200 bg-gray-50 p-4 md:h-full md:min-h-0">
             <div>
-              <label className="sr-only" htmlFor="chat-friend-search">
-                Search friends
+              <label className={FORM_FIELD_LABEL_CLASS} htmlFor="chat-friend-search">
+                Search contacts
               </label>
+              <p className={`${FORM_HELP_TEXT_CLASS} mb-2`}>
+                Search by contact name or username.
+              </p>
               <input
                 id="chat-friend-search"
                 type="text"
                 value={friendSearch}
                 onChange={(event) => setFriendSearch(event.target.value)}
                 placeholder="Search contacts"
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-purple-400"
+                className={FORM_INPUT_BASE_CLASS}
               />
             </div>
 
@@ -2358,7 +2366,7 @@ export default function Chat() {
                         onClick={() => setComposerActionsOpen((current) => !current)}
                         aria-expanded={composerActionsOpen}
                         aria-haspopup="menu"
-                        className={`inline-flex h-11 items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition ${
+                        className={`inline-flex h-11 items-center justify-center gap-1.5 self-end rounded-full border px-3 text-xs font-semibold transition ${
                           composerActionsOpen
                             ? "border-purple-300 bg-purple-100 text-purple-700"
                             : "border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
@@ -2380,67 +2388,73 @@ export default function Chat() {
                         </svg>
                         {composerActionsOpen ? "Hide" : "Actions"}
                       </button>
-                      <form onSubmit={handleSendText} className="flex min-w-0 flex-1 gap-2">
-                        <input
-                          type="text"
-                          value={chatInput}
-                          onChange={(event) => setChatInput(event.target.value)}
-                          placeholder="Type a message..."
-                          className="min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-400"
-                        />
-                        <button
-                          type="submit"
-                          disabled={
-                            sendingMessage ||
-                            !activeThread?.id ||
-                            !chatInput.trim() ||
-                            !identity?.publicKeyJwk
-                          }
-                          className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-purple-600 text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-                        >
-                          {sendingMessage ? (
-                            <svg
-                              aria-hidden="true"
-                              className="h-5 w-5 animate-spin"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              xmlns="http://www.w3.org/2000/svg"
-                            >
-                              <circle
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="3"
-                                className="opacity-30"
-                              />
-                              <path
-                                d="M22 12a10 10 0 0 0-10-10"
-                                stroke="currentColor"
-                                strokeWidth="3"
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                          ) : (
-                            <svg
-                              aria-hidden="true"
-                              className="h-5 w-5"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              xmlns="http://www.w3.org/2000/svg"
-                            >
-                              <path
-                                d="M3 11.5L21 3L14 21L11 13L3 11.5Z"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          )}
-                          <span className="sr-only">
-                            {sendingMessage ? "Sending message..." : "Send message"}
-                          </span>
-                        </button>
+                      <form onSubmit={handleSendText} className="min-w-0 flex-1">
+                        <label htmlFor="chat-message-input" className={FORM_FIELD_LABEL_CLASS}>
+                          Message
+                        </label>
+                        <div className="flex min-w-0 gap-2">
+                          <input
+                            id="chat-message-input"
+                            type="text"
+                            value={chatInput}
+                            onChange={(event) => setChatInput(event.target.value)}
+                            placeholder="Type a message..."
+                            className="min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-400"
+                          />
+                          <button
+                            type="submit"
+                            disabled={
+                              sendingMessage ||
+                              !activeThread?.id ||
+                              !chatInput.trim() ||
+                              !identity?.publicKeyJwk
+                            }
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-purple-600 text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                          >
+                            {sendingMessage ? (
+                              <svg
+                                aria-hidden="true"
+                                className="h-5 w-5 animate-spin"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <circle
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="3"
+                                  className="opacity-30"
+                                />
+                                <path
+                                  d="M22 12a10 10 0 0 0-10-10"
+                                  stroke="currentColor"
+                                  strokeWidth="3"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                aria-hidden="true"
+                                className="h-5 w-5"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  d="M3 11.5L21 3L14 21L11 13L3 11.5Z"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            )}
+                            <span className="sr-only">
+                              {sendingMessage ? "Sending message..." : "Send message"}
+                            </span>
+                          </button>
+                        </div>
                       </form>
                     </div>
                   </div>
@@ -2575,36 +2589,58 @@ export default function Chat() {
                 </>
               ) : (
                 <>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.0001"
-                    required
-                    value={isSendComposer ? sendAmount : requestAmount}
-                    onChange={(event) => {
-                      if (isSendComposer) {
-                        setSendAmount(event.target.value);
-                        return;
-                      }
-                      setRequestAmount(event.target.value);
-                    }}
-                    placeholder="Amount ETH"
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-purple-400"
-                  />
+                  <div>
+                    <label
+                      htmlFor={isSendComposer ? "chat-send-amount" : "chat-request-amount"}
+                      className={FORM_FIELD_LABEL_CLASS}
+                    >
+                      {isSendComposer ? "Send amount" : "Request amount"}
+                    </label>
+                    <input
+                      id={isSendComposer ? "chat-send-amount" : "chat-request-amount"}
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                      required
+                      value={isSendComposer ? sendAmount : requestAmount}
+                      onChange={(event) => {
+                        if (isSendComposer) {
+                          setSendAmount(event.target.value);
+                          return;
+                        }
+                        setRequestAmount(event.target.value);
+                      }}
+                      placeholder="Amount ETH"
+                      className={FORM_INPUT_BASE_CLASS}
+                    />
+                    <p className={`${FORM_HELP_TEXT_CLASS} mt-1`}>Enter the amount in ETH.</p>
+                  </div>
 
-                  <input
-                    type="text"
-                    value={isSendComposer ? sendNote : requestNote}
-                    onChange={(event) => {
-                      if (isSendComposer) {
-                        setSendNote(event.target.value);
-                        return;
-                      }
-                      setRequestNote(event.target.value);
-                    }}
-                    placeholder={isSendComposer ? "Send note (optional)" : "Request note (optional)"}
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-purple-400"
-                  />
+                  <div>
+                    <label
+                      htmlFor={isSendComposer ? "chat-send-note" : "chat-request-note"}
+                      className={FORM_FIELD_LABEL_CLASS}
+                    >
+                      Note (optional)
+                    </label>
+                    <input
+                      id={isSendComposer ? "chat-send-note" : "chat-request-note"}
+                      type="text"
+                      value={isSendComposer ? sendNote : requestNote}
+                      onChange={(event) => {
+                        if (isSendComposer) {
+                          setSendNote(event.target.value);
+                          return;
+                        }
+                        setRequestNote(event.target.value);
+                      }}
+                      placeholder={isSendComposer ? "Send note (optional)" : "Request note (optional)"}
+                      className={FORM_INPUT_BASE_CLASS}
+                    />
+                    <p className={`${FORM_HELP_TEXT_CLASS} mt-1`}>
+                      Add context shown with the chat transfer or request.
+                    </p>
+                  </div>
 
                   {isSendComposer &&
                   sendAmountExceedsBalance ? (

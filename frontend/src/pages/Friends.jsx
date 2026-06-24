@@ -4,6 +4,11 @@ import { PageContainer, PageError, PageHeader } from "../components/PageLayout.j
 import { createFriend, deleteFriend, listFriends } from "../services/friendApi.js";
 import { requireAuthToken } from "../services/session.js";
 import { searchUsers } from "../services/userApi.js";
+import {
+  FORM_FIELD_LABEL_CLASS,
+  FORM_HELP_TEXT_CLASS,
+  FORM_INPUT_BASE_CLASS,
+} from "../styles/formClasses.js";
 import { formatDateOnly } from "../utils/datetime.js";
 import { isValidEvmAddress } from "../utils/security.js";
 
@@ -280,12 +285,19 @@ export default function Friends() {
       <PageError>{error}</PageError>
 
       <div className="rounded-2xl border bg-white p-4">
+        <label htmlFor="friends-search" className={FORM_FIELD_LABEL_CLASS}>
+          Search friends
+        </label>
+        <p className={`${FORM_HELP_TEXT_CLASS} mb-2`}>
+          Search saved recipients by name, username, or wallet address.
+        </p>
         <input
+          id="friends-search"
           type="text"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search friends..."
-          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          className={FORM_INPUT_BASE_CLASS}
         />
       </div>
 
@@ -386,14 +398,18 @@ export default function Friends() {
 
             <form onSubmit={handleCreateFriend} className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
+                <label htmlFor="friend-account-search" className={FORM_FIELD_LABEL_CLASS}>
                   Find app account
                 </label>
+                <p className={`${FORM_HELP_TEXT_CLASS} mb-2`}>
+                  Search an existing user to prefill recipient details.
+                </p>
                 <input
+                  id="friend-account-search"
                   type="text"
                   value={accountQuery}
                   onChange={(event) => setAccountQuery(event.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className={FORM_INPUT_BASE_CLASS}
                   placeholder="Search by name"
                 />
 
@@ -432,61 +448,71 @@ export default function Friends() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
+                <label htmlFor="friend-name" className={FORM_FIELD_LABEL_CLASS}>
                   Friend name
                 </label>
                 <input
+                  id="friend-name"
                   type="text"
                   value={name}
                   maxLength={MAX_FRIEND_NAME}
                   onChange={(event) => setName(event.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className={FORM_INPUT_BASE_CLASS}
                   placeholder="Example: Max"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
+                <label htmlFor="friend-username" className={FORM_FIELD_LABEL_CLASS}>
                   Username
                 </label>
                 <input
+                  id="friend-username"
                   type="text"
                   value={username}
                   maxLength={MAX_FRIEND_USERNAME}
                   autoCapitalize="none"
                   autoCorrect="off"
                   onChange={(event) => setUsername(event.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className={FORM_INPUT_BASE_CLASS}
                   placeholder="username"
                 />
+                <p className={`${FORM_HELP_TEXT_CLASS} mt-1`}>
+                  Use the recipient's app username.
+                </p>
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
+                <label htmlFor="friend-wallet-address" className={FORM_FIELD_LABEL_CLASS}>
                   Wallet address
                 </label>
                 <input
+                  id="friend-wallet-address"
                   type="text"
                   value={walletAddress}
                   maxLength={42}
                   autoCapitalize="none"
                   autoCorrect="off"
                   onChange={(event) => setWalletAddress(event.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-mono focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className={`${FORM_INPUT_BASE_CLASS} font-mono`}
                   placeholder="0x..."
                 />
+                <p className={`${FORM_HELP_TEXT_CLASS} mt-1`}>
+                  Enter a 0x EVM wallet address.
+                </p>
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
+                <label htmlFor="friend-notes" className={FORM_FIELD_LABEL_CLASS}>
                   Notes (optional)
                 </label>
                 <textarea
+                  id="friend-notes"
                   rows={2}
                   value={notes}
                   maxLength={MAX_FRIEND_NOTES}
                   onChange={(event) => setNotes(event.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className={FORM_INPUT_BASE_CLASS}
                   placeholder="Relationship, location, purpose..."
                 />
               </div>

@@ -9,6 +9,10 @@ import {
   readWalletState,
   writeWalletState,
 } from "../services/session.js";
+import {
+  FORM_FIELD_LABEL_CLASS,
+  FORM_FILTER_CONTROL_CLASS,
+} from "../styles/formClasses.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 function badgeClass(ok) {
@@ -299,14 +303,17 @@ export default function Account() {
           {accountLinked && accountAddress ? (
             <div className="space-y-1 text-xs text-gray-600">
               <div className="font-mono break-all">Address: {accountAddress}</div>
-              <div className="flex items-center gap-2">
-                <span>Currency:</span>
+              <div className="flex flex-col gap-1 sm:max-w-xs">
+                <label htmlFor="account-balance-currency" className={FORM_FIELD_LABEL_CLASS}>
+                  Currency
+                </label>
                 <select
+                  id="account-balance-currency"
                   value={selectedCurrency}
                   onChange={(event) =>
                     setSelectedCurrency(String(event.target.value || "").toUpperCase())
                   }
-                  className="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className={FORM_FILTER_CONTROL_CLASS}
                 >
                   {availableCurrencies.map((currency) => (
                     <option key={currency} value={currency}>
