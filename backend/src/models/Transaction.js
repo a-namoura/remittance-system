@@ -10,6 +10,14 @@ const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
   .trim()
   .toUpperCase();
 
+export const TRANSACTION_STATUSES = [
+  "pending",
+  "success",
+  "failed",
+  "cancelled",
+  "reconciliation-required",
+];
+
 const transactionSchema = new mongoose.Schema(
   {
     senderUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -49,7 +57,7 @@ const transactionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "success", "failed"],
+      enum: TRANSACTION_STATUSES,
       default: "pending",
     },
     txHash: { type: String, trim: true },

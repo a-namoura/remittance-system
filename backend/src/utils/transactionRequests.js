@@ -152,6 +152,26 @@ export async function markTransactionFailed(txDoc, err) {
   await saveTransactionWithinSyncWindow(txDoc, receivedAt).catch(() => {});
 }
 
+export async function markTransactionReconciliationRequired(txDoc, err) {
+  if (!txDoc || txDoc.status === "success") return;
+
+  const receivedAt = asDate(err?.blockchainResultReceivedAt || new Date());
+  const failureReason = getTransactionFailureReason(err);
+  txDoc.status = "reconciliation-required";
+  txDoc.failureReason = failureReason;
+  txDoc.reconciliationError = failureReason;
+  txDoc.blockchainResultReceivedAt = receivedAt;
+  txDoc.blockchainSyncedAt = undefined;
+  txDoc.lastReconciledAt = new Date();
+
+  await txDoc.save().catch((saveErr) => {
+    console.error(
+      "Failed to mark transaction as reconciliation-required:",
+      saveErr.message
+    );
+  });
+}
+
 export async function recordTransactionSubmission(txDoc, submission) {
   const txHash = stablePart(submission?.txHash);
   if (!txDoc || !txHash) return txDoc;
@@ -237,6 +257,7 @@ export function settleTransactionAfterSubmission({
     } catch (err) {
       if (isTransactionSyncError(err)) {
         console.error("Transaction confirmation sync failed:", err.message);
+        await markTransactionReconciliationRequired(txDoc, err);
       } else {
         await markTransactionFailed(txDoc, err);
       }
