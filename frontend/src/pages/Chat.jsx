@@ -1602,8 +1602,8 @@ export default function Chat() {
       setSendNote("");
       setSendTransferStep("details");
       setComposerMode("message");
-      setTimelineInfo("Payment sent.");
-      showTransactionSuccess("Transaction successful");
+      setTimelineInfo("Payment submitted. Confirmation is processing.");
+      showTransactionSuccess("Transaction submitted");
       forceTimelineScrollRef.current = true;
       await loadHistory({
         threadId: activeThread.id,
@@ -1724,8 +1724,8 @@ export default function Chat() {
             }
           : current
       );
-      setRequestModalInfo("Payment sent successfully.");
-      showTransactionSuccess("Transaction successful");
+      setRequestModalInfo("Payment submitted. Confirmation is processing.");
+      showTransactionSuccess("Transaction submitted");
       await loadHistory({
         threadId: activeThread.id,
         identityValue: identity,

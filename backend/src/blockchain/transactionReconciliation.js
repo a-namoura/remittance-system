@@ -5,6 +5,8 @@ import {
   getRemittanceReadContract,
 } from "./remittanceClient.js";
 import { BlockchainSyncState } from "../models/BlockchainSyncState.js";
+import { ChatRequest } from "../models/ChatRequest.js";
+import { PaymentLink } from "../models/PaymentLink.js";
 import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
 import { logAudit } from "../utils/audit.js";
@@ -150,6 +152,75 @@ async function auditCorrection(txDoc, previousStatus, reason) {
   });
 }
 
+async function applyPaymentLinkSettlement(txDoc) {
+  if (!txDoc.paymentLinkId || !["success", "failed"].includes(txDoc.status)) {
+    return;
+  }
+
+  const linkDoc = await PaymentLink.findById(txDoc.paymentLinkId);
+  if (!linkDoc || linkDoc.status !== "claiming") return;
+
+  if (txDoc.status === "success") {
+    linkDoc.status = "claimed";
+    linkDoc.claimedByUserId = txDoc.receiverUserId || linkDoc.claimedByUserId;
+    linkDoc.claimedAt = linkDoc.claimedAt || new Date();
+    linkDoc.txHash = txDoc.txHash || linkDoc.txHash;
+    await linkDoc.save();
+    return;
+  }
+
+  const expired = new Date(linkDoc.expiresAt).getTime() <= Date.now();
+  linkDoc.status = expired ? "expired" : "active";
+  if (!expired) {
+    linkDoc.txHash = undefined;
+  }
+  await linkDoc.save();
+}
+
+async function applyChatRequestSettlement(txDoc) {
+  if (!txDoc.chatRequestId || !["success", "failed"].includes(txDoc.status)) {
+    return;
+  }
+
+  if (txDoc.status === "success") {
+    await ChatRequest.findOneAndUpdate(
+      { _id: txDoc.chatRequestId, status: "processing" },
+      {
+        $set: {
+          status: "paid",
+          paidAt: new Date(),
+          paidByUserId: txDoc.senderUserId,
+          paidTransactionId: txDoc._id,
+          paidTxHash: txDoc.txHash || null,
+          processingAt: null,
+        },
+      }
+    );
+    return;
+  }
+
+  await ChatRequest.findOneAndUpdate(
+    { _id: txDoc.chatRequestId, status: "processing" },
+    {
+      $set: { status: "pending" },
+      $unset: { processingAt: "" },
+    }
+  );
+}
+
+async function applyLinkedSettlement(txDoc) {
+  try {
+    await Promise.all([
+      applyPaymentLinkSettlement(txDoc),
+      applyChatRequestSettlement(txDoc),
+    ]);
+  } catch (err) {
+    txDoc.reconciliationError =
+      normalizeError(err) || "Linked transaction settlement failed.";
+    await txDoc.save().catch(() => {});
+  }
+}
+
 async function saveReconciliationCheck(txDoc, checkedAt) {
   txDoc.lastReconciledAt = checkedAt;
   await txDoc.save();
@@ -181,6 +252,7 @@ async function handleMissingReceipt(txDoc, checkedAt, config) {
   await txDoc.save();
 
   if (previousStatus !== txDoc.status) {
+    await applyLinkedSettlement(txDoc);
     await auditCorrection(txDoc, previousStatus, "receipt_missing");
     return true;
   }
@@ -238,6 +310,7 @@ async function reconcileTransaction(txDoc, provider, config) {
   await txDoc.save();
 
   if (needsCorrection) {
+    await applyLinkedSettlement(txDoc);
     await auditCorrection(txDoc, previousStatus, "receipt_status_sync");
   }
 
@@ -311,6 +384,7 @@ async function ingestTransferEvent(event) {
     );
 
     if (previousStatus !== txDoc.status) {
+      await applyLinkedSettlement(txDoc);
       await auditCorrection(txDoc, previousStatus, "transfer_event_sync");
     }
 

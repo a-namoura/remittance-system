@@ -8,7 +8,7 @@ const API_URL =
   import.meta.env.VITE_API_URL ||
   "http://localhost:5000";
 
-const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS) || 15000;
+const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS) || 2000;
 let requestSequence = 0;
 
 function normalizePath(path) {

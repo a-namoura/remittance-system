@@ -104,6 +104,14 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    paymentLinkId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PaymentLink",
+    },
+    chatRequestId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ChatRequest",
+    },
 
     // helpful for filters later (sent/received)
     type: {
@@ -127,6 +135,13 @@ transactionSchema.index(
 );
 
 transactionSchema.index({ status: 1, txHash: 1, updatedAt: 1 });
+transactionSchema.index({ senderUserId: 1, createdAt: -1 });
+transactionSchema.index({ receiverUserId: 1, createdAt: -1 });
+transactionSchema.index({ senderUserId: 1, status: 1, createdAt: -1 });
+transactionSchema.index({ receiverUserId: 1, status: 1, createdAt: -1 });
+transactionSchema.index({ status: 1, createdAt: -1 });
+transactionSchema.index({ paymentLinkId: 1 });
+transactionSchema.index({ chatRequestId: 1 });
 transactionSchema.index(
   { txHash: 1 },
   {

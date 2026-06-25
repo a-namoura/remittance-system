@@ -74,6 +74,7 @@ MONGODB_URI=mongodb://127.0.0.1:27017/remittance
 JWT_SECRET=replace-with-a-strong-secret
 NODE_ENV=development
 TRANSACTION_SYNC_TIMEOUT_MS=2000
+API_RESPONSE_SLA_MS=2000
 TRANSACTION_RECONCILIATION_ENABLED=true
 TRANSACTION_RECONCILIATION_INTERVAL_MS=15000
 TRANSACTION_RECONCILIATION_BATCH_SIZE=100
@@ -96,6 +97,11 @@ REM_CONTRACT_ADDRESS=0xYourRemittanceContractAddress
 # Optional but recommended for complete historical event synchronization
 REM_CONTRACT_DEPLOYMENT_BLOCK=12345678
 ```
+
+Transfer endpoints return after the blockchain transaction is submitted and saved
+as pending. Confirmation is reconciled asynchronously, so block confirmation time
+is not part of the user request response time. The backend exposes the configured
+2-second response target in `X-Response-Sla-Ms` and logs responses that exceed it.
 
 Optional currency/email settings used by specific features:
 

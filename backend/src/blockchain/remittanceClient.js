@@ -95,12 +95,27 @@ export function getRemittanceReadContract() {
   return readContractInstance;
 }
 
+function createConfirmationWaiter({ tx, wallet, normalizedReceiver, amountEth }) {
+  return async function waitForConfirmation() {
+    const receipt = await tx.wait();
+
+    return {
+      from: wallet.address,
+      to: normalizedReceiver,
+      value: amountEth,
+      txHash: tx.hash,
+      blockNumber: receipt?.blockNumber,
+      status: receipt?.status,
+    };
+  };
+}
+
 /**
- * Helper to send a remittance transaction.
- * receiver: string (0x...)
- * amountEth: string or number (e.g. "0.01")
+ * Broadcasts a remittance transaction and returns after the network accepts it.
+ * Confirmation is intentionally left to the caller so API requests do not wait
+ * for block confirmation time.
  */
-export async function sendRemittance(
+export async function submitRemittance(
   receiver,
   amountEth,
   { onSubmitted } = {}
@@ -115,31 +130,43 @@ export async function sendRemittance(
   const value = parseEther(String(amountEth));
 
   const tx = await contract.transfer(normalizedReceiver, { value });
+  const submittedAt = new Date();
+  const submission = {
+    from: wallet.address,
+    to: normalizedReceiver,
+    value: amountEth,
+    txHash: tx.hash,
+    submittedAt,
+    status: "pending",
+  };
 
   if (typeof onSubmitted === "function") {
     try {
-      await onSubmitted({
-        from: wallet.address,
-        to: normalizedReceiver,
-        value: amountEth,
-        txHash: tx.hash,
-        submittedAt: new Date(),
-      });
+      await onSubmitted(submission);
     } catch (err) {
       console.error("Failed to persist submitted transaction hash:", err.message);
     }
   }
 
-  const receipt = await tx.wait();
-
   return {
-    from: wallet.address,
-    to: normalizedReceiver,
-    value: amountEth,
-    txHash: tx.hash,
-    blockNumber: receipt?.blockNumber,
-    status: receipt?.status,
+    ...submission,
+    waitForConfirmation: createConfirmationWaiter({
+      tx,
+      wallet,
+      normalizedReceiver,
+      amountEth,
+    }),
   };
+}
+
+/**
+ * Helper to send a remittance transaction and wait for confirmation.
+ * receiver: string (0x...)
+ * amountEth: string or number (e.g. "0.01")
+ */
+export async function sendRemittance(receiver, amountEth, options = {}) {
+  const submission = await submitRemittance(receiver, amountEth, options);
+  return submission.waitForConfirmation();
 }
 
 /**

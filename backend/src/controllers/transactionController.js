@@ -2,17 +2,16 @@ import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
 import {
   getEthBalance,
-  sendRemittance,
+  submitRemittance,
 } from "../blockchain/remittanceClient.js";
 import {
   createInvalidWalletAddressMessage,
   normalizeEvmAddress,
 } from "../utils/walletAddress.js";
 import {
-  isTransactionSyncError,
   markTransactionFailed,
   recordTransactionSubmission,
-  syncTransactionWithBlockchainResult,
+  settleTransactionAfterSubmission,
 } from "../utils/transactionRequests.js";
 
 const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
@@ -94,33 +93,31 @@ export async function sendTransaction(req, res, next) {
       type: "sent",
     });
 
-    const result = await sendRemittance(receiver, amountNumber, {
+    const submission = await submitRemittance(receiver, amountNumber, {
       onSubmitted: (submission) =>
         recordTransactionSubmission(txDoc, submission),
     });
 
-    await syncTransactionWithBlockchainResult(txDoc, result);
+    settleTransactionAfterSubmission({ txDoc, submission });
 
-    return res.json({
+    return res.status(202).json({
       ok: true,
+      message: "Transaction submitted. Confirmation is processing.",
       transaction: {
         id: txDoc._id,
         receiverWallet: txDoc.receiverWallet,
         amount: txDoc.amount,
         assetSymbol: txDoc.assetSymbol,
         status: txDoc.status,
-        txHash: txDoc.txHash || null,
+        txHash: txDoc.txHash || submission.txHash || null,
         failureReason: txDoc.failureReason || null,
         blockchainResultReceivedAt: txDoc.blockchainResultReceivedAt || null,
         blockchainSyncedAt: txDoc.blockchainSyncedAt || null,
+        blockchainSubmittedAt: txDoc.blockchainSubmittedAt || submission.submittedAt,
         createdAt: txDoc.createdAt,
       },
     });
   } catch (err) {
-    if (isTransactionSyncError(err)) {
-      return next(err);
-    }
-
     if (txDoc && !["success", "failed"].includes(txDoc.status)) {
       await markTransactionFailed(txDoc, err);
     }

@@ -208,3 +208,40 @@ export async function syncTransactionWithBlockchainResult(
 
   return txDoc;
 }
+
+async function runSettlementCallback(callback, payload, label) {
+  if (typeof callback !== "function") return;
+
+  try {
+    await callback(payload);
+  } catch (err) {
+    console.error(`Transaction settlement ${label} callback failed:`, err.message);
+  }
+}
+
+export function settleTransactionAfterSubmission({
+  txDoc,
+  submission,
+  onSuccess,
+  onFailure,
+} = {}) {
+  if (!txDoc || typeof submission?.waitForConfirmation !== "function") {
+    return;
+  }
+
+  void (async () => {
+    try {
+      const result = await submission.waitForConfirmation();
+      await syncTransactionWithBlockchainResult(txDoc, result);
+      await runSettlementCallback(onSuccess, { txDoc, result }, "success");
+    } catch (err) {
+      if (isTransactionSyncError(err)) {
+        console.error("Transaction confirmation sync failed:", err.message);
+      } else {
+        await markTransactionFailed(txDoc, err);
+      }
+
+      await runSettlementCallback(onFailure, { txDoc, error: err }, "failure");
+    }
+  })();
+}

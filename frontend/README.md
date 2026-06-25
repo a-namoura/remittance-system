@@ -36,7 +36,7 @@ Variables currently used by the frontend source:
 
 - `VITE_API_BASE_URL`: optional primary API base URL
 - `VITE_API_URL`: fallback API base URL (defaults to `http://localhost:5000`)
-- `VITE_API_TIMEOUT_MS`: request timeout in milliseconds (default `15000`)
+- `VITE_API_TIMEOUT_MS`: request timeout in milliseconds (default `2000`)
 - `VITE_EXPLORER_BASE_URL`: explorer base URL for tx links (example: `https://testnet.bscscan.com`)
 - `VITE_COUNTRIES_API`: optional countries endpoint used in registration flow
 - `VITE_FLAG_BASE_URL`: optional flag image base URL for registration UI

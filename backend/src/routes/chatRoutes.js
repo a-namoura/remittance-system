@@ -11,7 +11,7 @@ import { ChatRequest } from "../models/ChatRequest.js";
 import { Transaction } from "../models/Transaction.js";
 import {
   getEthBalance,
-  sendRemittance,
+  submitRemittance,
 } from "../blockchain/remittanceClient.js";
 import {
   logAudit,
@@ -28,10 +28,9 @@ import {
   DUPLICATE_TRANSFER_REQUEST_MESSAGE,
   IN_FLIGHT_TRANSACTION_STATUSES,
   isDuplicateTransferRequestKeyError,
-  isTransactionSyncError,
   markTransactionFailed,
   recordTransactionSubmission,
-  syncTransactionWithBlockchainResult,
+  settleTransactionAfterSubmission,
 } from "../utils/transactionRequests.js";
 
 export const chatRouter = express.Router();
@@ -1214,24 +1213,44 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       transferRequestKey,
     });
 
-    const result = await sendRemittance(recipientWallet, amountNumber, {
+    const submission = await submitRemittance(recipientWallet, amountNumber, {
       onSubmitted: (submission) =>
         recordTransactionSubmission(txDoc, submission),
     });
 
-    await syncTransactionWithBlockchainResult(txDoc, result);
-
-    await logTransferResult({
-      user: req.user,
-      req,
-      flow: "chat_direct_send",
-      transaction: txDoc,
-      metadata: {
-        threadId: String(thread._id),
-        amount: amountNumber,
-        assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
-        senderWallet,
-        receiverWallet: recipientWallet,
+    settleTransactionAfterSubmission({
+      txDoc,
+      submission,
+      onSuccess: async () => {
+        await logTransferResult({
+          user: req.user,
+          req,
+          flow: "chat_direct_send",
+          transaction: txDoc,
+          metadata: {
+            threadId: String(thread._id),
+            amount: amountNumber,
+            assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
+            senderWallet,
+            receiverWallet: recipientWallet,
+          },
+        });
+      },
+      onFailure: async ({ error }) => {
+        await logTransferResult({
+          user: req.user,
+          req,
+          flow: "chat_direct_send",
+          transaction: txDoc,
+          error,
+          metadata: {
+            threadId: String(thread._id),
+            amount: amountNumber,
+            assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
+            senderWallet,
+            receiverWallet: recipientWallet,
+          },
+        });
       },
     });
     transferResultLogged = true;
@@ -1239,15 +1258,17 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
     thread.lastMessageAt = new Date();
     await thread.save();
 
-    res.status(201).json({
+    res.status(202).json({
       ok: true,
+      message: "Transaction submitted. Confirmation is processing.",
       transaction: {
         id: txDoc._id,
         status: txDoc.status,
-        txHash: txDoc.txHash || null,
+        txHash: txDoc.txHash || submission.txHash || null,
         failureReason: txDoc.failureReason || null,
         blockchainResultReceivedAt: txDoc.blockchainResultReceivedAt || null,
         blockchainSyncedAt: txDoc.blockchainSyncedAt || null,
+        blockchainSubmittedAt: txDoc.blockchainSubmittedAt || submission.submittedAt,
         amount: txDoc.amount,
         note: txDoc.note || "",
         assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
@@ -1269,20 +1290,6 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       }
       res.status(409);
       return next(new Error(DUPLICATE_TRANSFER_REQUEST_MESSAGE));
-    }
-
-    if (isTransactionSyncError(err)) {
-      if (!transferResultLogged) {
-        await logTransferResult({
-          user: req.user,
-          req,
-          flow: "chat_direct_send",
-          transaction: txDoc,
-          error: err,
-          metadata: { threadId: String(req.params.threadId || "") || null },
-        });
-      }
-      return next(err);
     }
 
     if (txDoc && !["success", "failed"].includes(txDoc.status)) {
@@ -1439,9 +1446,10 @@ chatRouter.post(
         amount: requestAmountNumber,
         status: "pending",
         type: "sent",
+        chatRequestId: lockedRequest._id,
       });
 
-      const result = await sendRemittance(
+      const submission = await submitRemittance(
         requesterWallet,
         requestAmountNumber,
         {
@@ -1450,94 +1458,106 @@ chatRouter.post(
         }
       );
 
-      await syncTransactionWithBlockchainResult(txDoc, result);
+      settleTransactionAfterSubmission({
+        txDoc,
+        submission,
+        onSuccess: async ({ result }) => {
+          await logTransferResult({
+            user: req.user,
+            req,
+            flow: "chat_request_payment",
+            transaction: txDoc,
+            metadata: {
+              threadId: String(thread._id),
+              requestId: String(lockedRequest._id),
+              amount: requestAmountNumber,
+              senderWallet: payerWallet,
+              receiverWallet: requesterWallet,
+            },
+          });
 
-      await logTransferResult({
-        user: req.user,
-        req,
-        flow: "chat_request_payment",
-        transaction: txDoc,
-        metadata: {
-          threadId: String(thread._id),
-          requestId: String(lockedRequest._id),
-          amount: requestAmountNumber,
-          senderWallet: payerWallet,
-          receiverWallet: requesterWallet,
+          const paidRequest = await ChatRequest.findOneAndUpdate(
+            { _id: lockedRequest._id, status: "processing" },
+            {
+              $set: {
+                status: "paid",
+                paidAt: new Date(),
+                paidByUserId: req.user._id,
+                paidTransactionId: txDoc._id,
+                paidTxHash: result.txHash || submission.txHash || null,
+                processingAt: null,
+              },
+            }
+          );
+
+          if (paidRequest) {
+            thread.lastMessageAt = new Date();
+            await thread.save();
+          }
+        },
+        onFailure: async ({ error }) => {
+          await logTransferResult({
+            user: req.user,
+            req,
+            flow: "chat_request_payment",
+            transaction: txDoc,
+            error,
+            metadata: {
+              threadId: String(thread._id),
+              requestId: String(lockedRequest._id),
+              amount: requestAmountNumber,
+              senderWallet: payerWallet,
+              receiverWallet: requesterWallet,
+            },
+          });
+
+          await ChatRequest.findOneAndUpdate(
+            { _id: lockedRequest._id, status: "processing" },
+            {
+              $set: { status: "pending" },
+              $unset: { processingAt: "" },
+            }
+          );
         },
       });
       transferResultLogged = true;
 
-      const paidRequest = await ChatRequest.findOneAndUpdate(
-        { _id: lockedRequest._id, status: "processing" },
-        {
-          $set: {
-            status: "paid",
-            paidAt: new Date(),
-            paidByUserId: req.user._id,
-            paidTransactionId: txDoc._id,
-            paidTxHash: result.txHash || null,
-            processingAt: null,
-          },
-        },
-        { returnDocument: "after" }
-      );
-
-      if (!paidRequest) {
-        res.status(409);
-        throw new Error("Request status changed during processing.");
-      }
-
       thread.lastMessageAt = new Date();
       await thread.save();
 
-      res.status(201).json({
+      res.status(202).json({
         ok: true,
+        message: "Payment submitted. Confirmation is processing.",
         request: {
-          id: paidRequest._id,
-          status: paidRequest.status,
-          amount: paidRequest.amount,
-          note: paidRequest.note || "",
-          requesterUserId: paidRequest.requesterUserId,
-          targetUserId: paidRequest.targetUserId,
-          paidAt: paidRequest.paidAt || null,
-          paidByUserId: paidRequest.paidByUserId || null,
-          paidTransactionId: paidRequest.paidTransactionId || null,
-          paidTxHash: paidRequest.paidTxHash || null,
-          cancelledAt: paidRequest.cancelledAt || null,
-          cancelledByUserId: paidRequest.cancelledByUserId || null,
-          createdAt: paidRequest.createdAt,
+          id: lockedRequest._id,
+          status: lockedRequest.status,
+          amount: lockedRequest.amount,
+          note: lockedRequest.note || "",
+          requesterUserId: lockedRequest.requesterUserId,
+          targetUserId: lockedRequest.targetUserId,
+          paidAt: lockedRequest.paidAt || null,
+          paidByUserId: lockedRequest.paidByUserId || null,
+          paidTransactionId: lockedRequest.paidTransactionId || null,
+          paidTxHash: lockedRequest.paidTxHash || null,
+          cancelledAt: lockedRequest.cancelledAt || null,
+          cancelledByUserId: lockedRequest.cancelledByUserId || null,
+          createdAt: lockedRequest.createdAt,
         },
         transaction: {
           id: txDoc._id,
           amount: txDoc.amount,
           status: txDoc.status,
-          txHash: txDoc.txHash || null,
+          txHash: txDoc.txHash || submission.txHash || null,
           failureReason: txDoc.failureReason || null,
           blockchainResultReceivedAt: txDoc.blockchainResultReceivedAt || null,
           blockchainSyncedAt: txDoc.blockchainSyncedAt || null,
+          blockchainSubmittedAt: txDoc.blockchainSubmittedAt || submission.submittedAt,
           senderWallet: txDoc.senderWallet,
           receiverWallet: txDoc.receiverWallet,
           createdAt: txDoc.createdAt,
         },
       });
     } catch (err) {
-      if (isTransactionSyncError(err)) {
-        if (!transferResultLogged) {
-          await logTransferResult({
-            user: req.user,
-            req,
-            flow: "chat_request_payment",
-            transaction: txDoc,
-            error: err,
-            metadata: {
-              threadId: String(req.params.threadId || "") || null,
-              requestId: String(req.params.requestId || "") || null,
-            },
-          });
-        }
-        return next(err);
-      }
-
       if (txDoc && !["success", "failed"].includes(txDoc.status)) {
         await markTransactionFailed(txDoc, err);
       }

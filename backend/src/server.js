@@ -6,6 +6,7 @@ import path from "node:path";
 import { connectDB } from "./config/db.js";
 import { apiRouter } from "./routes/index.js";
 import { notFound, errorHandler } from "./middleware/errorHandler.js";
+import { responseSlaMonitor } from "./middleware/performance.js";
 import { startTransactionReconciliation } from "./blockchain/transactionReconciliation.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -25,6 +26,7 @@ app.use(
   })
 );
 app.use(express.json());
+app.use(responseSlaMonitor);
 
 // Mount API routes
 app.use("/api", apiRouter);

@@ -124,11 +124,11 @@ export default function ClaimTransfer() {
 
       setClaimSuccess(
         txHash
-          ? `Transfer claimed successfully. Tx: ${txHash}`
-          : "Transfer claimed successfully."
+          ? `Transfer claim submitted. Tx: ${txHash}`
+          : "Transfer claim submitted. Confirmation is processing."
       );
-      showTransactionSuccess("Transaction successful");
-      setStatus("claimed");
+      showTransactionSuccess("Transaction submitted");
+      setStatus(result?.status || "claiming");
     } catch (err) {
       setError(getUserErrorMessage(err, "Failed to claim transfer."));
     } finally {
@@ -184,6 +184,12 @@ export default function ClaimTransfer() {
         {status === "claimed" && !claimSuccess && (
           <p className="text-sm text-gray-700">
             This transfer has already been claimed.
+          </p>
+        )}
+
+        {status === "claiming" && !claimSuccess && (
+          <p className="text-sm text-gray-700">
+            This transfer is being claimed. Confirmation is processing.
           </p>
         )}
 
