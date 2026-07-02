@@ -230,14 +230,6 @@ transactionRouter.post("/link", protect, async (req, res, next) => {
       "linked wallet address"
     );
 
-    const availableBalance = await getEthBalance(senderWallet);
-    if (amountNumber > availableBalance) {
-      res.status(400);
-      throw new Error(
-        `Insufficient balance. Available: ${availableBalance.toFixed(4)} ${DEFAULT_ASSET_SYMBOL}.`
-      );
-    }
-
     const token = crypto.randomBytes(32).toString("hex");
     const tokenHash = hashLinkToken(token);
     const expiresAt = new Date(Date.now() + DEFAULT_LINK_TTL_MS);
@@ -631,14 +623,6 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       assetSymbol,
     });
     await rejectInFlightDuplicateTransfer(res, transferRequestKey);
-
-    const availableBalance = await getEthBalance(senderWallet);
-    if (amountNumber > availableBalance) {
-      res.status(400);
-      throw new Error(
-        `Insufficient balance. Available: ${availableBalance.toFixed(4)} ${DEFAULT_ASSET_SYMBOL}.`
-      );
-    }
 
     try {
       await requireAndConsumePaymentCode({

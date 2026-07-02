@@ -9,10 +9,7 @@ import { ChatThread } from "../models/ChatThread.js";
 import { ChatMessage } from "../models/ChatMessage.js";
 import { ChatRequest } from "../models/ChatRequest.js";
 import { Transaction } from "../models/Transaction.js";
-import {
-  getEthBalance,
-  submitRemittance,
-} from "../blockchain/remittanceClient.js";
+import { submitRemittance } from "../blockchain/remittanceClient.js";
 import {
   logAudit,
   logTransferAttempt,
@@ -1190,16 +1187,6 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
     });
     await rejectInFlightDuplicateTransfer(res, transferRequestKey);
 
-    const availableBalance = await getEthBalance(senderWallet);
-    if (amountNumber > availableBalance) {
-      res.status(400);
-      throw new Error(
-        `Insufficient balance. Available: ${availableBalance.toFixed(
-          4
-        )} ${DEFAULT_CHAT_ASSET_SYMBOL}.`
-      );
-    }
-
     txDoc = await Transaction.create({
       senderUserId,
       receiverUserId: recipientUserId,
@@ -1408,14 +1395,6 @@ chatRouter.post(
         "receiverWallet"
       );
       rejectChatSelfTransfer(res, payerWallet, requesterWallet);
-
-      const availableBalance = await getEthBalance(payerWallet);
-      if (requestAmountNumber > availableBalance) {
-        res.status(400);
-        throw new Error(
-          `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`
-        );
-      }
 
       lockedRequest = await ChatRequest.findOneAndUpdate(
         {

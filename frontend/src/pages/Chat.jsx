@@ -485,12 +485,10 @@ export default function Chat() {
     sendAmountValue > Number(walletBalance);
   const canProceedWithChatTransfer = Boolean(
     !sendingTransfer &&
-      !walletBalanceLoading &&
       !transferBlockReason &&
       activeThread?.id &&
       identity?.publicKeyJwk &&
       hasPositiveSendAmount &&
-      Number.isFinite(walletBalance) &&
       !sendAmountExceedsBalance
   );
   const requestAmountValue = Number(requestAmount);
@@ -1537,12 +1535,7 @@ export default function Chat() {
       return null;
     }
 
-    if (!Number.isFinite(walletBalance)) {
-      setTimelineError(walletBalanceError || "Unable to verify your balance.");
-      return null;
-    }
-
-    if (amount > walletBalance) {
+    if (Number.isFinite(walletBalance) && amount > walletBalance) {
       setTimelineError(
         `Insufficient balance. Available: ${walletBalance.toFixed(4)} ETH.`
       );
@@ -1689,12 +1682,7 @@ export default function Chat() {
       return;
     }
 
-    if (!Number.isFinite(walletBalance)) {
-      setRequestModalError(walletBalanceError || "Unable to verify your balance.");
-      return;
-    }
-
-    if (amount > walletBalance) {
+    if (Number.isFinite(walletBalance) && amount > walletBalance) {
       setRequestModalError(
         `Insufficient balance. Available: ${walletBalance.toFixed(4)} ETH.`
       );
@@ -2771,11 +2759,10 @@ export default function Chat() {
                   onClick={handlePayRequestFromModal}
                   disabled={
                     requestModalLoading ||
-                    walletBalanceLoading ||
                     !Number.isFinite(Number(requestModal.amount)) ||
                     Number(requestModal.amount) <= 0 ||
-                    !Number.isFinite(walletBalance) ||
-                    Number(requestModal.amount) > Number(walletBalance)
+                    (Number.isFinite(walletBalance) &&
+                      Number(requestModal.amount) > Number(walletBalance))
                   }
                   className="rounded-full bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
                 >

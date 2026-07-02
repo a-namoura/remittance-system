@@ -794,6 +794,11 @@ export default function SendMoney() {
     setGeneratedLink("");
     setLinkCopied(false);
 
+    if (!isValidEvmAddress(String(me?.wallet?.address || "").trim())) {
+      setMethodError("Link and verify your wallet before generating a transfer link.");
+      return;
+    }
+
     const amount = Number(String(amountEth).trim());
     if (!Number.isFinite(amount) || amount <= 0) {
       setMethodError("Amount must be a positive number.");
@@ -892,6 +897,9 @@ export default function SendMoney() {
 
     if (activeMethod === "address") {
       if (!validateAddressTransferDetails()) return;
+    } else if (!directDetailsReady) {
+      setMethodError("Select a recipient with a valid wallet and enter an amount within your balance.");
+      return;
     }
 
     try {
@@ -941,18 +949,24 @@ export default function SendMoney() {
   }, [filteredFriends, accounts]);
 
   const selectedWallet = String(selectedRecipient?.walletAddress || "").trim();
+  const linkedWallet = String(me?.wallet?.address || "").trim();
   const parsedAmount = Number(String(amountEth).trim());
   const hasPositiveAmount = Number.isFinite(parsedAmount) && parsedAmount > 0;
   const hasValidSelectedWallet = isValidEvmAddress(selectedWallet);
+  const hasValidLinkedWallet = isValidEvmAddress(linkedWallet);
+  const hasLoadedBalance = !balanceLoading && Number.isFinite(availableBalance);
   const exceedsBalance =
     hasPositiveAmount &&
     Number.isFinite(availableBalance) &&
     parsedAmount > availableBalance;
-  const canProceedWithBalance =
-    !balanceLoading && Number.isFinite(availableBalance) && !exceedsBalance;
+  const amountWithinBalance = hasPositiveAmount && hasLoadedBalance && !exceedsBalance;
   const hasValidManualAddress = isValidEvmAddress(String(manualAddress || "").trim());
-  const addressDetailsReady = hasValidManualAddress && hasPositiveAmount;
-  const canRequestAddressVerification = addressDetailsReady && canProceedWithBalance;
+  const addressFieldsReady = hasValidManualAddress && hasPositiveAmount;
+  const canRequestAddressVerification = addressFieldsReady && amountWithinBalance;
+  const directDetailsReady =
+    Boolean(selectedRecipient) && hasValidSelectedWallet && amountWithinBalance;
+  const canCreateClaimTransfer = hasValidLinkedWallet && amountWithinBalance;
+  const hasVerificationCode = String(verificationCode || "").trim().length >= 6;
   const canUsePhoneVerification = Boolean(String(me?.phoneNumber || "").trim());
   const isAddressVerificationStep =
     activeMethod === "address" && transferStep === "verification";
@@ -1308,7 +1322,7 @@ export default function SendMoney() {
                       />
                     </div>
 
-                    {!addressDetailsReady ? (
+                    {!addressFieldsReady ? (
                       <p className={FORM_HELP_TEXT_CLASS}>
                         Enter destination address and amount to continue to verification.
                       </p>
@@ -1414,7 +1428,7 @@ export default function SendMoney() {
                           disabled={
                             sending ||
                             !canRequestAddressVerification ||
-                            String(verificationCode || "").trim().length < 6
+                            !hasVerificationCode
                           }
                           className={FORM_INLINE_PRIMARY_BUTTON_CLASS}
                         >
@@ -1470,10 +1484,7 @@ export default function SendMoney() {
                     onClick={handleSendCode}
                     disabled={
                       codeSending ||
-                      !selectedRecipient ||
-                      !hasValidSelectedWallet ||
-                      !canProceedWithBalance ||
-                      !hasPositiveAmount
+                      !directDetailsReady
                     }
                     className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
                   >
@@ -1511,11 +1522,8 @@ export default function SendMoney() {
                       type="submit"
                       disabled={
                         sending ||
-                        !selectedRecipient ||
-                        !hasValidSelectedWallet ||
-                        !canProceedWithBalance ||
-                        !hasPositiveAmount ||
-                        String(verificationCode || "").trim().length < 6
+                        !directDetailsReady ||
+                        !hasVerificationCode
                       }
                       className={`w-full ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                     >
@@ -1554,7 +1562,7 @@ export default function SendMoney() {
 
                 <button
                   type="submit"
-                  disabled={linkLoading || !canProceedWithBalance || !hasPositiveAmount}
+                  disabled={linkLoading || !canCreateClaimTransfer}
                   className={`w-full ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                 >
                   {linkLoading ? "Generating..." : "Generate"}

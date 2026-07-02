@@ -1,9 +1,6 @@
 import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
-import {
-  getEthBalance,
-  submitRemittance,
-} from "../blockchain/remittanceClient.js";
+import { submitRemittance } from "../blockchain/remittanceClient.js";
 import {
   createInvalidWalletAddressMessage,
   normalizeEvmAddress,
@@ -73,14 +70,6 @@ export async function sendTransaction(req, res, next) {
     if (senderWallet === receiver) {
       res.status(400);
       throw new Error("You cannot transfer funds to your own wallet address.");
-    }
-
-    const availableBalance = await getEthBalance(senderWallet);
-    if (amountNumber > availableBalance) {
-      res.status(400);
-      throw new Error(
-        `Insufficient balance. Available: ${availableBalance.toFixed(4)} ${DEFAULT_ASSET_SYMBOL}.`
-      );
     }
 
     txDoc = await Transaction.create({
