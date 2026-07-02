@@ -7,7 +7,10 @@ import PasswordVisibilityToggle from "../components/PasswordVisibilityToggle.jsx
 import SuccessTransition from "../components/SuccessTransition.jsx";
 import { apiRequest } from "../services/api.js";
 import { getPasswordPolicyError } from "../utils/passwordPolicy.js";
-import { SUCCESS_TRANSITION_DURATION_MS } from "../utils/successTransition.js";
+import {
+  SUCCESS_TRANSITION_DURATION_MS,
+  useTransitionNotification,
+} from "../utils/successTransition.js";
 import {
   FORM_CODE_INPUT_CLASS,
   FORM_INPUT_BASE_CLASS,
@@ -83,7 +86,7 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
+  const [notification, showNotification] = useTransitionNotification();
   const [fieldErrors, setFieldErrors] = useState({
     identifier: "",
     verificationChannel: "",
@@ -128,7 +131,6 @@ export default function ForgotPassword() {
   function resetMessages() {
     setError("");
     setInfo("");
-    setSuccessMessage("");
     setFieldErrors({
       identifier: "",
       verificationChannel: "",
@@ -206,7 +208,9 @@ export default function ForgotPassword() {
       setCooldown(0);
       setStep(STEPS.CHANNEL);
     } catch (err) {
-      setError(getUserErrorMessage(err, "Could not find the account."));
+      const message = getUserErrorMessage(err, "Could not find the account.");
+      setError(message);
+      showNotification(message, { variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -264,6 +268,7 @@ export default function ForgotPassword() {
             response.destination || "your registered email"
           }.`
         );
+        showNotification("Password reset link sent", { variant: "success" });
         setStep(STEPS.IDENTIFIER);
         return;
       }
@@ -277,6 +282,7 @@ export default function ForgotPassword() {
         setVerificationChannel(CHANNELS.EMAIL);
       }
       setError(message);
+      showNotification(message, { variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -318,7 +324,9 @@ export default function ForgotPassword() {
       setCooldown(0);
       setStep(STEPS.PASSWORD);
     } catch (err) {
-      setError(getUserErrorMessage(err, "Code verification failed."));
+      const message = getUserErrorMessage(err, "Code verification failed.");
+      setError(message);
+      showNotification(message, { variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -342,7 +350,9 @@ export default function ForgotPassword() {
       setDeliveryHint(response.destination || deliveryHint);
       setCooldown(RESEND_DELAY);
     } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to resend code."));
+      const message = getUserErrorMessage(err, "Failed to resend code.");
+      setError(message);
+      showNotification(message, { variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -388,12 +398,14 @@ export default function ForgotPassword() {
 
       setInfo(response.message || "Password updated successfully.");
 
-      setSuccessMessage("Password reset successful");
+      showNotification("Password reset successful", { variant: "success" });
       setLoading(false);
       await delay(SUCCESS_TRANSITION_DURATION_MS);
       navigate("/login", { replace: true });
     } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to reset password."));
+      const message = getUserErrorMessage(err, "Failed to reset password.");
+      setError(message);
+      showNotification(message, { variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -401,7 +413,10 @@ export default function ForgotPassword() {
 
   return (
     <>
-      <SuccessTransition message={successMessage} />
+      <SuccessTransition
+        message={notification.message}
+        variant={notification.variant}
+      />
 
       <AuthCard title="Forgot Password" subtitle={subtitle} onBack={handleBack}>
       {loading ? <PageLoading className="mb-3">Processing...</PageLoading> : null}

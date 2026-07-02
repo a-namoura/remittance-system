@@ -14,7 +14,7 @@ import {
   resolveTransferLink,
 } from "../services/transactionApi.js";
 import { getAuthToken, requireAuthToken } from "../services/session.js";
-import { useSuccessTransitionMessage } from "../utils/successTransition.js";
+import { useTransitionNotification } from "../utils/successTransition.js";
 import { isValidEvmAddress } from "../utils/security.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
@@ -28,8 +28,8 @@ export default function ClaimTransfer() {
   const [error, setError] = useState("");
   const [claiming, setClaiming] = useState(false);
   const [claimSuccess, setClaimSuccess] = useState("");
-  const [transactionSuccessMessage, showTransactionSuccess] =
-    useSuccessTransitionMessage();
+  const [transactionNotification, showTransactionNotification] =
+    useTransitionNotification();
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
@@ -127,10 +127,12 @@ export default function ClaimTransfer() {
           ? `Transfer claim submitted. Tx: ${txHash}`
           : "Transfer claim submitted. Confirmation is processing."
       );
-      showTransactionSuccess("Transaction submitted");
+      showTransactionNotification("Transaction submitted", { variant: "success" });
       setStatus(result?.status || "claiming");
     } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to claim transfer."));
+      const message = getUserErrorMessage(err, "Failed to claim transfer.");
+      setError(message);
+      showTransactionNotification(message, { variant: "error" });
     } finally {
       setClaiming(false);
     }
@@ -156,7 +158,10 @@ export default function ClaimTransfer() {
 
   return (
     <>
-      <SuccessTransition message={transactionSuccessMessage} />
+      <SuccessTransition
+        message={transactionNotification.message}
+        variant={transactionNotification.variant}
+      />
 
       <PageContainer stack className="max-w-xl pt-16">
       <PageHeader

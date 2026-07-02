@@ -31,7 +31,7 @@ import {
   FORM_HELP_TEXT_CLASS,
   FORM_INPUT_BASE_CLASS,
 } from "../styles/formClasses.js";
-import { useSuccessTransitionMessage } from "../utils/successTransition.js";
+import { useTransitionNotification } from "../utils/successTransition.js";
 import {
   decryptChatPayload,
   encryptForChat,
@@ -344,8 +344,8 @@ export default function Chat() {
   const [requestModalError, setRequestModalError] = useState("");
   const [requestModalInfo, setRequestModalInfo] = useState("");
   const [requestModalLoading, setRequestModalLoading] = useState(false);
-  const [transactionSuccessMessage, showTransactionSuccess] =
-    useSuccessTransitionMessage();
+  const [transactionNotification, showTransactionNotification] =
+    useTransitionNotification();
 
   const timelineRef = useRef(null);
   const composerActionsRef = useRef(null);
@@ -1596,7 +1596,7 @@ export default function Chat() {
       setSendTransferStep("details");
       setComposerMode("message");
       setTimelineInfo("Payment submitted. Confirmation is processing.");
-      showTransactionSuccess("Transaction submitted");
+      showTransactionNotification("Transaction submitted", { variant: "success" });
       forceTimelineScrollRef.current = true;
       await loadHistory({
         threadId: activeThread.id,
@@ -1606,7 +1606,9 @@ export default function Chat() {
       });
       await refreshWalletBalance();
     } catch (err) {
-      setTimelineError(getUserErrorMessage(err, "Failed to send payment."));
+      const message = getUserErrorMessage(err, "Failed to send payment.");
+      setTimelineError(message);
+      showTransactionNotification(message, { variant: "error" });
     } finally {
       transferSubmittingRef.current = false;
       setSendingTransfer(false);
@@ -1630,9 +1632,11 @@ export default function Chat() {
         revealedMessages: [],
       });
       setTimelineInfo("Chat report submitted.");
-      showTransactionSuccess("Report submitted");
+      showTransactionNotification("Report submitted", { variant: "success" });
     } catch (err) {
-      setTimelineError(getUserErrorMessage(err, "Failed to submit report."));
+      const message = getUserErrorMessage(err, "Failed to submit report.");
+      setTimelineError(message);
+      showTransactionNotification(message, { variant: "error" });
     } finally {
       setReporting(false);
     }
@@ -1713,7 +1717,7 @@ export default function Chat() {
           : current
       );
       setRequestModalInfo("Payment submitted. Confirmation is processing.");
-      showTransactionSuccess("Transaction submitted");
+      showTransactionNotification("Transaction submitted", { variant: "success" });
       await loadHistory({
         threadId: activeThread.id,
         identityValue: identity,
@@ -1721,7 +1725,9 @@ export default function Chat() {
       });
       await refreshWalletBalance();
     } catch (err) {
-      setRequestModalError(getUserErrorMessage(err, "Failed to send payment for request."));
+      const message = getUserErrorMessage(err, "Failed to send payment for request.");
+      setRequestModalError(message);
+      showTransactionNotification(message, { variant: "error" });
     } finally {
       setRequestModalLoading(false);
     }
@@ -1767,7 +1773,10 @@ export default function Chat() {
 
   return (
     <>
-      <SuccessTransition message={transactionSuccessMessage} />
+      <SuccessTransition
+        message={transactionNotification.message}
+        variant={transactionNotification.variant}
+      />
 
       <PageContainer stack className="gap-3">
       <PageHeader

@@ -4,7 +4,10 @@ import { apiRequest } from "../services/api.js";
 import AuthCard from "../components/AuthCard.jsx";
 import { FieldError, PageLoading, PageNotice } from "../components/PageLayout.jsx";
 import SuccessTransition from "../components/SuccessTransition.jsx";
-import { SUCCESS_TRANSITION_DURATION_MS } from "../utils/successTransition.js";
+import {
+  SUCCESS_TRANSITION_DURATION_MS,
+  useTransitionNotification,
+} from "../utils/successTransition.js";
 import { clearAuthToken, setAuthToken } from "../services/session.js";
 import {
   FORM_CODE_INPUT_CLASS,
@@ -71,7 +74,7 @@ export default function Login() {
 
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
+  const [notification, showNotification] = useTransitionNotification();
   const [fieldErrors, setFieldErrors] = useState({
     identifier: "",
     password: "",
@@ -103,7 +106,6 @@ export default function Login() {
   function resetMessages() {
     setError("");
     setInfo("");
-    setSuccessMessage("");
     setFieldErrors({
       identifier: "",
       password: "",
@@ -181,6 +183,7 @@ export default function Login() {
       setStep(STEPS.CHANNEL);
     } catch (err) {
       const message = getUserErrorMessage(err, "Login failed.");
+      showNotification(message, { variant: "error" });
       const targetField = message.toLowerCase().includes("email")
         ? "identifier"
         : "password";
@@ -241,6 +244,7 @@ export default function Login() {
       setStep(STEPS.CODE);
     } catch (err) {
       const message = getUserErrorMessage(err, "Login failed.");
+      showNotification(message, { variant: "error" });
       if (message.toLowerCase().includes("no phone number")) {
         setAvailableChannels((prev) => ({ ...prev, phone: false }));
         setVerificationChannel(CHANNELS.EMAIL);
@@ -290,14 +294,16 @@ export default function Login() {
       });
 
       setAuthToken(pendingToken);
-      setSuccessMessage("Login successful");
+      showNotification("Login successful", { variant: "success" });
       setLoading(false);
       await delay(SUCCESS_TRANSITION_DURATION_MS);
       navigate("/dashboard", { replace: true });
     } catch (err) {
+      const message = getUserErrorMessage(err, "Code verification failed.");
+      showNotification(message, { variant: "error" });
       setFieldErrors((current) => ({
         ...current,
-        code: getUserErrorMessage(err, "Code verification failed."),
+        code: message,
       }));
     } finally {
       setLoading(false);
@@ -318,7 +324,9 @@ export default function Login() {
       setDeliveryHint(res.destination || deliveryHint);
       setCooldown(RESEND_DELAY);
     } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to resend code."));
+      const message = getUserErrorMessage(err, "Failed to resend code.");
+      setError(message);
+      showNotification(message, { variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -331,7 +339,10 @@ export default function Login() {
 
   return (
     <>
-      <SuccessTransition message={successMessage} />
+      <SuccessTransition
+        message={notification.message}
+        variant={notification.variant}
+      />
 
       <AuthCard title="Login" subtitle={subtitle} onBack={handleBack}>
         {loading ? <PageLoading className="mb-3">Processing...</PageLoading> : null}

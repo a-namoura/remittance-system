@@ -9,7 +9,10 @@ import { apiRequest } from "../services/api.js";
 import { clearAuthToken, setAuthToken } from "../services/session.js";
 import { isValidEmail } from "../utils/emailValidation.js";
 import { getPasswordPolicyError } from "../utils/passwordPolicy.js";
-import { SUCCESS_TRANSITION_DURATION_MS } from "../utils/successTransition.js";
+import {
+  SUCCESS_TRANSITION_DURATION_MS,
+  useTransitionNotification,
+} from "../utils/successTransition.js";
 import {
   FORM_CODE_INPUT_CLASS,
   FORM_INPUT_BASE_CLASS,
@@ -160,7 +163,7 @@ export default function Register() {
 
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
+  const [notification, showNotification] = useTransitionNotification();
   const [fieldErrors, setFieldErrors] = useState(EMPTY_FIELD_ERRORS);
   const [loading, setLoading] = useState(false);
 
@@ -271,7 +274,6 @@ export default function Register() {
     setEmailCode("");
     setEmailCodeExpiresAt(null);
     setInfo("");
-    setSuccessMessage("");
   }
 
   function clearFieldError(field) {
@@ -299,7 +301,6 @@ export default function Register() {
   function handleBack() {
     setError("");
     setInfo("");
-    setSuccessMessage("");
     clearFieldErrors();
 
     switch (step) {
@@ -369,7 +370,9 @@ export default function Register() {
       setShowPassword(false);
       setCooldown(RESEND_DELAY);
     } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to send code."));
+      const message = getUserErrorMessage(err, "Failed to send code.");
+      setError(message);
+      showNotification(message, { variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -409,7 +412,9 @@ export default function Register() {
       setInfo("Email verified successfully. Now create your password.");
       setStep(STEPS.PASSWORD);
     } catch (err) {
-      setError(getUserErrorMessage(err, "Verification failed."));
+      const message = getUserErrorMessage(err, "Verification failed.");
+      setError(message);
+      showNotification(message, { variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -640,12 +645,14 @@ export default function Register() {
         setAuthToken(res.token);
       }
 
-      setSuccessMessage("Registration successful");
+      showNotification("Registration successful", { variant: "success" });
       setLoading(false);
       await delay(SUCCESS_TRANSITION_DURATION_MS);
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      setError(getUserErrorMessage(err, "Registration failed."));
+      const message = getUserErrorMessage(err, "Registration failed.");
+      setError(message);
+      showNotification(message, { variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -653,7 +660,10 @@ export default function Register() {
 
   return (
     <>
-      <SuccessTransition message={successMessage} />
+      <SuccessTransition
+        message={notification.message}
+        variant={notification.variant}
+      />
 
       <AuthCard title="Create your account" subtitle={subtitle} onBack={handleBack}>
       <div className="flex justify-center mb-4">

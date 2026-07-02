@@ -31,7 +31,7 @@ import {
 } from "../styles/formClasses.js";
 import { isValidEvmAddress, normalizeEvmAddress } from "../utils/security.js";
 import { copyText, getQrImageUrl, shortWallet } from "../utils/paylink.js";
-import { useSuccessTransitionMessage } from "../utils/successTransition.js";
+import { useTransitionNotification } from "../utils/successTransition.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 const PAYMENT_OPTIONS = [
@@ -48,6 +48,10 @@ function isComingSoonMethod(method) {
 
 function isSuccessfulTransactionStatus(status) {
   return String(status || "").trim().toLowerCase() === "success";
+}
+
+function isFailedTransactionStatus(status) {
+  return String(status || "").trim().toLowerCase() === "failed";
 }
 
 function methodGlyph(id) {
@@ -280,8 +284,8 @@ export default function SendMoney() {
   const [sending, setSending] = useState(false);
   const [methodError, setMethodError] = useState("");
   const [methodSuccess, setMethodSuccess] = useState("");
-  const [transactionSuccessMessage, showTransactionSuccess] =
-    useSuccessTransitionMessage();
+  const [transactionNotification, showTransactionNotification] =
+    useTransitionNotification();
   const [availableBalance, setAvailableBalance] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
@@ -722,12 +726,18 @@ export default function SendMoney() {
       const status = result?.transaction?.status || "pending";
       setMethodSuccess(`Transfer created with status "${status}".`);
       if (isSuccessfulTransactionStatus(status)) {
-        showTransactionSuccess("Transaction successful");
+        showTransactionNotification("Transaction successful", { variant: "success" });
+      } else if (isFailedTransactionStatus(status)) {
+        const message = result?.transaction?.failureReason || "Transaction failed.";
+        setMethodError(message);
+        showTransactionNotification(message, { variant: "error" });
       }
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
-      setMethodError(getUserErrorMessage(err, "Failed to send transaction."));
+      const message = getUserErrorMessage(err, "Failed to send transaction.");
+      setMethodError(message);
+      showTransactionNotification(message, { variant: "error" });
     } finally {
       transferSubmittingRef.current = false;
       setSending(false);
@@ -775,12 +785,18 @@ export default function SendMoney() {
       const status = result?.transaction?.status || "pending";
       setMethodSuccess(`Transfer created with status "${status}".`);
       if (isSuccessfulTransactionStatus(status)) {
-        showTransactionSuccess("Transaction successful");
+        showTransactionNotification("Transaction successful", { variant: "success" });
+      } else if (isFailedTransactionStatus(status)) {
+        const message = result?.transaction?.failureReason || "Transaction failed.";
+        setMethodError(message);
+        showTransactionNotification(message, { variant: "error" });
       }
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
-      setMethodError(getUserErrorMessage(err, "Failed to send transaction."));
+      const message = getUserErrorMessage(err, "Failed to send transaction.");
+      setMethodError(message);
+      showTransactionNotification(message, { variant: "error" });
     } finally {
       transferSubmittingRef.current = false;
       setSending(false);
@@ -848,9 +864,11 @@ export default function SendMoney() {
       const url = `${origin}/claim-transfer?token=${encodeURIComponent(claimToken)}`;
       setGeneratedLink(url);
       setMethodSuccess("Link created. Share it with the receiver to claim funds.");
-      showTransactionSuccess("Link created");
+      showTransactionNotification("Link created", { variant: "success" });
     } catch (err) {
-      setMethodError(getUserErrorMessage(err, "Failed to generate link."));
+      const message = getUserErrorMessage(err, "Failed to generate link.");
+      setMethodError(message);
+      showTransactionNotification(message, { variant: "error" });
     } finally {
       setLinkLoading(false);
     }
@@ -973,7 +991,10 @@ export default function SendMoney() {
 
   return (
     <>
-      <SuccessTransition message={transactionSuccessMessage} />
+      <SuccessTransition
+        message={transactionNotification.message}
+        variant={transactionNotification.variant}
+      />
 
       <PageContainer stack>
       <PageHeader

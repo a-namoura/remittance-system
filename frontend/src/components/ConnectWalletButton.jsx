@@ -13,7 +13,7 @@ import {
 import SuccessTransition from "./SuccessTransition.jsx";
 
 import { getUserErrorMessage } from "../utils/userError.js";
-import { useSuccessTransitionMessage } from "../utils/successTransition.js";
+import { useTransitionNotification } from "../utils/successTransition.js";
 
 const WALLET_PROVIDER_MISSING_MESSAGE =
   "Wallet provider not found. Install or enable MetaMask, then try again.";
@@ -93,8 +93,8 @@ export default function ConnectWalletButton({
 }) {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
-  const [walletSuccessMessage, showWalletSuccess] =
-    useSuccessTransitionMessage();
+  const [walletNotification, showWalletNotification] =
+    useTransitionNotification();
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -198,12 +198,14 @@ export default function ConnectWalletButton({
       const statusMessage =
         res.message || "Wallet successfully verified and linked to your account.";
       setStatus(statusMessage);
-      showWalletSuccess("Wallet connected successfully");
+      showWalletNotification("Wallet connected successfully", { variant: "success" });
       if (typeof onLinked === "function") {
         onLinked(normalizedAddress);
       }
     } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to connect wallet."));
+      const message = getUserErrorMessage(err, "Failed to connect wallet.");
+      setError(message);
+      showWalletNotification(message, { variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -227,7 +229,9 @@ export default function ConnectWalletButton({
         onDisconnected();
       }
     } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to unlink wallet."));
+      const message = getUserErrorMessage(err, "Failed to unlink wallet.");
+      setError(message);
+      showWalletNotification(message, { variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -241,7 +245,10 @@ export default function ConnectWalletButton({
 
   return (
     <>
-      <SuccessTransition message={walletSuccessMessage} />
+      <SuccessTransition
+        message={walletNotification.message}
+        variant={walletNotification.variant}
+      />
 
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
