@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  FieldError,
   PageContainer,
   PageError,
   PageHeader,
@@ -299,6 +300,11 @@ export default function SendMoney() {
   const [verificationChannel, setVerificationChannel] = useState("email");
   const [verificationDestination, setVerificationDestination] = useState("");
   const [codeSending, setCodeSending] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({
+    destination: "",
+    amount: "",
+    code: "",
+  });
   const transferSubmittingRef = useRef(false);
 
   const friendParam = searchParams.get("friend");
@@ -563,6 +569,7 @@ export default function SendMoney() {
     setMethodSuccess("");
     setVerificationCode("");
     setVerificationDestination("");
+    setFieldErrors({ destination: "", amount: "", code: "" });
     setIsSearchOpen(false);
   }
 
@@ -573,6 +580,7 @@ export default function SendMoney() {
     setVerificationDestination("");
     setMethodError("");
     setMethodSuccess("");
+    setFieldErrors({ destination: "", amount: "", code: "" });
   }
 
   function resetMethodState() {
@@ -587,6 +595,7 @@ export default function SendMoney() {
     setVerificationChannel("email");
     setMethodError("");
     setMethodSuccess("");
+    setFieldErrors({ destination: "", amount: "", code: "" });
   }
 
   function openMethod(method) {
@@ -632,26 +641,30 @@ export default function SendMoney() {
   }
 
   function validateAddressTransferDetails() {
+    const nextFieldErrors = { destination: "", amount: "", code: "" };
     const { destination, receiver, source } = addressTransferDestination();
     if (!isValidEvmAddress(destination)) {
-      setMethodError(
+      nextFieldErrors.destination =
         source === "recipient"
           ? "Selected recipient has an invalid wallet address."
-          : "Enter a valid destination wallet address."
-      );
+          : "Enter a valid destination wallet address.";
+      setFieldErrors(nextFieldErrors);
       return null;
     }
 
     const normalizedDestination = normalizeEvmAddress(destination);
     const myWallet = normalizeEvmAddress(me?.wallet?.address);
     if (myWallet && normalizedDestination === myWallet) {
-      setMethodError("You cannot transfer funds to your own wallet address.");
+      nextFieldErrors.destination =
+        "You cannot transfer funds to your own wallet address.";
+      setFieldErrors(nextFieldErrors);
       return null;
     }
 
     const amount = Number(String(amountEth).trim());
     if (!Number.isFinite(amount) || amount <= 0) {
-      setMethodError("Amount must be a positive number.");
+      nextFieldErrors.amount = "Amount must be a positive number.";
+      setFieldErrors(nextFieldErrors);
       return null;
     }
 
@@ -666,13 +679,75 @@ export default function SendMoney() {
     }
 
     if (amount > availableBalance) {
-      setMethodError(
-        `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`
-      );
+      nextFieldErrors.amount = `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`;
+      setFieldErrors(nextFieldErrors);
       return null;
     }
 
+    setFieldErrors(nextFieldErrors);
     return { destination: normalizedDestination, amount, receiver, source };
+  }
+
+  function validateDirectTransferDetails() {
+    const nextFieldErrors = { destination: "", amount: "", code: "" };
+
+    if (!selectedRecipient) {
+      nextFieldErrors.destination = "Select a recipient first.";
+      setFieldErrors(nextFieldErrors);
+      return null;
+    }
+
+    const wallet = String(selectedRecipient.walletAddress || "").trim();
+    if (!wallet) {
+      nextFieldErrors.destination =
+        "Selected recipient does not have a linked wallet.";
+      setFieldErrors(nextFieldErrors);
+      return null;
+    }
+
+    if (!isValidEvmAddress(wallet)) {
+      nextFieldErrors.destination =
+        "Selected recipient has an invalid wallet address.";
+      setFieldErrors(nextFieldErrors);
+      return null;
+    }
+
+    const normalizedWallet = normalizeEvmAddress(wallet);
+    const myWallet = normalizeEvmAddress(me?.wallet?.address);
+    if (myWallet && normalizedWallet === myWallet) {
+      nextFieldErrors.destination =
+        "You cannot transfer funds to your own wallet address.";
+      setFieldErrors(nextFieldErrors);
+      return null;
+    }
+
+    const amount = Number(String(amountEth).trim());
+    if (!Number.isFinite(amount) || amount <= 0) {
+      nextFieldErrors.amount = "Amount must be a positive number.";
+      setFieldErrors(nextFieldErrors);
+      return null;
+    }
+
+    if (balanceLoading) {
+      setMethodError("Checking your balance. Please wait and try again.");
+      setFieldErrors(nextFieldErrors);
+      return null;
+    }
+
+    if (!Number.isFinite(availableBalance)) {
+      setMethodError("Unable to verify your balance right now.");
+      setFieldErrors(nextFieldErrors);
+      return null;
+    }
+
+    if (amount > availableBalance) {
+      nextFieldErrors.amount = `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`;
+      setFieldErrors(nextFieldErrors);
+      return null;
+    }
+
+    setFieldErrors(nextFieldErrors);
+    return { wallet: normalizedWallet, amount };
   }
 
   function goToAddressVerification() {
@@ -692,55 +767,15 @@ export default function SendMoney() {
     setMethodError("");
     setMethodSuccess("");
 
-    if (!selectedRecipient) {
-      setMethodError("Select a recipient first.");
-      return;
-    }
-
-    const wallet = String(selectedRecipient.walletAddress || "").trim();
-    if (!wallet) {
-      setMethodError("Selected recipient does not have a linked wallet.");
-      return;
-    }
-
-    if (!isValidEvmAddress(wallet)) {
-      setMethodError("Selected recipient has an invalid wallet address.");
-      return;
-    }
-
-    const normalizedWallet = normalizeEvmAddress(wallet);
-    const myWallet = normalizeEvmAddress(me?.wallet?.address);
-    if (myWallet && normalizedWallet === myWallet) {
-      setMethodError("You cannot transfer funds to your own wallet address.");
-      return;
-    }
-
-    const amount = Number(String(amountEth).trim());
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setMethodError("Amount must be a positive number.");
-      return;
-    }
-
-    if (balanceLoading) {
-      setMethodError("Checking your balance. Please wait and try again.");
-      return;
-    }
-
-    if (!Number.isFinite(availableBalance)) {
-      setMethodError("Unable to verify your balance right now.");
-      return;
-    }
-
-    if (amount > availableBalance) {
-      setMethodError(
-        `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`
-      );
-      return;
-    }
+    const details = validateDirectTransferDetails();
+    if (!details) return;
 
     const normalizedCode = String(verificationCode || "").trim();
     if (normalizedCode.length < 6) {
-      setMethodError("Enter the 6-digit verification code before sending.");
+      setFieldErrors((current) => ({
+        ...current,
+        code: "Enter the 6-digit verification code before sending.",
+      }));
       return;
     }
 
@@ -755,8 +790,8 @@ export default function SendMoney() {
       setSending(true);
       const result = await sendTransaction({
         token,
-        receiverWallet: normalizedWallet,
-        amountEth: amount,
+        receiverWallet: details.wallet,
+        amountEth: details.amount,
         verificationCode: normalizedCode,
       });
 
@@ -799,7 +834,10 @@ export default function SendMoney() {
 
     const normalizedCode = String(verificationCode || "").trim();
     if (normalizedCode.length < 6) {
-      setMethodError("Enter the 6-digit verification code to verify and send.");
+      setFieldErrors((current) => ({
+        ...current,
+        code: "Enter the 6-digit verification code to verify and send.",
+      }));
       return;
     }
 
@@ -854,7 +892,10 @@ export default function SendMoney() {
 
     const amount = Number(String(amountEth).trim());
     if (!Number.isFinite(amount) || amount <= 0) {
-      setMethodError("Amount must be a positive number.");
+      setFieldErrors((current) => ({
+        ...current,
+        amount: "Amount must be a positive number.",
+      }));
       return;
     }
 
@@ -869,9 +910,10 @@ export default function SendMoney() {
     }
 
     if (amount > availableBalance) {
-      setMethodError(
-        `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`
-      );
+      setFieldErrors((current) => ({
+        ...current,
+        amount: `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`,
+      }));
       return;
     }
 
@@ -952,8 +994,7 @@ export default function SendMoney() {
 
     if (activeMethod === "address") {
       if (!validateAddressTransferDetails()) return;
-    } else if (!directDetailsReady) {
-      setMethodError("Select a recipient with a valid wallet and enter an amount within your balance.");
+    } else if (!validateDirectTransferDetails()) {
       return;
     }
 
@@ -1007,7 +1048,6 @@ export default function SendMoney() {
   const linkedWallet = String(me?.wallet?.address || "").trim();
   const parsedAmount = Number(String(amountEth).trim());
   const hasPositiveAmount = Number.isFinite(parsedAmount) && parsedAmount > 0;
-  const hasValidSelectedWallet = isValidEvmAddress(selectedWallet);
   const hasValidLinkedWallet = isValidEvmAddress(linkedWallet);
   const addressDestination = addressTransferDestination();
   const hasSelectedAddressDestination = addressDestination.source === "recipient";
@@ -1020,11 +1060,7 @@ export default function SendMoney() {
     parsedAmount > availableBalance;
   const amountWithinBalance = hasPositiveAmount && hasLoadedBalance && !exceedsBalance;
   const addressFieldsReady = hasValidAddressDestination && hasPositiveAmount;
-  const canRequestAddressVerification = addressFieldsReady && amountWithinBalance;
-  const directDetailsReady =
-    Boolean(selectedRecipient) && hasValidSelectedWallet && amountWithinBalance;
   const canCreateClaimTransfer = hasValidLinkedWallet && amountWithinBalance;
-  const hasVerificationCode = String(verificationCode || "").trim().length >= 6;
   const canUsePhoneVerification = Boolean(String(me?.phoneNumber || "").trim());
   const isAddressVerificationStep =
     activeMethod === "address" && transferStep === "verification";
@@ -1352,27 +1388,30 @@ export default function SendMoney() {
                 {transferStep === "details" ? (
                   <div className="mt-3 space-y-3">
                     {hasSelectedAddressDestination ? (
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                              Receiver
-                            </p>
-                            <p className="truncate text-sm font-semibold text-gray-900">
-                              {displayRecipient(selectedRecipient)}
-                            </p>
-                            <p className="break-all font-mono text-xs text-gray-600">
-                              {addressDestinationWallet}
-                            </p>
+                      <div>
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                                Receiver
+                              </p>
+                              <p className="truncate text-sm font-semibold text-gray-900">
+                                {displayRecipient(selectedRecipient)}
+                              </p>
+                              <p className="break-all font-mono text-xs text-gray-600">
+                                {addressDestinationWallet}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={clearSelectedRecipientForManualAddress}
+                              className={`shrink-0 ${FORM_SMALL_SECONDARY_BUTTON_CLASS}`}
+                            >
+                              Manual
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={clearSelectedRecipientForManualAddress}
-                            className={`shrink-0 ${FORM_SMALL_SECONDARY_BUTTON_CLASS}`}
-                          >
-                            Manual
-                          </button>
                         </div>
+                        <FieldError>{fieldErrors.destination}</FieldError>
                       </div>
                     ) : (
                       <div>
@@ -1386,10 +1425,16 @@ export default function SendMoney() {
                             setManualAddress(event.target.value);
                             setVerificationCode("");
                             setVerificationDestination("");
+                            setFieldErrors((current) => ({
+                              ...current,
+                              destination: "",
+                              code: "",
+                            }));
                           }}
                           placeholder="0x..."
                           className={`${FORM_INPUT_BASE_CLASS} font-mono`}
                         />
+                        <FieldError>{fieldErrors.destination}</FieldError>
                       </div>
                     )}
 
@@ -1406,10 +1451,16 @@ export default function SendMoney() {
                           setAmountEth(event.target.value);
                           setVerificationCode("");
                           setVerificationDestination("");
+                          setFieldErrors((current) => ({
+                            ...current,
+                            amount: "",
+                            code: "",
+                          }));
                         }}
                         placeholder="0.00 ETH"
                         className={FORM_INPUT_BASE_CLASS}
                       />
+                      <FieldError>{fieldErrors.amount}</FieldError>
                     </div>
 
                     {!addressFieldsReady ? (
@@ -1423,7 +1474,6 @@ export default function SendMoney() {
                     <button
                       type="button"
                       onClick={goToAddressVerification}
-                      disabled={!canRequestAddressVerification}
                       className={`w-full ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                     >
                       Continue to verification
@@ -1486,7 +1536,7 @@ export default function SendMoney() {
                       <button
                         type="button"
                         onClick={handleSendCode}
-                        disabled={codeSending || !canRequestAddressVerification}
+                        disabled={codeSending}
                         className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
                       >
                         {codeSending ? "Sending code..." : "Send code"}
@@ -1510,21 +1560,22 @@ export default function SendMoney() {
                           <input
                             type="text"
                             value={verificationCode}
-                            onChange={(event) =>
-                              setVerificationCode(String(event.target.value || "").replace(/\D/g, ""))
-                            }
+                            onChange={(event) => {
+                              setVerificationCode(String(event.target.value || "").replace(/\D/g, ""));
+                              setFieldErrors((current) => ({
+                                ...current,
+                                code: "",
+                              }));
+                            }}
                             maxLength={6}
                             placeholder="6 digits"
                             className={FORM_CODE_INPUT_CLASS}
                           />
+                          <FieldError>{fieldErrors.code}</FieldError>
                         </div>
                         <button
                           type="submit"
-                          disabled={
-                            sending ||
-                            !canRequestAddressVerification ||
-                            !hasVerificationCode
-                          }
+                          disabled={sending}
                           className={FORM_INLINE_PRIMARY_BUTTON_CLASS}
                         >
                           {sending ? "Sending..." : "Confirm and send"}
@@ -1554,10 +1605,18 @@ export default function SendMoney() {
                     min="0"
                     step="0.0001"
                     value={amountEth}
-                    onChange={(event) => setAmountEth(event.target.value)}
+                    onChange={(event) => {
+                      setAmountEth(event.target.value);
+                      setFieldErrors((current) => ({
+                        ...current,
+                        amount: "",
+                        code: "",
+                      }));
+                    }}
                     placeholder="0.00 ETH"
                     className={FORM_INPUT_BASE_CLASS}
                   />
+                  <FieldError>{fieldErrors.amount}</FieldError>
                 </div>
 
                 <div className="grid gap-2 sm:grid-cols-[1fr,auto]">
@@ -1577,10 +1636,7 @@ export default function SendMoney() {
                   <button
                     type="button"
                     onClick={handleSendCode}
-                    disabled={
-                      codeSending ||
-                      !directDetailsReady
-                    }
+                    disabled={codeSending}
                     className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
                   >
                     {codeSending ? "Sending code..." : "Send code"}
@@ -1604,22 +1660,23 @@ export default function SendMoney() {
                       <input
                         type="text"
                         value={verificationCode}
-                        onChange={(event) =>
-                          setVerificationCode(String(event.target.value || "").replace(/\D/g, ""))
-                        }
+                        onChange={(event) => {
+                          setVerificationCode(String(event.target.value || "").replace(/\D/g, ""));
+                          setFieldErrors((current) => ({
+                            ...current,
+                            code: "",
+                          }));
+                        }}
                         maxLength={6}
                         placeholder="6 digits"
                         className={FORM_CODE_INPUT_CLASS}
                       />
+                      <FieldError>{fieldErrors.code}</FieldError>
                     </div>
 
                     <button
                       type="submit"
-                      disabled={
-                        sending ||
-                        !directDetailsReady ||
-                        !hasVerificationCode
-                      }
+                      disabled={sending}
                       className={`w-full ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                     >
                       {sending ? "Sending..." : "Send now"}
@@ -1638,10 +1695,17 @@ export default function SendMoney() {
                     min="0"
                     step="0.0001"
                     value={amountEth}
-                    onChange={(event) => setAmountEth(event.target.value)}
+                    onChange={(event) => {
+                      setAmountEth(event.target.value);
+                      setFieldErrors((current) => ({
+                        ...current,
+                        amount: "",
+                      }));
+                    }}
                     placeholder="0.00 ETH"
                     className={FORM_INPUT_BASE_CLASS}
                   />
+                  <FieldError>{fieldErrors.amount}</FieldError>
                 </div>
 
                 <div>
