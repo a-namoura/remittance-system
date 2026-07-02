@@ -561,7 +561,18 @@ export default function SendMoney() {
 
     setMethodError("");
     setMethodSuccess("");
+    setVerificationCode("");
+    setVerificationDestination("");
     setIsSearchOpen(false);
+  }
+
+  function clearSelectedRecipientForManualAddress() {
+    setSelectedRecipient(null);
+    setSearch("");
+    setVerificationCode("");
+    setVerificationDestination("");
+    setMethodError("");
+    setMethodSuccess("");
   }
 
   function resetMethodState() {
@@ -598,10 +609,36 @@ export default function SendMoney() {
     closeMethod();
   }
 
+  function selectedRecipientWallet() {
+    const wallet = String(selectedRecipient?.walletAddress || "").trim();
+    return isValidEvmAddress(wallet) ? normalizeEvmAddress(wallet) : "";
+  }
+
+  function addressTransferDestination() {
+    const selectedWalletForTransfer = selectedRecipientWallet();
+    if (selectedWalletForTransfer) {
+      return {
+        destination: selectedWalletForTransfer,
+        receiver: displayRecipient(selectedRecipient),
+        source: "recipient",
+      };
+    }
+
+    return {
+      destination: String(manualAddress || "").trim(),
+      receiver: "Manual wallet address",
+      source: "manual",
+    };
+  }
+
   function validateAddressTransferDetails() {
-    const destination = String(manualAddress || "").trim();
+    const { destination, receiver, source } = addressTransferDestination();
     if (!isValidEvmAddress(destination)) {
-      setMethodError("Enter a valid destination wallet address.");
+      setMethodError(
+        source === "recipient"
+          ? "Selected recipient has an invalid wallet address."
+          : "Enter a valid destination wallet address."
+      );
       return null;
     }
 
@@ -635,7 +672,7 @@ export default function SendMoney() {
       return null;
     }
 
-    return { destination: normalizedDestination, amount };
+    return { destination: normalizedDestination, amount, receiver, source };
   }
 
   function goToAddressVerification() {
@@ -972,14 +1009,17 @@ export default function SendMoney() {
   const hasPositiveAmount = Number.isFinite(parsedAmount) && parsedAmount > 0;
   const hasValidSelectedWallet = isValidEvmAddress(selectedWallet);
   const hasValidLinkedWallet = isValidEvmAddress(linkedWallet);
+  const addressDestination = addressTransferDestination();
+  const hasSelectedAddressDestination = addressDestination.source === "recipient";
+  const addressDestinationWallet = addressDestination.destination;
+  const hasValidAddressDestination = isValidEvmAddress(addressDestinationWallet);
   const hasLoadedBalance = !balanceLoading && Number.isFinite(availableBalance);
   const exceedsBalance =
     hasPositiveAmount &&
     Number.isFinite(availableBalance) &&
     parsedAmount > availableBalance;
   const amountWithinBalance = hasPositiveAmount && hasLoadedBalance && !exceedsBalance;
-  const hasValidManualAddress = isValidEvmAddress(String(manualAddress || "").trim());
-  const addressFieldsReady = hasValidManualAddress && hasPositiveAmount;
+  const addressFieldsReady = hasValidAddressDestination && hasPositiveAmount;
   const canRequestAddressVerification = addressFieldsReady && amountWithinBalance;
   const directDetailsReady =
     Boolean(selectedRecipient) && hasValidSelectedWallet && amountWithinBalance;
@@ -1245,13 +1285,17 @@ export default function SendMoney() {
                 {activeMethod === "address" ? (
                   <>
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                      Destination
+                      Receiver
                     </p>
                     <p className="text-sm font-semibold text-gray-900">
-                      Manual wallet address
+                      {hasSelectedAddressDestination
+                        ? displayRecipient(selectedRecipient)
+                        : "Manual wallet address"}
                     </p>
                     <p className="text-xs text-gray-600">
-                      Enter a destination address below.
+                      {hasSelectedAddressDestination
+                        ? shortWallet(addressDestinationWallet)
+                        : "Enter a destination address below."}
                     </p>
                   </>
                 ) : (
@@ -1307,22 +1351,47 @@ export default function SendMoney() {
 
                 {transferStep === "details" ? (
                   <div className="mt-3 space-y-3">
-                    <div>
-                      <label className={FORM_FIELD_LABEL_CLASS}>
-                        Destination wallet
-                      </label>
-                      <input
-                        type="text"
-                        value={manualAddress}
-                        onChange={(event) => {
-                          setManualAddress(event.target.value);
-                          setVerificationCode("");
-                          setVerificationDestination("");
-                        }}
-                        placeholder="0x..."
-                        className={`${FORM_INPUT_BASE_CLASS} font-mono`}
-                      />
-                    </div>
+                    {hasSelectedAddressDestination ? (
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                              Receiver
+                            </p>
+                            <p className="truncate text-sm font-semibold text-gray-900">
+                              {displayRecipient(selectedRecipient)}
+                            </p>
+                            <p className="break-all font-mono text-xs text-gray-600">
+                              {addressDestinationWallet}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={clearSelectedRecipientForManualAddress}
+                            className={`shrink-0 ${FORM_SMALL_SECONDARY_BUTTON_CLASS}`}
+                          >
+                            Manual
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className={FORM_FIELD_LABEL_CLASS}>
+                          Destination wallet
+                        </label>
+                        <input
+                          type="text"
+                          value={manualAddress}
+                          onChange={(event) => {
+                            setManualAddress(event.target.value);
+                            setVerificationCode("");
+                            setVerificationDestination("");
+                          }}
+                          placeholder="0x..."
+                          className={`${FORM_INPUT_BASE_CLASS} font-mono`}
+                        />
+                      </div>
+                    )}
 
                     <div>
                       <label className={FORM_FIELD_LABEL_CLASS}>
@@ -1345,7 +1414,9 @@ export default function SendMoney() {
 
                     {!addressFieldsReady ? (
                       <p className={FORM_HELP_TEXT_CLASS}>
-                        Enter destination address and amount to continue to verification.
+                        {hasSelectedAddressDestination
+                          ? "Enter an amount to continue to verification."
+                          : "Enter destination address and amount to continue to verification."}
                       </p>
                     ) : null}
 
@@ -1368,8 +1439,11 @@ export default function SendMoney() {
                         <div className="mt-2 grid gap-2 text-xs">
                           <div>
                             <p className="text-gray-500">Receiver</p>
-                            <p className="break-all font-mono text-gray-900">
-                              {manualAddress}
+                            <p className="font-semibold text-gray-900">
+                              {addressDestination.receiver}
+                            </p>
+                            <p className="break-all font-mono text-[11px] text-gray-600">
+                              {addressDestination.destination}
                             </p>
                           </div>
                           <div>
@@ -1453,7 +1527,7 @@ export default function SendMoney() {
                           }
                           className={FORM_INLINE_PRIMARY_BUTTON_CLASS}
                         >
-                          {sending ? "Sending..." : "Verify and send"}
+                          {sending ? "Sending..." : "Confirm and send"}
                         </button>
                       </div>
                     ) : null}
