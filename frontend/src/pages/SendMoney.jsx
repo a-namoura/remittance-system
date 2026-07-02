@@ -48,7 +48,7 @@ function isComingSoonMethod(method) {
 }
 
 function isSuccessfulTransactionStatus(status) {
-  return String(status || "").trim().toLowerCase() === "success";
+  return ["success", "pending"].includes(String(status || "").trim().toLowerCase());
 }
 
 function isFailedTransactionStatus(status) {
@@ -761,6 +761,24 @@ export default function SendMoney() {
     setVerificationDestination("");
   }
 
+  function handleTransactionResult(result) {
+    const status = result?.transaction?.status || "pending";
+    setMethodSuccess(`Transfer created with status "${status}".`);
+
+    if (isFailedTransactionStatus(status)) {
+      const message = result?.transaction?.failureReason || "Transaction failed.";
+      setMethodError(message);
+      showTransactionNotification(message, { variant: "error" });
+      return;
+    }
+
+    if (isSuccessfulTransactionStatus(status)) {
+      showTransactionNotification(`Transfer created with status "${status}".`, {
+        variant: "success",
+      });
+    }
+  }
+
   async function handleSendDirect(event) {
     event.preventDefault();
     if (transferSubmittingRef.current) return;
@@ -795,15 +813,7 @@ export default function SendMoney() {
         verificationCode: normalizedCode,
       });
 
-      const status = result?.transaction?.status || "pending";
-      setMethodSuccess(`Transfer created with status "${status}".`);
-      if (isSuccessfulTransactionStatus(status)) {
-        showTransactionNotification("Transaction successful", { variant: "success" });
-      } else if (isFailedTransactionStatus(status)) {
-        const message = result?.transaction?.failureReason || "Transaction failed.";
-        setMethodError(message);
-        showTransactionNotification(message, { variant: "error" });
-      }
+      handleTransactionResult(result);
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
@@ -857,15 +867,7 @@ export default function SendMoney() {
         verificationCode: normalizedCode,
       });
 
-      const status = result?.transaction?.status || "pending";
-      setMethodSuccess(`Transfer created with status "${status}".`);
-      if (isSuccessfulTransactionStatus(status)) {
-        showTransactionNotification("Transaction successful", { variant: "success" });
-      } else if (isFailedTransactionStatus(status)) {
-        const message = result?.transaction?.failureReason || "Transaction failed.";
-        setMethodError(message);
-        showTransactionNotification(message, { variant: "error" });
-      }
+      handleTransactionResult(result);
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
