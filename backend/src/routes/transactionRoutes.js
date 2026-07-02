@@ -764,6 +764,26 @@ transactionRouter.get("/balance", protect, async (req, res, next) => {
     }
 
     const normalizedWallet = requireRouteEvmAddress(res, wallet, "wallet");
+    const linkedWallet = await Wallet.findOne({
+      userId: req.user._id,
+      isVerified: true,
+    }).select("address");
+
+    if (!linkedWallet?.address) {
+      res.status(400);
+      throw new Error("You must link and verify a wallet before checking balance.");
+    }
+
+    const normalizedLinkedWallet = requireRouteEvmAddress(
+      res,
+      linkedWallet.address,
+      "linked wallet address"
+    );
+
+    if (normalizedWallet !== normalizedLinkedWallet) {
+      res.status(403);
+      throw new Error("You can only check the balance of your verified linked wallet.");
+    }
 
     if (requestedCurrency && !availableCurrencies.includes(requestedCurrency)) {
       res.status(400);
