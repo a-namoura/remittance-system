@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   PageContainer,
@@ -11,6 +11,7 @@ import SuccessTransition from "../components/SuccessTransition.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import {
   claimTransferLink,
+  pollTransactionUntilSettled,
   resolveTransferLink,
 } from "../services/transactionApi.js";
 import { getAuthToken, requireAuthToken } from "../services/session.js";
@@ -27,10 +28,12 @@ export default function ClaimTransfer() {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
   const [claiming, setClaiming] = useState(false);
+  const [pendingTransaction, setPendingTransaction] = useState(null);
   const [claimSuccess, setClaimSuccess] = useState("");
   const [transactionNotification, showTransactionNotification] =
     useTransitionNotification();
   const [currentUser, setCurrentUser] = useState(null);
+  const pendingPollRef = useRef(null);
 
   useEffect(() => {
     let isCancelled = false;
@@ -90,6 +93,73 @@ export default function ClaimTransfer() {
     };
   }, [token]);
 
+  useEffect(() => {
+    return () => {
+      pendingPollRef.current?.abort();
+    };
+  }, []);
+
+  function notifyTerminalTransaction(transaction) {
+    const status = String(transaction?.status || "").trim().toLowerCase();
+    const txHash = transaction?.txHash ? ` Tx: ${transaction.txHash}` : "";
+
+    if (status === "failed") {
+      const message = transaction?.failureReason || "Transaction failed.";
+      setError(message);
+      setClaimSuccess("");
+      showTransactionNotification(message, { variant: "error" });
+      return;
+    }
+
+    if (status === "success") {
+      const message = `Transfer claim confirmed.${txHash}`;
+      setClaimSuccess(message);
+      setStatus("claimed");
+      showTransactionNotification(message, { variant: "success" });
+    }
+  }
+
+  async function watchPendingTransaction({ authToken, transaction }) {
+    const transactionId = transaction?.id;
+    if (!transactionId) return;
+
+    pendingPollRef.current?.abort();
+    const controller = new AbortController();
+    pendingPollRef.current = controller;
+
+    setPendingTransaction(transaction);
+    setClaimSuccess("Transfer claim submitted. Waiting for confirmation...");
+
+    try {
+      const settledTransaction = await pollTransactionUntilSettled({
+        token: authToken,
+        id: transactionId,
+        signal: controller.signal,
+        onUpdate: (updatedTransaction) => {
+          if (updatedTransaction) {
+            setPendingTransaction(updatedTransaction);
+          }
+        },
+      });
+
+      if (controller.signal.aborted || !settledTransaction) return;
+      setPendingTransaction(null);
+      notifyTerminalTransaction(settledTransaction);
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      setError(
+        getUserErrorMessage(
+          err,
+          "Transfer claim is still pending. We could not refresh its status."
+        )
+      );
+    } finally {
+      if (pendingPollRef.current === controller) {
+        pendingPollRef.current = null;
+      }
+    }
+  }
+
   async function handleClaim() {
     const receiverWallet = String(currentUser?.wallet?.address || "").trim();
     const amount = Number(preview?.amount);
@@ -121,14 +191,19 @@ export default function ClaimTransfer() {
 
       const result = await claimTransferLink({ token, authToken });
       const txHash = result?.transaction?.txHash || null;
+      const txStatus = String(result?.transaction?.status || "").trim().toLowerCase();
 
       setClaimSuccess(
         txHash
           ? `Transfer claim submitted. Tx: ${txHash}`
           : "Transfer claim submitted. Confirmation is processing."
       );
-      showTransactionNotification("Transaction submitted", { variant: "success" });
       setStatus(result?.status || "claiming");
+      if (txStatus === "pending") {
+        watchPendingTransaction({ authToken, transaction: result?.transaction });
+      } else {
+        notifyTerminalTransaction(result?.transaction);
+      }
     } catch (err) {
       const message = getUserErrorMessage(err, "Failed to claim transfer.");
       setError(message);
@@ -173,6 +248,12 @@ export default function ClaimTransfer() {
         <PageError>{error}</PageError>
 
         <PageNotice variant="success">{claimSuccess}</PageNotice>
+
+        {pendingTransaction ? (
+          <PageLoading className="text-sm">
+            Transaction pending. Waiting for confirmation...
+          </PageLoading>
+        ) : null}
 
         {status === "invalid" && (
           <p className="text-sm text-gray-700">

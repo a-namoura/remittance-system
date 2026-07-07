@@ -5,6 +5,7 @@ import {
   PageContainer,
   PageError,
   PageHeader,
+  PageLoading,
   PageNotice,
 } from "../components/PageLayout.jsx";
 import SuccessTransition from "../components/SuccessTransition.jsx";
@@ -13,6 +14,7 @@ import { getCurrentUser } from "../services/authApi.js";
 import { createFriend, listFriends } from "../services/friendApi.js";
 import {
   createTransferLink,
+  pollTransactionUntilSettled,
   sendPaymentVerificationCode,
   sendTransaction,
 } from "../services/transactionApi.js";
@@ -53,6 +55,10 @@ function isSuccessfulTransactionStatus(status) {
 
 function isFailedTransactionStatus(status) {
   return String(status || "").trim().toLowerCase() === "failed";
+}
+
+function isPendingTransactionStatus(status) {
+  return String(status || "").trim().toLowerCase() === "pending";
 }
 
 function methodGlyph(id) {
@@ -283,6 +289,7 @@ export default function SendMoney() {
   const [manualAddress, setManualAddress] = useState("");
   const [amountEth, setAmountEth] = useState("");
   const [sending, setSending] = useState(false);
+  const [pendingTransaction, setPendingTransaction] = useState(null);
   const [methodError, setMethodError] = useState("");
   const [methodSuccess, setMethodSuccess] = useState("");
   const [transactionNotification, showTransactionNotification] =
@@ -306,6 +313,7 @@ export default function SendMoney() {
     code: "",
   });
   const transferSubmittingRef = useRef(false);
+  const pendingPollRef = useRef(null);
 
   const friendParam = searchParams.get("friend");
   const requestToParam = String(searchParams.get("to") || "").trim();
@@ -486,6 +494,12 @@ export default function SendMoney() {
 
     window.addEventListener("mousedown", handleOutsideClick);
     return () => window.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      pendingPollRef.current?.abort();
+    };
   }, []);
 
   function existingFriendForAccount(account) {
@@ -761,21 +775,80 @@ export default function SendMoney() {
     setVerificationDestination("");
   }
 
-  function handleTransactionResult(result) {
-    const status = result?.transaction?.status || "pending";
-    setMethodSuccess(`Transfer created with status "${status}".`);
+  function notifyTerminalTransaction(transaction) {
+    const status = transaction?.status || "";
+    const txHash = transaction?.txHash ? ` Tx: ${transaction.txHash}` : "";
 
     if (isFailedTransactionStatus(status)) {
-      const message = result?.transaction?.failureReason || "Transaction failed.";
+      const message = transaction?.failureReason || "Transaction failed.";
       setMethodError(message);
+      setMethodSuccess("");
       showTransactionNotification(message, { variant: "error" });
       return;
     }
 
-    if (isSuccessfulTransactionStatus(status)) {
-      showTransactionNotification(`Transfer created with status "${status}".`, {
-        variant: "success",
+    if (String(status).toLowerCase() === "success") {
+      const message = `Transfer confirmed.${txHash}`;
+      setMethodSuccess(message);
+      showTransactionNotification(message, { variant: "success" });
+    }
+  }
+
+  async function watchPendingTransaction({ token, transaction }) {
+    const transactionId = transaction?.id;
+    if (!transactionId) return;
+
+    pendingPollRef.current?.abort();
+    const controller = new AbortController();
+    pendingPollRef.current = controller;
+
+    setPendingTransaction(transaction);
+    setMethodSuccess("Transfer submitted. Waiting for confirmation...");
+
+    try {
+      const settledTransaction = await pollTransactionUntilSettled({
+        token,
+        id: transactionId,
+        signal: controller.signal,
+        onUpdate: (updatedTransaction) => {
+          if (updatedTransaction) {
+            setPendingTransaction(updatedTransaction);
+          }
+        },
       });
+
+      if (controller.signal.aborted || !settledTransaction) return;
+      setPendingTransaction(null);
+      notifyTerminalTransaction(settledTransaction);
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      const message = getUserErrorMessage(
+        err,
+        "Transaction is still pending. We could not refresh its status."
+      );
+      setMethodError(message);
+    } finally {
+      if (pendingPollRef.current === controller) {
+        pendingPollRef.current = null;
+      }
+    }
+  }
+
+  function handleTransactionResult(result, token) {
+    const status = result?.transaction?.status || "pending";
+
+    if (isFailedTransactionStatus(status)) {
+      notifyTerminalTransaction(result?.transaction);
+      return;
+    }
+
+    if (isPendingTransactionStatus(status)) {
+      watchPendingTransaction({ token, transaction: result?.transaction });
+      return;
+    }
+
+    if (isSuccessfulTransactionStatus(status)) {
+      notifyTerminalTransaction(result?.transaction);
     }
   }
 
@@ -813,7 +886,7 @@ export default function SendMoney() {
         verificationCode: normalizedCode,
       });
 
-      handleTransactionResult(result);
+      handleTransactionResult(result, token);
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
@@ -867,7 +940,7 @@ export default function SendMoney() {
         verificationCode: normalizedCode,
       });
 
-      handleTransactionResult(result);
+      handleTransactionResult(result, token);
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
@@ -1317,6 +1390,12 @@ export default function SendMoney() {
             <PageNotice className="mt-3" variant="success">
               {methodSuccess}
             </PageNotice>
+
+            {pendingTransaction ? (
+              <PageLoading className="mt-3 text-sm">
+                Transaction pending. Waiting for confirmation...
+              </PageLoading>
+            ) : null}
 
             {!isAddressVerificationStep ? (
               <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">

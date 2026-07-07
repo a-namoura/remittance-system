@@ -136,3 +136,50 @@ export async function getTransactionById({ token, id }) {
   const path = `/api/transactions/${encodeURIComponent(normalizedId)}`;
   return apiRequest(path, { token });
 }
+
+export async function pollTransactionUntilSettled({
+  token,
+  id,
+  intervalMs = 1500,
+  timeoutMs = 60000,
+  signal,
+  onUpdate,
+} = {}) {
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) {
+    throw new Error("Transaction id is required");
+  }
+
+  const startedAt = Date.now();
+
+  while (!signal?.aborted) {
+    const response = await getTransactionById({ token, id: normalizedId });
+    const transaction = response?.transaction || null;
+    if (typeof onUpdate === "function") {
+      onUpdate(transaction);
+    }
+
+    const status = String(transaction?.status || "").trim().toLowerCase();
+    if (status === "success" || status === "failed") {
+      return transaction;
+    }
+
+    if (Date.now() - startedAt >= timeoutMs) {
+      return transaction;
+    }
+
+    await new Promise((resolve) => {
+      const timeoutId = window.setTimeout(resolve, intervalMs);
+      signal?.addEventListener(
+        "abort",
+        () => {
+          window.clearTimeout(timeoutId);
+          resolve();
+        },
+        { once: true }
+      );
+    });
+  }
+
+  return null;
+}
