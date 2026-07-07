@@ -106,6 +106,25 @@ function getFiatAmountUsd(amount, assetSymbol) {
   };
 }
 
+async function rejectInsufficientNativeBalance(res, walletAddress, amount) {
+  const normalizedAmount = Number(amount);
+  const balance = await getEthBalance(walletAddress);
+  await updateStoredWalletBalance(walletAddress, balance);
+
+  if (
+    !Number.isFinite(balance) ||
+    !Number.isFinite(normalizedAmount) ||
+    normalizedAmount > balance
+  ) {
+    res.status(400);
+    throw new Error(
+      `Insufficient balance. Available: ${Number.isFinite(balance) ? balance.toFixed(4) : "0.0000"} ${DEFAULT_ASSET_SYMBOL}.`
+    );
+  }
+
+  return balance;
+}
+
 function normalizeObjectId(value) {
   if (!value) return null;
   const normalized = String(
@@ -229,6 +248,7 @@ transactionRouter.post("/link", protect, async (req, res, next) => {
       walletDoc.address,
       "linked wallet address"
     );
+    await rejectInsufficientNativeBalance(res, senderWallet, amountNumber);
 
     const token = crypto.randomBytes(32).toString("hex");
     const tokenHash = hashLinkToken(token);
@@ -439,6 +459,7 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
       "senderWallet"
     );
     rejectSelfTransfer(res, senderWallet, receiverWallet);
+    await rejectInsufficientNativeBalance(res, senderWallet, linkDoc.amount);
 
     txDoc = await Transaction.create({
       senderUserId: linkDoc.creatorUserId,
@@ -614,6 +635,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       res.status(400);
       throw new Error("amountEth must be a positive number.");
     }
+    await rejectInsufficientNativeBalance(res, senderWallet, amountNumber);
 
     const transferRequestKey = createTransferRequestKey({
       senderUserId: req.user._id,

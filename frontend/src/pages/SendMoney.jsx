@@ -1124,17 +1124,41 @@ export default function SendMoney() {
   const parsedAmount = Number(String(amountEth).trim());
   const hasPositiveAmount = Number.isFinite(parsedAmount) && parsedAmount > 0;
   const hasValidLinkedWallet = isValidEvmAddress(linkedWallet);
+  const normalizedLinkedWallet = normalizeEvmAddress(linkedWallet);
+  const hasValidSelectedWallet = isValidEvmAddress(selectedWallet);
+  const normalizedSelectedWallet = normalizeEvmAddress(selectedWallet);
+  const isSelectedWalletSelf =
+    Boolean(normalizedSelectedWallet) &&
+    Boolean(normalizedLinkedWallet) &&
+    normalizedSelectedWallet === normalizedLinkedWallet;
   const addressDestination = addressTransferDestination();
   const hasSelectedAddressDestination = addressDestination.source === "recipient";
   const addressDestinationWallet = addressDestination.destination;
   const hasValidAddressDestination = isValidEvmAddress(addressDestinationWallet);
+  const normalizedAddressDestination = normalizeEvmAddress(addressDestinationWallet);
+  const isAddressDestinationSelf =
+    Boolean(normalizedAddressDestination) &&
+    Boolean(normalizedLinkedWallet) &&
+    normalizedAddressDestination === normalizedLinkedWallet;
   const hasLoadedBalance = !balanceLoading && Number.isFinite(availableBalance);
   const exceedsBalance =
     hasPositiveAmount &&
     Number.isFinite(availableBalance) &&
     parsedAmount > availableBalance;
   const amountWithinBalance = hasPositiveAmount && hasLoadedBalance && !exceedsBalance;
-  const addressFieldsReady = hasValidAddressDestination && hasPositiveAmount;
+  const addressFieldsReady = hasValidAddressDestination && amountWithinBalance && !isAddressDestinationSelf;
+  const directFieldsReady =
+    Boolean(selectedRecipient) &&
+    hasValidSelectedWallet &&
+    amountWithinBalance &&
+    !isSelectedWalletSelf;
+  const verificationCodeReady = String(verificationCode || "").trim().length >= 6;
+  const canSendAddressCode = addressFieldsReady && !codeSending;
+  const canSendDirectCode = directFieldsReady && !codeSending;
+  const canSubmitAddressTransfer =
+    addressFieldsReady && Boolean(verificationDestination) && verificationCodeReady;
+  const canSubmitDirectTransfer =
+    directFieldsReady && Boolean(verificationDestination) && verificationCodeReady;
   const canCreateClaimTransfer = hasValidLinkedWallet && amountWithinBalance;
   const canUsePhoneVerification = Boolean(String(me?.phoneNumber || "").trim());
   const isAddressVerificationStep =
@@ -1555,6 +1579,7 @@ export default function SendMoney() {
                     <button
                       type="button"
                       onClick={goToAddressVerification}
+                      disabled={!addressFieldsReady}
                       className={`w-full ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                     >
                       Continue to verification
@@ -1617,7 +1642,7 @@ export default function SendMoney() {
                       <button
                         type="button"
                         onClick={handleSendCode}
-                        disabled={codeSending}
+                        disabled={!canSendAddressCode}
                         className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
                       >
                         {codeSending ? "Sending code..." : "Send code"}
@@ -1656,7 +1681,7 @@ export default function SendMoney() {
                         </div>
                         <button
                           type="submit"
-                          disabled={sending}
+                          disabled={sending || !canSubmitAddressTransfer}
                           className={FORM_INLINE_PRIMARY_BUTTON_CLASS}
                         >
                           {sending ? "Sending..." : "Confirm and send"}
@@ -1717,7 +1742,7 @@ export default function SendMoney() {
                   <button
                     type="button"
                     onClick={handleSendCode}
-                    disabled={codeSending}
+                    disabled={!canSendDirectCode}
                     className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
                   >
                     {codeSending ? "Sending code..." : "Send code"}
@@ -1757,7 +1782,7 @@ export default function SendMoney() {
 
                     <button
                       type="submit"
-                      disabled={sending}
+                      disabled={sending || !canSubmitDirectTransfer}
                       className={`w-full ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                     >
                       {sending ? "Sending..." : "Send now"}
