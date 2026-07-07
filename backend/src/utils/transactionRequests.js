@@ -149,7 +149,24 @@ export async function markTransactionFailed(txDoc, err) {
   txDoc.blockchainResultReceivedAt = receivedAt;
   txDoc.blockchainSyncedAt = new Date();
 
-  await saveTransactionWithinSyncWindow(txDoc, receivedAt).catch(() => {});
+  await saveTransactionWithinSyncWindow(txDoc, receivedAt);
+}
+
+export async function markTransactionFailedAndLogSyncError(txDoc, err) {
+  try {
+    await markTransactionFailed(txDoc, err);
+    return null;
+  } catch (syncErr) {
+    if (isTransactionSyncError(syncErr)) {
+      console.error("Transaction failure sync failed:", syncErr.message);
+    } else {
+      console.error(
+        "Transaction failure save failed:",
+        syncErr?.message || syncErr
+      );
+    }
+    return syncErr;
+  }
 }
 
 export async function recordTransactionSubmission(txDoc, submission) {
@@ -238,7 +255,7 @@ export function settleTransactionAfterSubmission({
       if (isTransactionSyncError(err)) {
         console.error("Transaction confirmation sync failed:", err.message);
       } else {
-        await markTransactionFailed(txDoc, err);
+        await markTransactionFailedAndLogSyncError(txDoc, err);
       }
 
       await runSettlementCallback(onFailure, { txDoc, error: err }, "failure");

@@ -6,7 +6,7 @@ import {
   normalizeEvmAddress,
 } from "../utils/walletAddress.js";
 import {
-  markTransactionFailed,
+  markTransactionFailedAndLogSyncError,
   recordTransactionSubmission,
   settleTransactionAfterSubmission,
 } from "../utils/transactionRequests.js";
@@ -108,7 +108,7 @@ export async function sendTransaction(req, res, next) {
     });
   } catch (err) {
     if (txDoc && !["success", "failed"].includes(txDoc.status)) {
-      await markTransactionFailed(txDoc, err);
+      await markTransactionFailedAndLogSyncError(txDoc, err);
     }
     if (err?.statusCode) res.status(err.statusCode);
     next(err);

@@ -25,7 +25,7 @@ import {
   DUPLICATE_TRANSFER_REQUEST_MESSAGE,
   IN_FLIGHT_TRANSACTION_STATUSES,
   isDuplicateTransferRequestKeyError,
-  markTransactionFailed,
+  markTransactionFailedAndLogSyncError,
   recordTransactionSubmission,
   settleTransactionAfterSubmission,
 } from "../utils/transactionRequests.js";
@@ -1280,7 +1280,7 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
     }
 
     if (txDoc && !["success", "failed"].includes(txDoc.status)) {
-      await markTransactionFailed(txDoc, err);
+      await markTransactionFailedAndLogSyncError(txDoc, err);
     }
 
     if (!transferResultLogged) {
@@ -1538,7 +1538,7 @@ chatRouter.post(
       });
     } catch (err) {
       if (txDoc && !["success", "failed"].includes(txDoc.status)) {
-        await markTransactionFailed(txDoc, err);
+        await markTransactionFailedAndLogSyncError(txDoc, err);
       }
 
       if (!transferResultLogged) {

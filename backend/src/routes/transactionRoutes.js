@@ -35,7 +35,7 @@ import {
   DUPLICATE_TRANSFER_REQUEST_MESSAGE,
   IN_FLIGHT_TRANSACTION_STATUSES,
   isDuplicateTransferRequestKeyError,
-  markTransactionFailed,
+  markTransactionFailedAndLogSyncError,
   recordTransactionSubmission,
   settleTransactionAfterSubmission,
 } from "../utils/transactionRequests.js";
@@ -556,7 +556,7 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
     });
   } catch (err) {
     if (txDoc && !["success", "failed"].includes(txDoc.status)) {
-      await markTransactionFailed(txDoc, err);
+      await markTransactionFailedAndLogSyncError(txDoc, err);
     }
 
     if (!transferResultLogged) {
@@ -756,7 +756,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
 
     // If blockchain call failed, mark the transaction as failed
     if (txDoc && !["success", "failed"].includes(txDoc.status)) {
-      await markTransactionFailed(txDoc, err);
+      await markTransactionFailedAndLogSyncError(txDoc, err);
     }
 
     if (!transferResultLogged) {
