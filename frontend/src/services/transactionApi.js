@@ -140,7 +140,7 @@ export async function getTransactionById({ token, id }) {
 export async function pollTransactionUntilSettled({
   token,
   id,
-  intervalMs = 1500,
+  intervalMs = 1000,
   timeoutMs = 60000,
   signal,
   onUpdate,
