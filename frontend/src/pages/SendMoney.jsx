@@ -61,6 +61,11 @@ function isPendingTransactionStatus(status) {
   return String(status || "").trim().toLowerCase() === "pending";
 }
 
+function appendTransactionHash(message, transaction) {
+  if (!transaction?.txHash) return message;
+  return `${message} Tx: ${transaction.txHash}`;
+}
+
 function methodGlyph(id) {
   if (id === "bank") {
     return (
@@ -777,10 +782,10 @@ export default function SendMoney() {
 
   function notifyTerminalTransaction(transaction) {
     const status = transaction?.status || "";
-    const txHash = transaction?.txHash ? ` Tx: ${transaction.txHash}` : "";
 
     if (isFailedTransactionStatus(status)) {
-      const message = transaction?.failureReason || "Transaction failed.";
+      const failureReason = transaction?.failureReason || "Transaction failed.";
+      const message = appendTransactionHash(failureReason, transaction);
       setMethodError(message);
       setMethodSuccess("");
       showTransactionNotification(message, { variant: "error" });
@@ -788,7 +793,7 @@ export default function SendMoney() {
     }
 
     if (String(status).toLowerCase() === "success") {
-      const message = `Transfer confirmed.${txHash}`;
+      const message = appendTransactionHash("Transfer confirmed.", transaction);
       setMethodSuccess(message);
       showTransactionNotification(message, { variant: "success" });
     }

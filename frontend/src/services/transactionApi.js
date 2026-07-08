@@ -140,6 +140,7 @@ export async function getTransactionById({ token, id }) {
 export async function pollTransactionUntilSettled({
   token,
   id,
+  initialDelayMs = 1000,
   intervalMs = 1000,
   timeoutMs = 60000,
   signal,
@@ -151,6 +152,20 @@ export async function pollTransactionUntilSettled({
   }
 
   const startedAt = Date.now();
+
+  if (initialDelayMs > 0 && !signal?.aborted) {
+    await new Promise((resolve) => {
+      const timeoutId = window.setTimeout(resolve, initialDelayMs);
+      signal?.addEventListener(
+        "abort",
+        () => {
+          window.clearTimeout(timeoutId);
+          resolve();
+        },
+        { once: true }
+      );
+    });
+  }
 
   while (!signal?.aborted) {
     const response = await getTransactionById({ token, id: normalizedId });
