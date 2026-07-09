@@ -23,6 +23,9 @@ const PASSWORD_RESET_CHALLENGE_TTL = "15m";
 const PASSWORD_RESET_LINK_TTL_MS = 15 * 60 * 1000;
 const PASSWORD_MIN_LENGTH = 8;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DEFAULT_FAILED_LOGIN_LIMIT = 5;
+const DEFAULT_FAILED_LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
+const DEFAULT_FAILED_LOGIN_DELAY_MS = 500;
 const TOKEN_PURPOSES = {
   PASSWORD_RESET_CHALLENGE: "password_reset_challenge",
 };
@@ -33,9 +36,87 @@ function getJwtSecret() {
   return secret;
 }
 
-function signToken(userId) {
+function getPositiveIntegerEnv(name, fallback) {
+  const value = Number.parseInt(process.env[name] || "", 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function getNonNegativeIntegerEnv(name, fallback) {
+  const value = Number.parseInt(process.env[name] || "", 10);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function getFailedLoginLimit() {
+  return getPositiveIntegerEnv(
+    "FAILED_LOGIN_LIMIT",
+    DEFAULT_FAILED_LOGIN_LIMIT
+  );
+}
+
+function getFailedLoginLockoutMs() {
+  return getPositiveIntegerEnv(
+    "FAILED_LOGIN_LOCKOUT_MS",
+    DEFAULT_FAILED_LOGIN_LOCKOUT_MS
+  );
+}
+
+function getFailedLoginDelayMs() {
+  return getNonNegativeIntegerEnv(
+    "FAILED_LOGIN_DELAY_MS",
+    DEFAULT_FAILED_LOGIN_DELAY_MS
+  );
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isLoginLocked(user) {
+  return (
+    user?.failedLoginLockedUntil &&
+    Date.now() < user.failedLoginLockedUntil.getTime()
+  );
+}
+
+async function applyFailedLoginDelay() {
+  const delayMs = getFailedLoginDelayMs();
+  if (delayMs > 0) {
+    await delay(delayMs);
+  }
+}
+
+async function recordFailedLogin(user) {
+  if (!user) return;
+
+  const attempts = Number(user.failedLoginAttempts || 0) + 1;
+  user.failedLoginAttempts = attempts;
+
+  if (attempts >= getFailedLoginLimit()) {
+    user.failedLoginLockedUntil = new Date(Date.now() + getFailedLoginLockoutMs());
+  }
+
+  await user.save();
+}
+
+async function clearFailedLoginState(user) {
+  if (!user) return;
+
+  user.failedLoginAttempts = 0;
+  user.failedLoginLockedUntil = undefined;
+  await user.save();
+}
+
+function incrementSessionVersion(user) {
+  user.sessionVersion = Number(user.sessionVersion || 0) + 1;
+}
+
+function signToken(user) {
   const secret = getJwtSecret();
-  return jwt.sign({ userId }, secret, { expiresIn: "7d" });
+  return jwt.sign(
+    { userId: user._id, sessionVersion: Number(user.sessionVersion || 0) },
+    secret,
+    { expiresIn: "7d" }
+  );
 }
 
 function signPurposeToken(userId, purpose, expiresIn) {
@@ -484,7 +565,7 @@ export async function register(req, res) {
 
   await logAudit({ user, action: "REGISTER", req });
 
-  const token = signToken(user._id);
+  const token = signToken(user);
 
   res.status(201).json({
     ok: true,
@@ -533,8 +614,11 @@ export async function loginOptions(req, res) {
     });
   }
 
-  const user = await User.findOne(query).select("+passwordHash");
+  const user = await User.findOne(query).select(
+    "+passwordHash +failedLoginAttempts +failedLoginLockedUntil"
+  );
   if (!user) {
+    await applyFailedLoginDelay();
     return respondLoginFailure(res, {
       req,
       identifier,
@@ -558,8 +642,24 @@ export async function loginOptions(req, res) {
     });
   }
 
+  if (isLoginLocked(user)) {
+    await applyFailedLoginDelay();
+    return respondLoginFailure(res, {
+      req,
+      user,
+      identifier,
+      authMethod,
+      stage: "credentials",
+      reason: "account_locked",
+      status: 401,
+      message: "Invalid credentials",
+    });
+  }
+
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) {
+    await recordFailedLogin(user);
+    await applyFailedLoginDelay();
     return respondLoginFailure(res, {
       req,
       user,
@@ -572,6 +672,7 @@ export async function loginOptions(req, res) {
     });
   }
 
+  await clearFailedLoginState(user);
   const channels = getAvailableChannels(user);
 
   res.json({
@@ -630,8 +731,11 @@ export async function login(req, res) {
     });
   }
 
-  const user = await User.findOne(query).select("+passwordHash");
+  const user = await User.findOne(query).select(
+    "+passwordHash +failedLoginAttempts +failedLoginLockedUntil"
+  );
   if (!user) {
+    await applyFailedLoginDelay();
     return respondLoginFailure(res, {
       req,
       identifier,
@@ -655,8 +759,24 @@ export async function login(req, res) {
     });
   }
 
+  if (isLoginLocked(user)) {
+    await applyFailedLoginDelay();
+    return respondLoginFailure(res, {
+      req,
+      user,
+      identifier,
+      authMethod,
+      stage: "credentials",
+      reason: "account_locked",
+      status: 401,
+      message: "Invalid credentials",
+    });
+  }
+
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) {
+    await recordFailedLogin(user);
+    await applyFailedLoginDelay();
     return respondLoginFailure(res, {
       req,
       user,
@@ -669,6 +789,7 @@ export async function login(req, res) {
     });
   }
 
+  await clearFailedLoginState(user);
   const code = generateCode();
   setLoginCode(user, code);
   await user.save();
@@ -694,7 +815,7 @@ export async function login(req, res) {
       .json({ message: err.message || "Failed to send verification code" });
   }
 
-  const token = signToken(user._id);
+  const token = signToken(user);
   await logAudit({ user, action: "LOGIN_CODE_SENT", req });
 
   res.json({
@@ -1111,6 +1232,7 @@ export async function forgotPasswordReset(req, res) {
   user.passwordHash = await bcrypt.hash(newPassword, 10);
   clearLoginCode(user);
   clearPasswordResetToken(user);
+  incrementSessionVersion(user);
   await user.save();
 
   await logAudit({ user, action: "PASSWORD_RESET_COMPLETED", req });
@@ -1123,6 +1245,8 @@ export async function forgotPasswordReset(req, res) {
 
 export async function logout(req, res) {
   if (req.user) {
+    incrementSessionVersion(req.user);
+    await req.user.save();
     await logAudit({ user: req.user, action: "LOGOUT", req });
   }
   res.json({ ok: true });

@@ -339,7 +339,11 @@ adminRouter.patch("/users/:id/disable", async (req, res, next) => {
       }
     }
 
+    const wasDisabled = user.isDisabled;
     user.isDisabled = isDisabled;
+    if (!wasDisabled && isDisabled) {
+      user.sessionVersion = Number(user.sessionVersion || 0) + 1;
+    }
     await user.save();
 
     await logAudit({

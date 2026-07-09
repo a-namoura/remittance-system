@@ -61,6 +61,21 @@ const userSchema = new mongoose.Schema(
       type: Date,
       select: false,
     },
+    sessionVersion: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+      select: false,
+    },
+    failedLoginLockedUntil: {
+      type: Date,
+      select: false,
+    },
     firstName: {
       type: String,
       trim: true,

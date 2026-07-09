@@ -30,6 +30,14 @@ export async function protect(req, res, next) {
       return next(new Error("Account is disabled"));
     }
 
+    if (
+      typeof decoded.sessionVersion !== "number" ||
+      decoded.sessionVersion !== user.sessionVersion
+    ) {
+      res.status(401);
+      return next(new Error("Invalid or expired token"));
+    }
+
     req.user = user;
     next();
   } catch (err) {
