@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   PageContainer,
@@ -131,6 +131,7 @@ export default function Dashboard() {
   const [fiatBalanceUsd, setFiatBalanceUsd] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
+  const balanceLoadedRef = useRef(false);
 
   const [friends, setFriends] = useState([]);
   const [friendsError, setFriendsError] = useState("");
@@ -255,6 +256,15 @@ export default function Dashboard() {
   useEffect(() => {
     let isCancelled = false;
 
+    if (accountLinked && accountAddress) {
+      balanceLoadedRef.current = false;
+      setAccountBalances({});
+      setAvailableCurrencies([]);
+      setNativeCurrency("ETH");
+      setFiatBalanceUsd(null);
+      setBalanceError("");
+    }
+
     async function fetchAccountBalance() {
       if (!accountLinked || !accountAddress) {
         if (!isCancelled) {
@@ -264,6 +274,7 @@ export default function Dashboard() {
           setNativeCurrency("ETH");
           setFiatBalanceUsd(null);
           setBalanceError("");
+          balanceLoadedRef.current = false;
         }
         return;
       }
@@ -309,10 +320,12 @@ export default function Dashboard() {
         const nextFiatBalanceUsd = Number(result?.fiatEquivalentUsd);
 
         if (!Number.isFinite(nextBalance)) {
-          setAccountBalances({});
-          setAvailableCurrencies(nextCurrencies);
-          setNativeCurrency(nextNativeCurrency);
-          setFiatBalanceUsd(null);
+          if (!balanceLoadedRef.current) {
+            setAccountBalances({});
+            setAvailableCurrencies(nextCurrencies);
+            setNativeCurrency(nextNativeCurrency);
+            setFiatBalanceUsd(null);
+          }
           setBalanceError("Failed to load account balance.");
           return;
         }
@@ -323,13 +336,16 @@ export default function Dashboard() {
         setFiatBalanceUsd(
           Number.isFinite(nextFiatBalanceUsd) ? nextFiatBalanceUsd : null
         );
+        balanceLoadedRef.current = true;
       } catch (err) {
         if (!isCancelled) {
           setBalanceError(getUserErrorMessage(err, "Failed to load account balance."));
-          setAccountBalances({});
-          setAvailableCurrencies([]);
-          setNativeCurrency("ETH");
-          setFiatBalanceUsd(null);
+          if (!balanceLoadedRef.current) {
+            setAccountBalances({});
+            setAvailableCurrencies([]);
+            setNativeCurrency("ETH");
+            setFiatBalanceUsd(null);
+          }
         }
       } finally {
         if (!isCancelled) {
@@ -364,6 +380,8 @@ export default function Dashboard() {
   const displayBalance = Number(accountBalances[nativeCurrency]);
   const hasDisplayBalance = Number.isFinite(displayBalance);
   const hasFiatBalance = Number.isFinite(fiatBalanceUsd);
+  const showBalanceLoading = balanceLoading && !hasDisplayBalance;
+  const showFiatLoading = balanceLoading && !hasFiatBalance;
 
   return (
     <PageContainer stack className="pb-32">
@@ -403,7 +421,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   {nativeCurrency || "ETH"} balance:{" "}
-                  {balanceLoading
+                  {showBalanceLoading
                     ? "Loading..."
                     : hasDisplayBalance
                       ? `${displayBalance.toFixed(4)} ${nativeCurrency}`
@@ -411,7 +429,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   Fiat equivalent:{" "}
-                  {balanceLoading
+                  {showFiatLoading
                     ? "Loading..."
                     : hasFiatBalance
                       ? `~ ${fiatBalanceUsd.toFixed(2)} USD`
