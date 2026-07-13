@@ -39,6 +39,7 @@ import {
   recordTransactionSubmission,
   settleTransactionAfterSubmission,
 } from "../utils/transactionRequests.js";
+import { rejectOutOfRangeTransferAmount } from "../utils/transferLimits.js";
 import { updateStoredWalletBalance } from "../utils/walletBalances.js";
 
 export const transactionRouter = express.Router();
@@ -218,6 +219,7 @@ transactionRouter.post("/link", protect, async (req, res, next) => {
       res.status(400);
       throw new Error("amountEth must be a positive number.");
     }
+    rejectOutOfRangeTransferAmount(res, amountNumber);
 
     if (assetSymbol !== DEFAULT_ASSET_SYMBOL) {
       res.status(400);
@@ -459,6 +461,7 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
       "senderWallet"
     );
     rejectSelfTransfer(res, senderWallet, receiverWallet);
+    rejectOutOfRangeTransferAmount(res, linkDoc.amount);
     await rejectInsufficientNativeBalance(res, senderWallet, linkDoc.amount);
 
     txDoc = await Transaction.create({
@@ -635,6 +638,7 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
       res.status(400);
       throw new Error("amountEth must be a positive number.");
     }
+    rejectOutOfRangeTransferAmount(res, amountNumber);
     await rejectInsufficientNativeBalance(res, senderWallet, amountNumber);
 
     const transferRequestKey = createTransferRequestKey({

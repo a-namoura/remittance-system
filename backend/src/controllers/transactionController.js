@@ -10,6 +10,7 @@ import {
   recordTransactionSubmission,
   settleTransactionAfterSubmission,
 } from "../utils/transactionRequests.js";
+import { rejectOutOfRangeTransferAmount } from "../utils/transferLimits.js";
 
 const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
   .trim()
@@ -50,6 +51,7 @@ export async function sendTransaction(req, res, next) {
       res.status(400);
       throw new Error("amountEth must be a positive number.");
     }
+    rejectOutOfRangeTransferAmount(res, amountNumber);
 
     const walletDoc = await Wallet.findOne({
       userId: req.user._id,

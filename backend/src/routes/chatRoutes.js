@@ -29,6 +29,7 @@ import {
   recordTransactionSubmission,
   settleTransactionAfterSubmission,
 } from "../utils/transactionRequests.js";
+import { rejectOutOfRangeTransferAmount } from "../utils/transferLimits.js";
 
 export const chatRouter = express.Router();
 const DEFAULT_CHAT_ASSET_SYMBOL = getNativeAssetSymbol();
@@ -1134,6 +1135,7 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       res.status(400);
       throw new Error("amountEth must be a positive number.");
     }
+    rejectOutOfRangeTransferAmount(res, amountNumber);
 
     const note = String(req.body?.note || "").trim();
     if (note.length > 280) {
@@ -1361,6 +1363,7 @@ chatRouter.post(
         res.status(400);
         throw new Error("Request amount must be a positive number.");
       }
+      rejectOutOfRangeTransferAmount(res, requestAmountNumber);
 
       const payerWalletDoc = await Wallet.findOne({
         userId: req.user._id,
