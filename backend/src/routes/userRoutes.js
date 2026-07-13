@@ -1,5 +1,6 @@
 import express from "express";
 import { protect } from "../middleware/authMiddleware.js";
+import { allowBodyFields, allowQueryFields } from "../middleware/allowFields.js";
 import { User } from "../models/User.js";
 import { Wallet } from "../models/Wallet.js";
 
@@ -11,7 +12,12 @@ function escapeRegex(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-userRouter.get("/search", protect, async (req, res, next) => {
+userRouter.get(
+  "/search",
+  protect,
+  allowQueryFields(["query", "q", "limit"]),
+  allowBodyFields([]),
+  async (req, res, next) => {
   try {
     const rawQuery = String(req.query.query ?? req.query.q ?? "").trim();
     if (rawQuery.length > USER_SEARCH_MAX_LENGTH) {
@@ -78,9 +84,15 @@ userRouter.get("/search", protect, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
-userRouter.get("/me", protect, async (req, res, next) => {
+userRouter.get(
+  "/me",
+  protect,
+  allowQueryFields([]),
+  allowBodyFields([]),
+  async (req, res, next) => {
   try {
     const walletDoc = await Wallet.findOne({
       userId: req.user._id,
@@ -127,4 +139,5 @@ userRouter.get("/me", protect, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  }
+);

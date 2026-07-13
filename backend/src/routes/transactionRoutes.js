@@ -1,6 +1,7 @@
 import express from "express";
 import crypto from "crypto";
 import { protect } from "../middleware/authMiddleware.js";
+import { allowBodyFields, allowQueryFields } from "../middleware/allowFields.js";
 import {
   getEthBalance,
   submitRemittance,
@@ -174,7 +175,12 @@ async function markLinkAsExpired(linkDoc) {
   await linkDoc.save();
 }
 
-transactionRouter.post("/send-code", protect, async (req, res, next) => {
+transactionRouter.post(
+  "/send-code",
+  protect,
+  allowQueryFields([]),
+  allowBodyFields(["verificationChannel"]),
+  async (req, res, next) => {
   try {
     const delivery = await sendPaymentVerificationCode({
       user: req.user,
@@ -206,10 +212,16 @@ transactionRouter.post("/send-code", protect, async (req, res, next) => {
     }
     next(err);
   }
-});
+  }
+);
 
 // POST /api/transactions/link
-transactionRouter.post("/link", protect, async (req, res, next) => {
+transactionRouter.post(
+  "/link",
+  protect,
+  allowQueryFields([]),
+  allowBodyFields(["amountEth", "note", "assetSymbol"]),
+  async (req, res, next) => {
   try {
     const amountNumber = Number(req.body?.amountEth);
     const note = String(req.body?.note || "").trim();
@@ -276,10 +288,15 @@ transactionRouter.post("/link", protect, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
 // GET /api/transactions/link/resolve?token=...
-transactionRouter.get("/link/resolve", async (req, res, next) => {
+transactionRouter.get(
+  "/link/resolve",
+  allowQueryFields(["token"]),
+  allowBodyFields([]),
+  async (req, res, next) => {
   try {
     const token = String(req.query.token || "").trim();
     if (!token) {
@@ -352,10 +369,16 @@ transactionRouter.get("/link/resolve", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
 // POST /api/transactions/link/claim
-transactionRouter.post("/link/claim", protect, async (req, res, next) => {
+transactionRouter.post(
+  "/link/claim",
+  protect,
+  allowQueryFields([]),
+  allowBodyFields(["token"]),
+  async (req, res, next) => {
   let linkDoc;
   let txDoc;
   let transferResultLogged = false;
@@ -583,10 +606,16 @@ transactionRouter.post("/link/claim", protect, async (req, res, next) => {
 
     next(err);
   }
-});
+  }
+);
 
 // POST /api/transactions/send
-transactionRouter.post("/send", protect, async (req, res, next) => {
+transactionRouter.post(
+  "/send",
+  protect,
+  allowQueryFields([]),
+  allowBodyFields(["receiverWallet", "amountEth", "verificationCode", "assetSymbol"]),
+  async (req, res, next) => {
   let txDoc;
   let transferResultLogged = false;
 
@@ -774,10 +803,16 @@ transactionRouter.post("/send", protect, async (req, res, next) => {
     }
     next(err);
   }
-});
+  }
+);
 
 // GET /api/transactions/balance?wallet=0x...
-transactionRouter.get("/balance", protect, async (req, res, next) => {
+transactionRouter.get(
+  "/balance",
+  protect,
+  allowQueryFields(["wallet", "currency", "currencies"]),
+  allowBodyFields([]),
+  async (req, res, next) => {
   try {
     const { wallet } = req.query;
     const requestedCurrency = normalizeCurrencySymbol(req.query.currency);
@@ -867,10 +902,16 @@ transactionRouter.get("/balance", protect, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
 // GET /api/transactions/my
-transactionRouter.get("/my", protect, async (req, res, next) => {
+transactionRouter.get(
+  "/my",
+  protect,
+  allowQueryFields(["status", "from", "to", "view", "page", "limit"]),
+  allowBodyFields([]),
+  async (req, res, next) => {
   try {
     const {
       status,
@@ -982,10 +1023,16 @@ transactionRouter.get("/my", protect, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
 // GET /api/transactions/:id
-transactionRouter.get("/:id", protect, async (req, res, next) => {
+transactionRouter.get(
+  "/:id",
+  protect,
+  allowQueryFields([]),
+  allowBodyFields([]),
+  async (req, res, next) => {
   try {
     const { id } = req.params;
 
@@ -1052,4 +1099,5 @@ transactionRouter.get("/:id", protect, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  }
+);

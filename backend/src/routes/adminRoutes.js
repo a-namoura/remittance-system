@@ -5,6 +5,7 @@ import { Wallet } from "../models/Wallet.js";
 import { Transaction } from "../models/Transaction.js";
 import { AuditLog } from "../models/AuditLog.js";
 import { logAudit } from "../utils/audit.js";
+import { allowBodyFields, allowQueryFields } from "../middleware/allowFields.js";
 
 export const adminRouter = express.Router();
 
@@ -62,7 +63,11 @@ function nextAdminError(res, next, err) {
 }
 
 // GET /api/admin/summary
-adminRouter.get("/summary", async (req, res, next) => {
+adminRouter.get(
+  "/summary",
+  allowQueryFields([]),
+  allowBodyFields([]),
+  async (req, res, next) => {
   try {
     await logAudit({
       user: req.user,
@@ -120,10 +125,15 @@ adminRouter.get("/summary", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
 // GET /api/admin/transactions?limit=&page=&status=
-adminRouter.get("/transactions", async (req, res, next) => {
+adminRouter.get(
+  "/transactions",
+  allowQueryFields(["limit", "page", "status"]),
+  allowBodyFields([]),
+  async (req, res, next) => {
   try {
     const {
       status: rawStatus,
@@ -199,10 +209,15 @@ adminRouter.get("/transactions", async (req, res, next) => {
   } catch (err) {
     nextAdminError(res, next, err);
   }
-});
+  }
+);
 
 // GET /api/admin/users?limit=&page=&search=&role=&status=
-adminRouter.get("/users", async (req, res, next) => {
+adminRouter.get(
+  "/users",
+  allowQueryFields(["limit", "page", "search", "role", "status"]),
+  allowBodyFields([]),
+  async (req, res, next) => {
   try {
     const {
       limit = "20",
@@ -292,7 +307,8 @@ adminRouter.get("/users", async (req, res, next) => {
   } catch (err) {
     nextAdminError(res, next, err);
   }
-});
+  }
+);
 
 /**
  * PATCH /api/admin/users/:id/disable
@@ -300,7 +316,11 @@ adminRouter.get("/users", async (req, res, next) => {
  * Body: { isDisabled: boolean }
  * Allows admin to disable/enable a user account.
  */
-adminRouter.patch("/users/:id/disable", async (req, res, next) => {
+adminRouter.patch(
+  "/users/:id/disable",
+  allowQueryFields([]),
+  allowBodyFields(["isDisabled"]),
+  async (req, res, next) => {
   try {
     const { id } = req.params;
     const { isDisabled } = req.body || {};
@@ -372,7 +392,8 @@ adminRouter.patch("/users/:id/disable", async (req, res, next) => {
   } catch (err) {
     nextAdminError(res, next, err);
   }
-});
+  }
+);
 
 /**
  * GET /api/admin/audit-logs?limit=&page=&action=
@@ -380,7 +401,11 @@ adminRouter.patch("/users/:id/disable", async (req, res, next) => {
  * Paginated audit logs for monitoring admin + system actions.
  * This is used by the AdminAuditLogs.jsx page.
  */
-adminRouter.get("/audit-logs", async (req, res, next) => {
+adminRouter.get(
+  "/audit-logs",
+  allowQueryFields(["limit", "page", "action"]),
+  allowBodyFields([]),
+  async (req, res, next) => {
   try {
     const {
       limit = "50",
@@ -454,4 +479,5 @@ adminRouter.get("/audit-logs", async (req, res, next) => {
   } catch (err) {
     nextAdminError(res, next, err);
   }
-});
+  }
+);

@@ -5,9 +5,17 @@ import {
   linkWallet,
   unlinkWallet,
 } from "../controllers/walletController.js";
+import { allowBodyFields, allowQueryFields } from "../middleware/allowFields.js";
 
 export const walletRouter = express.Router();
 
-walletRouter.post("/challenge", protect, createWalletChallenge);
-walletRouter.post("/link", protect, linkWallet);
-walletRouter.delete("/link", protect, unlinkWallet);
+walletRouter.use(allowQueryFields([]));
+
+walletRouter.post("/challenge", protect, allowBodyFields(["address"]), createWalletChallenge);
+walletRouter.post(
+  "/link",
+  protect,
+  allowBodyFields(["address", "signature", "message", "challengeId"]),
+  linkWallet
+);
+walletRouter.delete("/link", protect, allowBodyFields([]), unlinkWallet);
