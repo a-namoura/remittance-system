@@ -49,7 +49,7 @@ const transactionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "success", "failed"],
+      enum: ["pending", "success", "failed", "cancelled", "reconciliation_required"],
       default: "pending",
     },
     txHash: { type: String, trim: true },

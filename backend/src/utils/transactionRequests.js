@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { refreshTransactionWalletBalances } from "./walletBalances.js";
 
 export const IN_FLIGHT_TRANSACTION_STATUSES = ["pending"];
+export const TERMINAL_TRANSACTION_STATUSES = ["success", "failed", "cancelled"];
 
 export const DUPLICATE_TRANSFER_REQUEST_MESSAGE =
   "An identical transfer is already processing. Wait until the current transfer is completed or cancelled before submitting it again.";
@@ -137,12 +138,15 @@ export function getTransactionFailureTxHash(err) {
 }
 
 export async function markTransactionFailed(txDoc, err) {
-  if (!txDoc || txDoc.status === "success") return;
+  if (!txDoc || TERMINAL_TRANSACTION_STATUSES.includes(txDoc.status)) return;
 
   const receivedAt = new Date();
   const txHash = getTransactionFailureTxHash(err);
-  txDoc.status = "failed";
-  txDoc.failureReason = getTransactionFailureReason(err);
+  const cancelled = isTransactionCancellation(err);
+  txDoc.status = cancelled ? "cancelled" : "failed";
+  txDoc.failureReason = cancelled
+    ? "Transaction cancelled in the wallet."
+    : getTransactionFailureReason(err);
   if (txHash && !txDoc.txHash) {
     txDoc.txHash = txHash;
   }
@@ -150,6 +154,11 @@ export async function markTransactionFailed(txDoc, err) {
   txDoc.blockchainSyncedAt = new Date();
 
   await saveTransactionWithinSyncWindow(txDoc, receivedAt);
+}
+
+function isTransactionCancellation(err) {
+  const code = String(err?.code || err?.error?.code || "").toLowerCase();
+  return code === "4001" || code === "action_rejected" || code === "user_rejected";
 }
 
 export async function markTransactionFailedAndLogSyncError(txDoc, err) {

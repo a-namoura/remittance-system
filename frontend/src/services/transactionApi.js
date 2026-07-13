@@ -175,7 +175,7 @@ export async function pollTransactionUntilSettled({
     }
 
     const status = String(transaction?.status || "").trim().toLowerCase();
-    if (status === "success" || status === "failed") {
+    if (["success", "failed", "cancelled", "reconciliation_required"].includes(status)) {
       return transaction;
     }
 

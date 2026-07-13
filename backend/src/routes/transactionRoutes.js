@@ -572,6 +572,7 @@ transactionRouter.post(
         status: txDoc.status,
         txHash: txDoc.txHash || submission.txHash || null,
         failureReason: txDoc.failureReason || null,
+        reconciliationError: txDoc.reconciliationError || null,
         blockchainResultReceivedAt: txDoc.blockchainResultReceivedAt || null,
         blockchainSyncedAt: txDoc.blockchainSyncedAt || null,
         blockchainSubmittedAt: txDoc.blockchainSubmittedAt || submission.submittedAt,
@@ -766,6 +767,7 @@ transactionRouter.post(
         status: txDoc.status,
         txHash: txDoc.txHash || submission.txHash || null,
         failureReason: txDoc.failureReason || null,
+        reconciliationError: txDoc.reconciliationError || null,
         blockchainResultReceivedAt: txDoc.blockchainResultReceivedAt || null,
         blockchainSyncedAt: txDoc.blockchainSyncedAt || null,
         blockchainSubmittedAt: txDoc.blockchainSubmittedAt || submission.submittedAt,
@@ -940,7 +942,7 @@ transactionRouter.get(
     }
 
     // Optional status filter
-    const allowedStatuses = ["pending", "success", "failed"];
+    const allowedStatuses = ["pending", "success", "failed", "cancelled", "reconciliation_required"];
     if (status && allowedStatuses.includes(status)) {
       query.status = status;
     }
@@ -1003,6 +1005,7 @@ transactionRouter.get(
         status: t.status,
         txHash: t.txHash || null,
         failureReason: t.failureReason || null,
+        reconciliationError: t.reconciliationError || null,
         blockchainResultReceivedAt: t.blockchainResultReceivedAt || null,
         blockchainSyncedAt: t.blockchainSyncedAt || null,
         createdAt: t.createdAt,
@@ -1085,6 +1088,7 @@ transactionRouter.get(
         status: tx.status,
         txHash: tx.txHash || null,
         failureReason: tx.failureReason || null,
+        reconciliationError: tx.reconciliationError || null,
         blockchainResultReceivedAt: tx.blockchainResultReceivedAt || null,
         blockchainSyncedAt: tx.blockchainSyncedAt || null,
         type: tx.type || null,

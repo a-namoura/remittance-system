@@ -25,6 +25,8 @@ const PAGE_LIMIT = 10;
 function statusBadgeClasses(status) {
   if (status === "success") return "bg-green-100 text-green-700";
   if (status === "failed") return "bg-red-100 text-red-700";
+  if (status === "cancelled") return "bg-gray-100 text-gray-700";
+  if (status === "reconciliation_required") return "bg-orange-100 text-orange-800 ring-1 ring-orange-300";
   return "bg-yellow-100 text-yellow-800";
 }
 
@@ -179,6 +181,8 @@ export default function Transactions() {
               <option value="success">Success</option>
               <option value="pending">Pending</option>
               <option value="failed">Failed</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="reconciliation_required">Reconciliation required</option>
             </select>
           </div>
 

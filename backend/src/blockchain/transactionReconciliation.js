@@ -267,6 +267,7 @@ async function reconcileTransaction(txDoc, provider, config) {
   try {
     receipt = await provider.getTransactionReceipt(txDoc.txHash);
   } catch (err) {
+    txDoc.status = "reconciliation_required";
     txDoc.reconciliationError = normalizeError(err) || "Receipt lookup failed.";
     await saveReconciliationCheck(txDoc, checkedAt).catch(() => {});
     return { corrected: false, error: true };
@@ -542,6 +543,7 @@ export async function reconcileTransactions() {
       txHash: { $type: "string", $ne: "" },
       $or: [
         { status: "pending" },
+        { status: "reconciliation_required" },
         {
           status: { $in: ["success", "failed"] },
           $or: [
@@ -565,6 +567,7 @@ export async function reconcileTransactions() {
         if (result.error) errors += 1;
       } catch (err) {
         errors += 1;
+        txDoc.status = "reconciliation_required";
         txDoc.reconciliationError = normalizeError(err) || "Reconciliation failed.";
         txDoc.lastReconciledAt = new Date();
         await txDoc.save().catch(() => {});

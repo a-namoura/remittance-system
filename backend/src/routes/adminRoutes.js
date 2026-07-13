@@ -9,7 +9,7 @@ import { allowBodyFields, allowQueryFields } from "../middleware/allowFields.js"
 
 export const adminRouter = express.Router();
 
-const ADMIN_TRANSACTION_STATUSES = ["pending", "success", "failed"];
+const ADMIN_TRANSACTION_STATUSES = ["pending", "success", "failed", "cancelled", "reconciliation_required"];
 const ADMIN_USER_ROLES = ["user", "admin"];
 const ADMIN_USER_STATUSES = ["active", "disabled"];
 const ADMIN_AUDIT_ACTION_PATTERN = /^[A-Z0-9_:-]{1,80}$/;
@@ -86,6 +86,8 @@ adminRouter.get(
       pendingCount,
       successCount,
       failedCount,
+      cancelledCount,
+      reconciliationRequiredCount,
     ] = await Promise.all([
       User.countDocuments(),
       User.countDocuments({ isDisabled: false }),
@@ -96,6 +98,8 @@ adminRouter.get(
       Transaction.countDocuments({ status: "pending" }),
       Transaction.countDocuments({ status: "success" }),
       Transaction.countDocuments({ status: "failed" }),
+      Transaction.countDocuments({ status: "cancelled" }),
+      Transaction.countDocuments({ status: "reconciliation_required" }),
     ]);
 
     res.json({
@@ -118,6 +122,8 @@ adminRouter.get(
             pending: pendingCount,
             success: successCount,
             failed: failedCount,
+            cancelled: cancelledCount,
+            reconciliation_required: reconciliationRequiredCount,
           },
         },
       },
