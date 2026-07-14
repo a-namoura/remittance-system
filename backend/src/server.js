@@ -8,6 +8,8 @@ import { apiRouter } from "./routes/index.js";
 import { notFound, errorHandler } from "./middleware/errorHandler.js";
 import { responseSlaMonitor } from "./middleware/performance.js";
 import { startTransactionReconciliation } from "./blockchain/transactionReconciliation.js";
+import { assertProductionExternalUrls, getFrontendOrigin } from "./config/security.js";
+import { installRedactedConsole } from "./utils/logging.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,11 +19,26 @@ dotenv.config({
   override: process.env.NODE_ENV !== "production",
 });
 
+installRedactedConsole();
+assertProductionExternalUrls();
+
 const app = express();
+app.disable("x-powered-by");
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+  app.use((req, res, next) => {
+    if (req.secure || req.get("x-forwarded-proto") === "https") return next();
+    return res.redirect(308, `https://${req.get("host")}${req.originalUrl}`);
+  });
+  app.use((req, res, next) => {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    next();
+  });
+}
 
 app.use(
   cors({
-    origin: ["http://localhost:5173"],
+    origin: [getFrontendOrigin()],
     credentials: true,
   })
 );
@@ -42,7 +59,7 @@ async function startServer() {
   startTransactionReconciliation();
 
   app.listen(PORT, () => {
-    console.log(`Backend running on http://localhost:${PORT}`);
+    console.log(`Backend listening on port ${PORT}`);
   });
 }
 

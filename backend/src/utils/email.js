@@ -78,7 +78,7 @@ async function sendCodeEmail({ to, code, subject, textBuilder, logLabel }) {
     return;
   }
 
-  console.log(`${logLabel} verification code for ${normalizedTo}: ${normalizedCode}`);
+  console.info(`${logLabel} verification code generated for ${normalizedTo}`);
 }
 
 export async function sendLoginCodeEmail({ to, code }) {
@@ -113,7 +113,7 @@ export async function sendPasswordResetLinkEmail({ to, resetUrl }) {
     return;
   }
 
-  console.log(`Password reset link for ${normalizedTo}: ${normalizedResetUrl}`);
+  console.info(`Password reset link generated for ${normalizedTo}`);
 }
 
 export async function sendPaymentCodeEmail({ to, code }) {

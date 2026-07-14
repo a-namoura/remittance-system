@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
+import { getFrontendOrigin as getSecureFrontendOrigin } from "../config/security.js";
 import { User } from "../models/User.js";
 import { hashAuditIdentifier, logAudit } from "../utils/audit.js";
 import {
@@ -225,6 +226,7 @@ function clearPasswordResetToken(user) {
 }
 
 function getFrontendOrigin() {
+  if (process.env.NODE_ENV === "production") return getSecureFrontendOrigin();
   const configured =
     process.env.FRONTEND_URL ||
     process.env.CLIENT_URL ||
@@ -393,7 +395,7 @@ async function sendLoginCodePhone({ phoneNumber, code }) {
   const normalizedCode = String(code || "").trim();
   if (!normalizedPhone || !normalizedCode) return;
 
-  console.log(`Login verification code for ${normalizedPhone}: ${normalizedCode}`);
+  console.info("Login verification code generated for phone destination");
 }
 
 async function deliverLoginCode({ user, code, verificationChannel }) {
@@ -453,7 +455,7 @@ export async function sendRegisterCode(req, res) {
   if (process.env.NODE_ENV === "production") {
     await sendLoginCodeEmail({ to: normalizedEmail, code });
   } else {
-    console.log(`Registration code for ${normalizedEmail}: ${code}`);
+    console.info("Registration verification code generated for email destination");
   }
 
   res.json({ ok: true });
@@ -494,7 +496,7 @@ export async function logRegisterPhoneCode(req, res) {
       .json({ message: "phoneNumber and code are required" });
   }
 
-  console.log(`Registration phone code for ${phoneNumber}: ${code}`);
+  console.info("Registration verification code generated for phone destination");
 
   return res.json({ ok: true });
 }

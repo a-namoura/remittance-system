@@ -8,6 +8,10 @@ const API_URL =
   import.meta.env.VITE_API_URL ||
   "http://localhost:5000";
 
+if (import.meta.env.PROD && !String(API_URL).startsWith("https://")) {
+  throw new Error("Production VITE_API_URL must use HTTPS.");
+}
+
 const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS) || 15000;
 let requestSequence = 0;
 
