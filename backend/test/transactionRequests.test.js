@@ -4,6 +4,7 @@ import {
   getTransactionSyncTimeoutMs,
   isTransactionSyncError,
   markTransactionFailed,
+  recordTransactionSubmission,
   settleTransactionAfterSubmission,
   syncTransactionWithBlockchainResult,
 } from "../src/utils/transactionRequests.js";
@@ -193,4 +194,42 @@ test("transaction result sync uses a 2 second default SLA", async () => {
       process.env.TRANSACTION_SYNC_TIMEOUT_MS = previousTimeout;
     }
   }
+});
+
+test("submission recovery persists reconciliation fields when document save fails", async () => {
+  let recoveryFilter;
+  let recoveryUpdate;
+  const txDoc = {
+    _id: "transaction-id",
+    senderWallet: "0xsender",
+    receiverWallet: "0xreceiver",
+    amount: 1.25,
+    assetSymbol: "ETH",
+    reconciliationMissCount: 4,
+    reconciliationError: "old error",
+    async save() {
+      throw new Error("primary save unavailable");
+    },
+    constructor: {
+      async updateOne(filter, update) {
+        recoveryFilter = filter;
+        recoveryUpdate = update;
+      },
+    },
+  };
+
+  await assert.rejects(
+    recordTransactionSubmission(txDoc, {
+      txHash: "0xsubmitted",
+      submittedAt: new Date("2026-01-01T00:00:00.000Z"),
+    }),
+    /primary save unavailable/
+  );
+
+  assert.deepEqual(recoveryFilter, { _id: "transaction-id" });
+  assert.equal(recoveryUpdate.$set.txHash, "0xsubmitted");
+  assert.equal(recoveryUpdate.$set.senderWallet, "0xsender");
+  assert.equal(recoveryUpdate.$set.receiverWallet, "0xreceiver");
+  assert.equal(recoveryUpdate.$set.amount, 1.25);
+  assert.equal(recoveryUpdate.$set.assetSymbol, "ETH");
 });

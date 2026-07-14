@@ -186,7 +186,29 @@ export async function recordTransactionSubmission(txDoc, submission) {
   txDoc.blockchainSubmittedAt = asDate(submission?.submittedAt || new Date());
   txDoc.reconciliationMissCount = 0;
   txDoc.reconciliationError = undefined;
-  await txDoc.save();
+  try {
+    await txDoc.save();
+  } catch (err) {
+    // A broadcast is irreversible. Preserve every field needed to reconcile it
+    // with the chain using a fresh database operation before surfacing the
+    // persistence error; callers must never broadcast the transfer again.
+    const recovery = {
+      txHash: txDoc.txHash,
+      senderWallet: txDoc.senderWallet,
+      receiverWallet: txDoc.receiverWallet,
+      amount: txDoc.amount,
+      assetSymbol: txDoc.assetSymbol,
+      blockchainSubmittedAt: txDoc.blockchainSubmittedAt,
+      reconciliationMissCount: 0,
+      reconciliationError: undefined,
+    };
+    try {
+      await txDoc.constructor.updateOne({ _id: txDoc._id }, { $set: recovery });
+    } catch (recoveryErr) {
+      err.recoveryError = recoveryErr;
+    }
+    throw err;
+  }
   return txDoc;
 }
 

@@ -133,6 +133,55 @@ function receiptStatus(receipt) {
   return Number(receipt?.status) === 1 ? "success" : "failed";
 }
 
+function normalizedAddress(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function transferMatchesTransaction(txDoc, eventData) {
+  if (!eventData) return { matches: false, reason: "Transfer event was not found in the receipt." };
+  if (normalizedAddress(txDoc.senderWallet) !== normalizedAddress(eventData.senderWallet)) {
+    return { matches: false, reason: "Transfer event sender does not match the transaction record." };
+  }
+  if (normalizedAddress(txDoc.receiverWallet) !== normalizedAddress(eventData.receiverWallet)) {
+    return { matches: false, reason: "Transfer event receiver does not match the transaction record." };
+  }
+  if (String(txDoc.assetSymbol || "").toUpperCase() !== getNativeAssetSymbol()) {
+    return { matches: false, reason: "Transfer event asset does not match the transaction record." };
+  }
+  if (Number(txDoc.amount) !== Number(eventData.amount)) {
+    return { matches: false, reason: "Transfer event amount does not match the transaction record." };
+  }
+  return { matches: true };
+}
+
+async function requireReconciliation(txDoc, previousStatus, reason, checkedAt = new Date()) {
+  txDoc.status = "reconciliation_required";
+  txDoc.reconciliationError = reason;
+  txDoc.lastReconciledAt = checkedAt;
+  await txDoc.save();
+  await auditCorrection(txDoc, previousStatus, "transfer_event_mismatch");
+}
+
+function transferEventFromReceipt(receipt) {
+  const contract = getRemittanceReadContract();
+  for (const log of receipt?.logs || []) {
+    try {
+      const parsed = contract.interface.parseLog(log);
+      if (parsed?.name !== "Transfer") continue;
+      return transferEventData({
+        args: parsed.args,
+        transactionHash: receipt.hash,
+        blockNumber: receipt.blockNumber,
+        blockHash: receipt.blockHash,
+        index: log.index,
+      });
+    } catch {
+      // Logs from other contracts are expected in a receipt.
+    }
+  }
+  return null;
+}
+
 function submittedAt(txDoc) {
   return txDoc.blockchainSubmittedAt || txDoc.createdAt || new Date();
 }
@@ -281,6 +330,16 @@ async function reconcileTransaction(txDoc, provider, config) {
   const previousStatus = txDoc.status;
   const chainStatus = receiptStatus(receipt);
   const blockNumber = Number(receipt.blockNumber);
+  const eventData = chainStatus === "success" ? transferEventFromReceipt(receipt) : null;
+  const comparison = chainStatus === "success"
+    ? transferMatchesTransaction(txDoc, eventData)
+    : { matches: true };
+
+  if (!comparison.matches) {
+    await requireReconciliation(txDoc, previousStatus, comparison.reason, checkedAt);
+    return { corrected: previousStatus !== "reconciliation_required", mismatch: true };
+  }
+
   const needsCorrection =
     previousStatus !== chainStatus ||
     txDoc.blockNumber !== blockNumber ||
@@ -368,6 +427,12 @@ async function ingestTransferEvent(event) {
 
   if (txDoc) {
     const previousStatus = txDoc.status;
+    const comparison = transferMatchesTransaction(txDoc, data);
+    if (!comparison.matches) {
+      await requireReconciliation(txDoc, previousStatus, comparison.reason, receivedAt);
+      return { ingested: false, mismatch: true };
+    }
+
     txDoc.blockNumber = data.blockNumber;
     txDoc.blockHash = data.blockHash || undefined;
     txDoc.eventLogIndex = data.eventLogIndex;
