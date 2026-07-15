@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { refreshTransactionWalletBalances } from "./walletBalances.js";
+import { logAudit } from "./audit.js";
 
 export const IN_FLIGHT_TRANSACTION_STATUSES = ["pending"];
 export const TERMINAL_TRANSACTION_STATUSES = ["success", "failed", "cancelled"];
@@ -168,6 +169,7 @@ export async function markTransactionFailedAndLogSyncError(txDoc, err) {
   } catch (syncErr) {
     if (isTransactionSyncError(syncErr)) {
       console.error("Transaction failure sync failed:", syncErr.message);
+      void logAudit({ action: "TRANSACTION_SYNC_FAILED", metadata: { transactionId: String(txDoc?._id || ""), syncTarget: "transaction_failure", error: syncErr?.message || syncErr } });
     } else {
       console.error(
         "Transaction failure save failed:",
@@ -285,6 +287,7 @@ export function settleTransactionAfterSubmission({
     } catch (err) {
       if (isTransactionSyncError(err)) {
         console.error("Transaction confirmation sync failed:", err.message);
+        void logAudit({ action: "TRANSACTION_SYNC_FAILED", metadata: { transactionId: String(txDoc?._id || ""), syncTarget: "confirmation", error: err?.message || err } });
       } else {
         await markTransactionFailedAndLogSyncError(txDoc, err);
       }

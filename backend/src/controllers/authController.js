@@ -560,6 +560,14 @@ export async function register(req, res) {
   } catch (err) {
     const duplicateMessage = getDuplicateUserConflictMessage(err);
     if (duplicateMessage) {
+      await logAudit({
+        action: "DUPLICATE_REGISTRATION_FAILED",
+        metadata: {
+          resourceHash: hashAuditIdentifier(`${normalizedEmail}:${String(username || "").trim().toLowerCase()}`),
+          fields: Object.keys(err.keyPattern || err.keyValue || {}).sort(),
+        },
+        req,
+      });
       return res.status(409).json({ message: duplicateMessage });
     }
     throw err;

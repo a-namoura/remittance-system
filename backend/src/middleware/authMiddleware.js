@@ -1,11 +1,21 @@
 import jwt from "jsonwebtoken";
 import { User } from "../models/User.js";
+import { logAudit } from "../utils/audit.js";
+
+function auditRejectedAuthentication(req, reason) {
+  void logAudit({
+    action: "AUTH_TOKEN_FAILED",
+    metadata: { reason: String(reason || "invalid_token") },
+    req,
+  });
+}
 
 export async function protect(req, res, next) {
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
   if (!token) {
+    auditRejectedAuthentication(req, "missing_token");
     res.status(401);
     return next(new Error("Missing Authorization Bearer token"));
   }
@@ -21,11 +31,13 @@ export async function protect(req, res, next) {
     );
 
     if (!user) {
+      auditRejectedAuthentication(req, "user_not_found");
       res.status(401);
       return next(new Error("User not found for token"));
     }
 
     if (user.isDisabled) {
+      auditRejectedAuthentication(req, "account_disabled");
       res.status(403);
       return next(new Error("Account is disabled"));
     }
@@ -34,6 +46,7 @@ export async function protect(req, res, next) {
       typeof decoded.sessionVersion !== "number" ||
       decoded.sessionVersion !== user.sessionVersion
     ) {
+      auditRejectedAuthentication(req, "session_invalid");
       res.status(401);
       return next(new Error("Invalid or expired token"));
     }
@@ -41,6 +54,7 @@ export async function protect(req, res, next) {
     req.user = user;
     next();
   } catch (err) {
+    auditRejectedAuthentication(req, "invalid_token");
     res.status(401);
     next(new Error("Invalid or expired token"));
   }

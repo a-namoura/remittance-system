@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "node:crypto";
 import mongoose from "mongoose";
 import { protect } from "../middleware/authMiddleware.js";
 import { Friend } from "../models/Friend.js";
@@ -55,13 +56,19 @@ function rejectChatSelfTransfer(res, senderWallet, receiverWallet) {
   }
 }
 
-async function rejectInFlightDuplicateTransfer(res, transferRequestKey) {
+async function rejectInFlightDuplicateTransfer(res, transferRequestKey, req) {
   const duplicate = await Transaction.exists({
     transferRequestKey,
     status: { $in: IN_FLIGHT_TRANSACTION_STATUSES },
   });
 
   if (duplicate) {
+    await logAudit({
+      user: req?.user,
+      action: "DUPLICATE_TRANSFER_FAILED",
+      metadata: { resourceHash: crypto.createHash("sha256").update(String(transferRequestKey)).digest("hex") },
+      req,
+    });
     res.status(409);
     throw new Error(DUPLICATE_TRANSFER_REQUEST_MESSAGE);
   }
@@ -1187,7 +1194,7 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       amount: amountNumber,
       assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
     });
-    await rejectInFlightDuplicateTransfer(res, transferRequestKey);
+    await rejectInFlightDuplicateTransfer(res, transferRequestKey, req);
 
     txDoc = await Transaction.create({
       senderUserId,

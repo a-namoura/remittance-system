@@ -69,13 +69,19 @@ function normalizeTransferAssetSymbol(rawSymbol) {
   return normalized || DEFAULT_ASSET_SYMBOL;
 }
 
-async function rejectInFlightDuplicateTransfer(res, transferRequestKey) {
+async function rejectInFlightDuplicateTransfer(res, transferRequestKey, req) {
   const duplicate = await Transaction.exists({
     transferRequestKey,
     status: { $in: IN_FLIGHT_TRANSACTION_STATUSES },
   });
 
   if (duplicate) {
+    await logAudit({
+      user: req?.user,
+      action: "DUPLICATE_TRANSFER_FAILED",
+      metadata: { resourceHash: crypto.createHash("sha256").update(String(transferRequestKey)).digest("hex") },
+      req,
+    });
     res.status(409);
     throw new Error(DUPLICATE_TRANSFER_REQUEST_MESSAGE);
   }
@@ -678,7 +684,7 @@ transactionRouter.post(
       amount: amountNumber,
       assetSymbol,
     });
-    await rejectInFlightDuplicateTransfer(res, transferRequestKey);
+    await rejectInFlightDuplicateTransfer(res, transferRequestKey, req);
 
     try {
       await requireAndConsumePaymentCode({

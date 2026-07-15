@@ -2,6 +2,7 @@ import { getEthBalance } from "../blockchain/remittanceClient.js";
 import { Wallet } from "../models/Wallet.js";
 import { getNativeAssetSymbol } from "./currency.js";
 import { normalizeEvmAddress } from "./walletAddress.js";
+import { logAudit } from "./audit.js";
 
 const MAX_BALANCE_SYNC_ERROR_LENGTH = 1000;
 
@@ -73,6 +74,13 @@ export async function refreshWalletBalance(
       { address: normalizedAddress },
       { $set: { balanceSyncError: error } }
     ).catch(() => {});
+    await logAudit({
+      action: "WALLET_BALANCE_SYNC_FAILED",
+      metadata: {
+        syncTarget: normalizedAddress,
+        error,
+      },
+    });
 
     if (throwOnError) throw err;
     return { address: normalizedAddress, updated: false, error };
