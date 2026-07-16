@@ -45,6 +45,9 @@ on:
       - "docs/production-security.md"
       - "docs/security-review.md"
       - "docs/security-artifacts.md"
+      - "docs/threat-model.md"
+      - "docs/security-test-matrix.md"
+      - "docs/vulnerability-register.md"
   workflow_dispatch:
 
 permissions:

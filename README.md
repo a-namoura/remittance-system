@@ -149,3 +149,8 @@ The backend reads the ABI from `blockchain/Remittance.abi.json`.
 
 - `frontend/README.md`
 - `contracts/README.md`
+- `docs/threat-model.md`
+- `docs/security-test-matrix.md`
+- `docs/vulnerability-register.md`
+- `docs/production-security.md`
+- `docs/security-review.md`
