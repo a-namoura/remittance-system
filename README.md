@@ -31,7 +31,7 @@ remittance-system/
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22 (the supported runtime is Node 22.x)
 - npm 10+
 - MongoDB instance (local or hosted)
 - MetaMask (or compatible wallet) for wallet-linked flows
