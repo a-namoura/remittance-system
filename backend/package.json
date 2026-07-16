@@ -7,7 +7,9 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "test": "node --test",
-    "backup:encrypted": "node scripts/encrypted-mongo-backup.mjs"
+    "backup:encrypted": "node scripts/encrypted-mongo-backup.mjs",
+    "restore:encrypted": "node scripts/encrypted-mongo-restore.mjs",
+    "restore:check": "node scripts/restore-integrity-check.mjs"
   },
   "keywords": [],
   "author": "",
