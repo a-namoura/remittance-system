@@ -11,6 +11,7 @@ on:
         type: string
 
 permissions:
+  id-token: write
   actions: read
   contents: write
 
@@ -19,6 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      SECURITY_ARCHIVE_BUCKET: ${{ vars.SECURITY_ARCHIVE_BUCKET }}
+      SECURITY_ARCHIVE_PREFIX: ${{ vars.SECURITY_ARCHIVE_PREFIX }}
+      SECURITY_ARCHIVE_RETENTION_DAYS: ${{ vars.SECURITY_ARCHIVE_RETENTION_DAYS }}
+      AWS_REGION: ${{ vars.SECURITY_ARCHIVE_AWS_REGION }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,21 +40,56 @@ jobs:
         run: |
           mkdir -p security-artifacts
           sha256sum security-artifacts/*.cdx.json > security-artifacts/SHA256SUMS
+          ARCHIVE_KEY="${SECURITY_ARCHIVE_PREFIX%/}/${RELEASE_TAG}/${GITHUB_SHA}/security-artifacts.tar.gz"
           {
             echo "# Release security artifact record"
             echo
             echo "- Release: ${RELEASE_TAG}"
             echo "- Source revision: ${GITHUB_SHA}"
+            echo "- Source ref: ${GITHUB_REF}"
+            echo "- Generated (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "- Release workflow: ${GITHUB_WORKFLOW}"
             echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- Workflow attempt: ${GITHUB_RUN_ATTEMPT}"
+            echo "- Triggering actor: ${GITHUB_ACTOR}"
             echo "- SBOM format: CycloneDX JSON"
             echo "- Checksums: SHA-256 (SHA256SUMS)"
+            echo "- Required gates: dependency inventory, exception validation, production audit, security regression tests, protected-environment approval"
+            echo "- Immutable archive object: s3://${SECURITY_ARCHIVE_BUCKET}/${ARCHIVE_KEY}"
+            echo "- Immutable archive retention: S3 Object Lock COMPLIANCE for ${SECURITY_ARCHIVE_RETENTION_DAYS} days"
           } > security-artifacts/release-security-record.md
+          sha256sum security-artifacts/*.cdx.json security-artifacts/release-security-record.md > security-artifacts/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: release-security-artifacts-${{ github.event.release.tag_name || inputs.tag }}
           path: security-artifacts/
           retention-days: 90
-      - name: Attach security artifacts to release
+      - name: Require immutable archive configuration
+        run: |
+          test -n "$SECURITY_ARCHIVE_BUCKET"
+          test -n "$SECURITY_ARCHIVE_PREFIX"
+          test -n "$SECURITY_ARCHIVE_RETENTION_DAYS"
+          test -n "$AWS_REGION"
+          test "$SECURITY_ARCHIVE_RETENTION_DAYS" -ge 2555
+      - name: Configure immutable archive credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.SECURITY_ARCHIVE_AWS_ROLE_ARN }}
+          aws-region: ${{ vars.SECURITY_ARCHIVE_AWS_REGION }}
+      - name: Archive evidence with Object Lock
+        run: |
+          set -euo pipefail
+          ARCHIVE_KEY="${SECURITY_ARCHIVE_PREFIX%/}/${RELEASE_TAG}/${GITHUB_SHA}/security-artifacts.tar.gz"
+          RETAIN_UNTIL=$(date -u -d "+${SECURITY_ARCHIVE_RETENTION_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)
+          tar -C security-artifacts -czf security-artifacts.tar.gz .
+          aws s3api put-object \
+            --bucket "$SECURITY_ARCHIVE_BUCKET" \
+            --key "$ARCHIVE_KEY" \
+            --body security-artifacts.tar.gz \
+            --object-lock-mode COMPLIANCE \
+            --object-lock-retain-until-date "$RETAIN_UNTIL" \
+            --metadata "release=${RELEASE_TAG},revision=${GITHUB_SHA},workflow_run=${GITHUB_RUN_ID}"
+      - name: Attach immutable release evidence
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$RELEASE_TAG" security-artifacts/* --clobber
+        run: gh release upload "$RELEASE_TAG" security-artifacts/*

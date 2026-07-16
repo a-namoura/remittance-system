@@ -59,6 +59,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  security-regression:
+    name: Security regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            contracts/package-lock.json
+      - run: npm ci --ignore-scripts --prefix backend
+      - run: npm test --prefix backend
+      - run: npm ci --ignore-scripts --prefix contracts
+      - run: npx hardhat test
+        working-directory: contracts
+
   security-review:
     name: Security approval
     runs-on: ubuntu-latest

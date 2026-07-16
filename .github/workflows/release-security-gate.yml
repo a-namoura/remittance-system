@@ -43,3 +43,8 @@ jobs:
           npm ci --ignore-scripts --prefix contracts
       - name: Block unapproved high-risk production dependencies
         run: node .github/scripts/check-npm-audit-gate.mjs backend frontend contracts
+      - name: Run required security regression tests
+        run: npm test --prefix backend
+      - name: Run smart-contract security regression tests
+        run: npx hardhat test
+        working-directory: contracts

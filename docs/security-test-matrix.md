@@ -22,6 +22,7 @@ means a repository test or CI control currently exercises the requirement;
 | Dependency / static analysis | No high-severity production dependency finding; code is scanned | Automated CI: dependency review, production npm audit, CodeQL, dependency inventory | Enforce checks in the repository ruleset and review findings/SBOM per release. |
 | Backup and restore | Archive authentication, receipt reconciliation, and reference integrity hold | Automated: `backend/test/encryptedRestore.test.js`; documented operator procedure | Exercise a scheduled restore drill with production-like, non-production data. |
 | Release governance | Sensitive changes receive protected-environment approval; release artifacts are traceable | Automated CI workflow plus manual environment/ruleset configuration | Periodically verify settings and capture evidence in the release record. |
+| Security regression gate | Backend security/reconciliation and smart-contract tests must pass for a security-sensitive change and every release | Automated: `Security regression tests` CI job and `Release security gate` | Protect `main` by requiring the CI check; add regression tests for every closed register item. |
 
 ## Exit criteria
 
