@@ -1,0 +1,53 @@
+# Security-sensitive paths require review by the repository security owner.
+# For an organization repository, replace this account with a dedicated team,
+# for example: @your-org/security-reviewers.
+
+# Authentication and authorization
+/backend/src/controllers/authController.js @a-namoura
+/backend/src/middleware/authMiddleware.js @a-namoura
+/backend/src/config/security.js @a-namoura
+/backend/src/routes/authRoutes.js @a-namoura
+/frontend/src/components/ProtectedRoute.jsx @a-namoura
+/frontend/src/components/AdminRoute.jsx @a-namoura
+/frontend/src/services/authApi.js @a-namoura
+/frontend/src/services/session.js @a-namoura
+/frontend/src/utils/passwordPolicy.js @a-namoura
+/frontend/src/utils/security.js @a-namoura
+
+# Wallets and monetary transaction flows
+/backend/src/controllers/walletController.js @a-namoura
+/backend/src/controllers/transactionController.js @a-namoura
+/backend/src/routes/walletRoutes.js @a-namoura
+/backend/src/routes/transactionRoutes.js @a-namoura
+/backend/src/models/Wallet.js @a-namoura
+/backend/src/models/Transaction.js @a-namoura
+/backend/src/models/PaymentLink.js @a-namoura
+/backend/src/utils/wallet*.js @a-namoura
+/backend/src/utils/transactionRequests.js @a-namoura
+/backend/src/utils/paymentVerification.js @a-namoura
+/backend/src/utils/transferLimits.js @a-namoura
+/frontend/src/components/ConnectWalletButton.jsx @a-namoura
+/frontend/src/services/walletApi.js @a-namoura
+/frontend/src/services/transactionApi.js @a-namoura
+
+# Blockchain contracts, clients, deployment, and reconciliation
+/backend/src/blockchain/ @a-namoura
+/blockchain/ @a-namoura
+/contracts/ @a-namoura
+
+# Database access, synchronization, and data models
+/backend/src/config/db.js @a-namoura
+/backend/src/models/ @a-namoura
+/backend/src/server.js @a-namoura
+
+# Audit logging, backups, and recovery procedures
+/backend/src/utils/audit.js @a-namoura
+/backend/src/utils/logging.js @a-namoura
+/backend/scripts/encrypted-* @a-namoura
+/backend/scripts/restore-* @a-namoura
+/docs/production-security.md @a-namoura
+
+# Review enforcement configuration
+/.github/CODEOWNERS @a-namoura
+/.github/workflows/security-review.yml @a-namoura
+/docs/security-review.md @a-namoura

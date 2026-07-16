@@ -1,0 +1,55 @@
+name: Security review
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/src/controllers/authController.js"
+      - "backend/src/middleware/authMiddleware.js"
+      - "backend/src/config/security.js"
+      - "backend/src/routes/authRoutes.js"
+      - "backend/src/controllers/walletController.js"
+      - "backend/src/controllers/transactionController.js"
+      - "backend/src/routes/walletRoutes.js"
+      - "backend/src/routes/transactionRoutes.js"
+      - "backend/src/models/Wallet.js"
+      - "backend/src/models/Transaction.js"
+      - "backend/src/models/PaymentLink.js"
+      - "backend/src/utils/wallet*.js"
+      - "backend/src/utils/transactionRequests.js"
+      - "backend/src/utils/paymentVerification.js"
+      - "backend/src/utils/transferLimits.js"
+      - "backend/src/blockchain/**"
+      - "blockchain/**"
+      - "contracts/**"
+      - "backend/src/config/db.js"
+      - "backend/src/models/**"
+      - "backend/src/server.js"
+      - "backend/src/utils/audit.js"
+      - "backend/src/utils/logging.js"
+      - "backend/scripts/encrypted-*"
+      - "backend/scripts/restore-*"
+      - ".github/CODEOWNERS"
+      - ".github/workflows/security-review.yml"
+      - "docs/production-security.md"
+      - "docs/security-review.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: security-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-review:
+    name: Security approval
+    runs-on: ubuntu-latest
+    # Configure the repository's "security-review" environment with required
+    # reviewers. This job has no access to secrets or deployment credentials.
+    environment: security-review
+    steps:
+      - name: Confirm security review gate
+        run: echo "Security-sensitive changes require a protected-environment approval."
