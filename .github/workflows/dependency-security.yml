@@ -7,12 +7,16 @@ on:
       - "**/package.json"
       - "**/package-lock.json"
       - ".github/dependabot.yml"
+      - ".github/dependency-inventory.json"
+      - ".github/scripts/check-dependency-inventory.mjs"
+      - ".github/scripts/generate-dependency-inventory.mjs"
       - ".github/workflows/dependency-security.yml"
   push:
     branches: [main]
     paths:
       - "**/package.json"
       - "**/package-lock.json"
+      - ".github/dependency-inventory.json"
   schedule:
     - cron: "23 4 * * 1"
   workflow_dispatch:
@@ -23,6 +27,16 @@ permissions:
   security-events: write
 
 jobs:
+  dependency-inventory:
+    name: Dependency inventory
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node .github/scripts/check-dependency-inventory.mjs
+
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

@@ -1,0 +1,45 @@
+name: Release security gate
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag or commit to validate for release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release-security-gate:
+    name: High-risk release approval
+    runs-on: ubuntu-latest
+    # Configure this protected environment with release/security owners. Draft a
+    # release first; publish it only after this gate passes and is approved.
+    environment: release-security
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+            contracts/package-lock.json
+      - name: Verify committed dependency inventory
+        run: node .github/scripts/check-dependency-inventory.mjs
+      - name: Validate approved exceptions
+        run: node .github/scripts/check-security-exceptions.mjs
+      - name: Install locked dependencies
+        run: |
+          npm ci --ignore-scripts --prefix backend
+          npm ci --ignore-scripts --prefix frontend
+          npm ci --ignore-scripts --prefix contracts
+      - name: Block unapproved high-risk production dependencies
+        run: node .github/scripts/check-npm-audit-gate.mjs backend frontend contracts

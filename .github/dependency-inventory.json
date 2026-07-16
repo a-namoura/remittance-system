@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "description": "Direct Node.js dependencies. CycloneDX release SBOMs contain the full transitive graph.",
+  "projects": [
+    {
+      "project": "backend",
+      "packageManager": "npm",
+      "manifest": "backend/package.json",
+      "lockfile": "backend/package-lock.json",
+      "lockfileSha256": "3284b2a89a418643b2509e9a1a4243edbeea85e4de8a5704f0dbf5c7a2af7d99",
+      "dependencies": [
+        { "name": "bcryptjs", "version": "^3.0.3", "scope": "production" },
+        { "name": "cors", "version": "^2.8.5", "scope": "production" },
+        { "name": "dotenv", "version": "^17.2.3", "scope": "production" },
+        { "name": "ethers", "version": "^6.16.0", "scope": "production" },
+        { "name": "express", "version": "^5.2.1", "scope": "production" },
+        { "name": "jsonwebtoken", "version": "^9.0.3", "scope": "production" },
+        { "name": "mongoose", "version": "^9.0.2", "scope": "production" },
+        { "name": "nodemon", "version": "^3.1.11", "scope": "development" }
+      ]
+    },
+    {
+      "project": "frontend",
+      "packageManager": "npm",
+      "manifest": "frontend/package.json",
+      "lockfile": "frontend/package-lock.json",
+      "lockfileSha256": "b596590ae117bac538ad336a5f097d3492764c514da9988286eba5e778ad106d",
+      "dependencies": [
+        { "name": "@eslint/js", "version": "^9.39.1", "scope": "development" },
+        { "name": "@tailwindcss/postcss", "version": "^4.1.18", "scope": "development" },
+        { "name": "@types/react", "version": "^19.2.5", "scope": "development" },
+        { "name": "@types/react-dom", "version": "^19.2.3", "scope": "development" },
+        { "name": "@vitejs/plugin-react", "version": "^5.1.1", "scope": "development" },
+        { "name": "autoprefixer", "version": "^10.4.23", "scope": "development" },
+        { "name": "babel-plugin-react-compiler", "version": "^1.0.0", "scope": "development" },
+        { "name": "eslint", "version": "^9.39.1", "scope": "development" },
+        { "name": "eslint-plugin-react-hooks", "version": "^7.0.1", "scope": "development" },
+        { "name": "eslint-plugin-react-refresh", "version": "^0.4.24", "scope": "development" },
+        { "name": "ethers", "version": "^6.16.0", "scope": "production" },
+        { "name": "globals", "version": "^16.5.0", "scope": "development" },
+        { "name": "postcss", "version": "^8.5.6", "scope": "development" },
+        { "name": "react", "version": "^19.2.0", "scope": "production" },
+        { "name": "react-dom", "version": "^19.2.0", "scope": "production" },
+        { "name": "react-router-dom", "version": "^7.11.0", "scope": "production" },
+        { "name": "tailwindcss", "version": "^4.1.18", "scope": "development" },
+        { "name": "vite", "version": "npm:rolldown-vite@7.2.5", "scope": "development" }
+      ]
+    },
+    {
+      "project": "contracts",
+      "packageManager": "npm",
+      "manifest": "contracts/package.json",
+      "lockfile": "contracts/package-lock.json",
+      "lockfileSha256": "628349fb5bcfb9414054b2dffa943c63537fa97fdfdb48426f9c3cd587f0b90f",
+      "dependencies": [
+        { "name": "@nomicfoundation/hardhat-ethers", "version": "^4.0.3", "scope": "development" },
+        { "name": "@nomicfoundation/hardhat-ignition", "version": "^3.0.6", "scope": "development" },
+        { "name": "@nomicfoundation/hardhat-toolbox-mocha-ethers", "version": "^3.0.2", "scope": "development" },
+        { "name": "@types/chai", "version": "^4.3.20", "scope": "development" },
+        { "name": "@types/chai-as-promised", "version": "^8.0.2", "scope": "development" },
+        { "name": "@types/mocha", "version": "^10.0.10", "scope": "development" },
+        { "name": "@types/node", "version": "^22.19.3", "scope": "development" },
+        { "name": "chai", "version": "^5.3.3", "scope": "development" },
+        { "name": "dotenv", "version": "^17.2.3", "scope": "production" },
+        { "name": "ethers", "version": "^6.16.0", "scope": "development" },
+        { "name": "forge-std", "version": "github:foundry-rs/forge-std#v1.9.4", "scope": "development" },
+        { "name": "hardhat", "version": "^3.1.0", "scope": "development" },
+        { "name": "mocha", "version": "^11.7.5", "scope": "development" },
+        { "name": "typescript", "version": "~5.8.0", "scope": "development" }
+      ]
+    }
+  ]
+}
