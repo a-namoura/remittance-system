@@ -1,0 +1,55 @@
+name: Release security artifacts
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to record
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+      - uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: security-artifacts/remittance-${{ github.event.release.tag_name || inputs.tag }}.cdx.json
+          artifact-name: remittance-sbom-${{ github.event.release.tag_name || inputs.tag }}
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Create release security record
+        run: |
+          mkdir -p security-artifacts
+          sha256sum security-artifacts/*.cdx.json > security-artifacts/SHA256SUMS
+          {
+            echo "# Release security artifact record"
+            echo
+            echo "- Release: ${RELEASE_TAG}"
+            echo "- Source revision: ${GITHUB_SHA}"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "- SBOM format: CycloneDX JSON"
+            echo "- Checksums: SHA-256 (SHA256SUMS)"
+          } > security-artifacts/release-security-record.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-security-artifacts-${{ github.event.release.tag_name || inputs.tag }}
+          path: security-artifacts/
+          retention-days: 90
+      - name: Attach security artifacts to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$RELEASE_TAG" security-artifacts/* --clobber

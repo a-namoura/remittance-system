@@ -30,9 +30,14 @@ on:
       - "backend/scripts/encrypted-*"
       - "backend/scripts/restore-*"
       - ".github/CODEOWNERS"
+      - ".github/dependabot.yml"
+      - ".github/release.yml"
       - ".github/workflows/security-review.yml"
+      - ".github/workflows/dependency-security.yml"
+      - ".github/workflows/release-security-artifacts.yml"
       - "docs/production-security.md"
       - "docs/security-review.md"
+      - "docs/security-artifacts.md"
   workflow_dispatch:
 
 permissions:

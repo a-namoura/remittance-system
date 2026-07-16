@@ -1,0 +1,58 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directories:
+      - /backend
+      - /frontend
+      - /contracts
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Budapest
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - security
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      non-major-updates:
+        update-types: [minor, patch]
+        group-by: dependency-name
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Budapest
+    labels:
+      - dependencies
+      - security
+    commit-message:
+      prefix: "chore(actions)"
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Budapest
+    labels:
+      - dependencies
+      - security
+    commit-message:
+      prefix: "chore(docker)"
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Budapest
+    labels:
+      - dependencies
+      - security
+    commit-message:
+      prefix: "chore(docker)"
