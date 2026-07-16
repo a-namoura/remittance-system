@@ -23,7 +23,8 @@ let stderr = "";
 restore.stderr.on("data", (chunk) => { stderr += chunk; });
 const restoreExit = new Promise((resolve, reject) => restore.on("close", (code) => code === 0
   ? resolve()
-  : reject(new Error(`mongorestore failed (${code}): ${stderr.replace(/mongodb(?:\\+srv)?:\\/\\/[^\\s]+/gi, "[REDACTED]")}`))));
+  : reject(new Error(`mongorestore failed (${code}): ${stderr.replace(/mongodb(?:\+srv)?:\/\/[^\s]+/gi, "[REDACTED]")}`))));
 await pipeline(input, decipher, restore.stdin);
 await restoreExit;
-console.info("Encrypted archive restored. Run npm run restore:check against this isolated database before enabling any application worker.");
+await import("./restore-reconcile.mjs");
+console.info("Encrypted archive restored and all txHash records reconciled. Run npm run restore:check before enabling any application worker.");

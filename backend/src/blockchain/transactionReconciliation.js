@@ -595,7 +595,7 @@ async function syncTransferEvents(provider, config) {
   return { scanned, ingested, updated };
 }
 
-export async function reconcileTransactions() {
+export async function reconcileTransactions({ force = false, forceBefore, skipEventSync = false } = {}) {
   if (reconciliationRunning) {
     return { skipped: true, reason: "already_running" };
   }
@@ -604,20 +604,28 @@ export async function reconcileTransactions() {
   try {
     const config = getConfig();
     const recheckSince = new Date(Date.now() - config.recheckWindowMs);
-    const txs = await Transaction.find({
-      txHash: { $type: "string", $ne: "" },
-      $or: [
-        { status: "pending" },
-        { status: "reconciliation_required" },
-        {
-          status: { $in: ["success", "failed"] },
+    const query = force
+      ? {
+          txHash: { $type: "string", $ne: "" },
+          ...(forceBefore
+            ? { $or: [{ lastReconciledAt: { $exists: false } }, { lastReconciledAt: { $lt: forceBefore } }] }
+            : {}),
+        }
+      : {
+          txHash: { $type: "string", $ne: "" },
           $or: [
-            { lastReconciledAt: null },
-            { blockchainSyncedAt: { $gte: recheckSince } },
+            { status: "pending" },
+            { status: "reconciliation_required" },
+            {
+              status: { $in: ["success", "failed"] },
+              $or: [
+                { lastReconciledAt: null },
+                { blockchainSyncedAt: { $gte: recheckSince } },
+              ],
+            },
           ],
-        },
-      ],
-    })
+        };
+    const txs = await Transaction.find(query)
       .sort({ lastReconciledAt: 1, updatedAt: 1 })
       .limit(config.batchSize);
 
@@ -640,14 +648,16 @@ export async function reconcileTransactions() {
     }
 
     let events = { scanned: 0, ingested: 0, updated: 0 };
-    try {
-      events = await syncTransferEvents(provider, config);
-    } catch (err) {
-      errors += 1;
-      events = {
-        ...events,
-        error: normalizeError(err) || "Transfer event synchronization failed.",
-      };
+    if (!skipEventSync) {
+      try {
+        events = await syncTransferEvents(provider, config);
+      } catch (err) {
+        errors += 1;
+        events = {
+          ...events,
+          error: normalizeError(err) || "Transfer event synchronization failed.",
+        };
+      }
     }
 
     return { checked: txs.length, corrected, errors, events };
