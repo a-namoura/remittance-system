@@ -59,7 +59,7 @@ jobs:
             echo "- Immutable archive retention: S3 Object Lock COMPLIANCE for ${SECURITY_ARCHIVE_RETENTION_DAYS} days"
           } > security-artifacts/release-security-record.md
           sha256sum security-artifacts/*.cdx.json security-artifacts/release-security-record.md > security-artifacts/SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-security-artifacts-${{ github.event.release.tag_name || inputs.tag }}
           path: security-artifacts/
