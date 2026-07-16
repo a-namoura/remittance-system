@@ -25,7 +25,7 @@ jobs:
       SECURITY_ARCHIVE_RETENTION_DAYS: ${{ vars.SECURITY_ARCHIVE_RETENTION_DAYS }}
       AWS_REGION: ${{ vars.SECURITY_ARCHIVE_AWS_REGION }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
       - uses: anchore/sbom-action@v0

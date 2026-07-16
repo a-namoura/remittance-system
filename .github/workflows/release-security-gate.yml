@@ -21,7 +21,7 @@ jobs:
     # release first; publish it only after this gate passes and is approved.
     environment: release-security
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.release.tag_name || inputs.ref }}
       - uses: actions/setup-node@v4
