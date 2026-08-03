@@ -7,7 +7,7 @@
       "packageManager": "npm",
       "manifest": "backend/package.json",
       "lockfile": "backend/package-lock.json",
-      "lockfileSha256": "3284b2a89a418643b2509e9a1a4243edbeea85e4de8a5704f0dbf5c7a2af7d99",
+      "lockfileSha256": "a8480be607343f7da2e864be27e88cede568f10e515a6e59da66c6cc848dd25c",
       "dependencies": [
         { "name": "bcryptjs", "version": "^3.0.3", "scope": "production" },
         { "name": "cors", "version": "^2.8.5", "scope": "production" },
@@ -24,7 +24,7 @@
       "packageManager": "npm",
       "manifest": "frontend/package.json",
       "lockfile": "frontend/package-lock.json",
-      "lockfileSha256": "b596590ae117bac538ad336a5f097d3492764c514da9988286eba5e778ad106d",
+      "lockfileSha256": "edca5630fb23adcf279315942cc0aff5327ba1ff194e54da52ef42310520805e",
       "dependencies": [
         { "name": "@eslint/js", "version": "^9.39.1", "scope": "development" },
         { "name": "@tailwindcss/postcss", "version": "^4.1.18", "scope": "development" },
