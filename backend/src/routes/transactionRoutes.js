@@ -47,6 +47,28 @@ export const transactionRouter = express.Router();
 
 const DEFAULT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_ASSET_SYMBOL = getNativeAssetSymbol();
+export const MY_TRANSACTION_STATUSES = Object.freeze([
+  "pending",
+  "success",
+  "failed",
+  "cancelled",
+  "reconciliation_required",
+]);
+export const MY_TRANSACTION_VIEWS = Object.freeze(["all", "sent", "received"]);
+
+export function validateMyTransactionsQuery({ status, view } = {}) {
+  if (status !== undefined && !MY_TRANSACTION_STATUSES.includes(status)) {
+    const error = new Error("Invalid status query value.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (view !== undefined && !MY_TRANSACTION_VIEWS.includes(view)) {
+    const error = new Error("Invalid view query value.");
+    error.statusCode = 400;
+    throw error;
+  }
+}
 
 function requireRouteEvmAddress(res, value, fieldName) {
   const normalizedAddress = normalizeEvmAddress(value);
@@ -930,6 +952,8 @@ transactionRouter.get(
       limit = "10",
     } = req.query;
 
+    validateMyTransactionsQuery({ status, view });
+
     const numericLimit = Math.min(parseInt(limit, 10) || 10, 50);
     const numericPage = Math.max(parseInt(page, 10) || 1, 1);
 
@@ -948,8 +972,7 @@ transactionRouter.get(
     }
 
     // Optional status filter
-    const allowedStatuses = ["pending", "success", "failed", "cancelled", "reconciliation_required"];
-    if (status && allowedStatuses.includes(status)) {
+    if (status) {
       query.status = status;
     }
 
