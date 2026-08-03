@@ -366,7 +366,7 @@ function getAvailableChannels(user) {
   };
 }
 
-function getPasswordPolicyError(password) {
+export function getPasswordPolicyError(password) {
   const normalizedPassword = String(password || "");
   const missing = [];
 
