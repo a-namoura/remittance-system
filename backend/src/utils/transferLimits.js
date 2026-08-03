@@ -19,6 +19,17 @@ function formatLimit(value) {
   });
 }
 
+export function rejectInvalidTransferAmount(
+  res,
+  amount,
+  message = "amountEth must be a positive number."
+) {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    res.status(400);
+    throw new Error(message);
+  }
+}
+
 export function rejectOutOfRangeTransferAmount(res, amount) {
   const normalizedAmount = Number(amount);
   const minTransferEth = readTransferLimit("MIN_TRANSFER_ETH");

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sendTransaction } from "../src/controllers/transactionController.js";
-import { rejectOutOfRangeTransferAmount } from "../src/utils/transferLimits.js";
+import {
+  rejectInvalidTransferAmount,
+  rejectOutOfRangeTransferAmount,
+} from "../src/utils/transferLimits.js";
 
 function createResponse() {
   return {
@@ -13,19 +15,9 @@ function createResponse() {
   };
 }
 
-async function runAmountValidation(amountEth) {
+function runAmountValidation(amount) {
   const res = createResponse();
-  let nextError;
-
-  await sendTransaction(
-    { body: { receiver: "0x52908400098527886E0F7030069857D2E4169EE7", amountEth } },
-    res,
-    (err) => {
-    nextError = err;
-    }
-  );
-
-  return { res, nextError };
+  return { res, validate: () => rejectInvalidTransferAmount(res, amount) };
 }
 
 test("transfer limits allow valid amounts within the configured range", () => {
@@ -48,16 +40,24 @@ test("transfer limits allow valid amounts within the configured range", () => {
   }
 });
 
+test("positive amount validation accepts valid amounts", () => {
+  for (const amount of [0.01, 1, 2.5]) {
+    const { res, validate } = runAmountValidation(amount);
+    assert.doesNotThrow(validate);
+    assert.equal(res.statusCode, undefined);
+  }
+});
+
 for (const [name, amount] of [
   ["zero", 0],
   ["negative", -1],
   ["non-numeric", "not-a-number"],
 ]) {
-  test(`transfer requests reject ${name} amounts`, async () => {
-    const { res, nextError } = await runAmountValidation(amount);
+  test(`positive amount validation rejects ${name} amounts`, () => {
+    const { res, validate } = runAmountValidation(amount);
 
+    assert.throws(validate, /amountEth must be a positive number\./);
     assert.equal(res.statusCode, 400);
-    assert.ok(nextError);
   });
 }
 
