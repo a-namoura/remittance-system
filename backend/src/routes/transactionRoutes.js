@@ -56,7 +56,21 @@ export const MY_TRANSACTION_STATUSES = Object.freeze([
 ]);
 export const MY_TRANSACTION_VIEWS = Object.freeze(["all", "sent", "received"]);
 
-export function validateMyTransactionsQuery({ status, view } = {}) {
+function isValidIsoDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const date = new Date(value);
+  return (
+    !Number.isNaN(date.getTime()) &&
+    date.getUTCFullYear() === Number(value.slice(0, 4)) &&
+    date.getUTCMonth() + 1 === Number(value.slice(5, 7)) &&
+    date.getUTCDate() === Number(value.slice(8, 10))
+  );
+}
+
+export function validateMyTransactionsQuery({ status, view, from, to } = {}) {
   if (status !== undefined && !MY_TRANSACTION_STATUSES.includes(status)) {
     const error = new Error("Invalid status query value.");
     error.statusCode = 400;
@@ -65,6 +79,24 @@ export function validateMyTransactionsQuery({ status, view } = {}) {
 
   if (view !== undefined && !MY_TRANSACTION_VIEWS.includes(view)) {
     const error = new Error("Invalid view query value.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (from !== undefined && !isValidIsoDate(from)) {
+    const error = new Error("Invalid from query value. Expected a YYYY-MM-DD date.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (to !== undefined && !isValidIsoDate(to)) {
+    const error = new Error("Invalid to query value. Expected a YYYY-MM-DD date.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (from !== undefined && to !== undefined && from > to) {
+    const error = new Error("Invalid date range: from must be on or before to.");
     error.statusCode = 400;
     throw error;
   }
@@ -952,7 +984,7 @@ transactionRouter.get(
       limit = "10",
     } = req.query;
 
-    validateMyTransactionsQuery({ status, view });
+    validateMyTransactionsQuery({ status, view, from, to });
 
     const numericLimit = Math.min(parseInt(limit, 10) || 10, 50);
     const numericPage = Math.max(parseInt(page, 10) || 1, 1);
