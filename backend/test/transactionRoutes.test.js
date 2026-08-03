@@ -60,6 +60,31 @@ test("my transactions query rejects date ranges where from is after to", () => {
   );
 });
 
+test("my transactions query accepts positive whole page and limit values", () => {
+  assert.doesNotThrow(() =>
+    validateMyTransactionsQuery({ page: "2", limit: "50" })
+  );
+});
+
+test("my transactions query rejects invalid page and limit values with HTTP 400", () => {
+  for (const query of [
+    { page: "0" },
+    { page: "-1" },
+    { page: "1.5" },
+    { page: "two" },
+    { limit: "0" },
+    { limit: "-1" },
+    { limit: "1.5" },
+    { limit: "two" },
+    { limit: "51" },
+  ]) {
+    assert.throws(
+      () => validateMyTransactionsQuery(query),
+      (error) => error.statusCode === 400
+    );
+  }
+});
+
 test("my transactions to date includes the final millisecond of the selected UTC day", () => {
   assert.equal(
     getEndOfUtcDay("2024-03-01").toISOString(),

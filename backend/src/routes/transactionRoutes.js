@@ -76,7 +76,16 @@ export function getEndOfUtcDay(value) {
   return date;
 }
 
-export function validateMyTransactionsQuery({ status, view, from, to } = {}) {
+function isPositiveInteger(value) {
+  return (
+    typeof value === "string" &&
+    /^\d+$/.test(value) &&
+    Number.isSafeInteger(Number(value)) &&
+    Number(value) > 0
+  );
+}
+
+export function validateMyTransactionsQuery({ status, view, from, to, page, limit } = {}) {
   if (status !== undefined && !MY_TRANSACTION_STATUSES.includes(status)) {
     const error = new Error("Invalid status query value.");
     error.statusCode = 400;
@@ -103,6 +112,24 @@ export function validateMyTransactionsQuery({ status, view, from, to } = {}) {
 
   if (from !== undefined && to !== undefined && from > to) {
     const error = new Error("Invalid date range: from must be on or before to.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (page !== undefined && !isPositiveInteger(page)) {
+    const error = new Error("Invalid page query value. Expected a positive integer.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (limit !== undefined && !isPositiveInteger(limit)) {
+    const error = new Error("Invalid limit query value. Expected a positive integer.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (limit !== undefined && Number(limit) > 50) {
+    const error = new Error("Invalid limit query value. Maximum is 50.");
     error.statusCode = 400;
     throw error;
   }
@@ -990,7 +1017,7 @@ transactionRouter.get(
       limit = "10",
     } = req.query;
 
-    validateMyTransactionsQuery({ status, view, from, to });
+    validateMyTransactionsQuery({ status, view, from, to, page, limit });
 
     const numericLimit = Math.min(parseInt(limit, 10) || 10, 50);
     const numericPage = Math.max(parseInt(page, 10) || 1, 1);
