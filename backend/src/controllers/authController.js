@@ -191,7 +191,7 @@ async function respondLoginFailure(
   return res.status(status).json({ message });
 }
 
-function isValidEmail(value) {
+export function isValidEmail(value) {
   return EMAIL_PATTERN.test(String(value || "").trim());
 }
 
