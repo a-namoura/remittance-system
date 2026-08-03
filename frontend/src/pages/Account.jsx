@@ -260,7 +260,7 @@ export default function Account() {
     return () => {
       isCancelled = true;
     };
-  }, [accountLinked, accountAddress]);
+  }, [accountLinked, accountAddress, selectedCurrency]);
 
   if (loading) {
     return (
