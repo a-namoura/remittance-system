@@ -57,6 +57,10 @@ export function hashAuditIdentifier(value) {
 }
 
 export async function logAudit({ user, userId, action, metadata = {}, req }) {
+  // Node's test runner sets NODE_TEST_CONTEXT for test workers. Avoid buffering
+  // audit writes when tests intentionally run without a MongoDB connection.
+  if (process.env.NODE_ENV === "test" || process.env.NODE_TEST_CONTEXT) return;
+
   const actorUserId = user?._id || userId || null;
   const safeMetadata = redact(metadata);
   const fields = auditFields(action, safeMetadata);
