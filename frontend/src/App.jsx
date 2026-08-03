@@ -1,25 +1,27 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import GlobalRequestFeedback from "./components/GlobalRequestFeedback.jsx";
-import Landing from "./pages/Landing.jsx";
-import Login from "./pages/Login.jsx";
-import Register from "./pages/Register.jsx";
-import ForgotPassword from "./pages/ForgotPassword.jsx";
-import ClaimTransfer from "./pages/ClaimTransfer.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
-import Account from "./pages/Account.jsx";
-import Friends from "./pages/Friends.jsx";
-import RequestMoney from "./pages/RequestMoney.jsx";
-import Chat from "./pages/Chat.jsx";
-import SendMoney from "./pages/SendMoney.jsx";
-import Transactions from "./pages/Transactions.jsx";
-import TransactionDetails from "./pages/TransactionDetails.jsx";
-import Admin from "./pages/Admin.jsx";
-import AdminAuditLogs from "./pages/AdminAuditLogs.jsx";
+import { PageLoading } from "./components/PageLayout.jsx";
+
+const Landing = lazy(() => import("./pages/Landing.jsx"));
+const Login = lazy(() => import("./pages/Login.jsx"));
+const Register = lazy(() => import("./pages/Register.jsx"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword.jsx"));
+const ClaimTransfer = lazy(() => import("./pages/ClaimTransfer.jsx"));
+const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
+const Account = lazy(() => import("./pages/Account.jsx"));
+const Friends = lazy(() => import("./pages/Friends.jsx"));
+const RequestMoney = lazy(() => import("./pages/RequestMoney.jsx"));
+const Chat = lazy(() => import("./pages/Chat.jsx"));
+const SendMoney = lazy(() => import("./pages/SendMoney.jsx"));
+const Transactions = lazy(() => import("./pages/Transactions.jsx"));
+const TransactionDetails = lazy(() => import("./pages/TransactionDetails.jsx"));
+const Admin = lazy(() => import("./pages/Admin.jsx"));
+const AdminAuditLogs = lazy(() => import("./pages/AdminAuditLogs.jsx"));
 
 const PUBLIC_ROUTES = [
   { path: "/", element: <Landing /> },
@@ -46,6 +48,10 @@ const ADMIN_ROUTES = [
   { path: "/admin", element: <Admin /> },
   { path: "/admin/audit-logs", element: <AdminAuditLogs /> },
 ];
+
+function RouteLoading() {
+  return <PageLoading className="m-6">Loading page...</PageLoading>;
+}
 
 function PublicLayout({ children }) {
   return (
@@ -100,7 +106,7 @@ export default function App() {
             path={path}
             element={
               <PublicLayout>
-                {element}
+                <Suspense fallback={<RouteLoading />}>{element}</Suspense>
               </PublicLayout>
             }
           />
@@ -113,7 +119,7 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <AuthenticatedLayout>
-                  {element}
+                  <Suspense fallback={<RouteLoading />}>{element}</Suspense>
                 </AuthenticatedLayout>
               </ProtectedRoute>
             }
@@ -127,7 +133,7 @@ export default function App() {
             element={
               <AdminRoute>
                 <AuthenticatedLayout>
-                  {element}
+                  <Suspense fallback={<RouteLoading />}>{element}</Suspense>
                 </AuthenticatedLayout>
               </AdminRoute>
             }
