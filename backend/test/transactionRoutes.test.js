@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   MY_TRANSACTION_STATUSES,
   MY_TRANSACTION_VIEWS,
+  getEndOfUtcDay,
   validateMyTransactionsQuery,
 } from "../src/routes/transactionRoutes.js";
 
@@ -56,5 +57,12 @@ test("my transactions query rejects date ranges where from is after to", () => {
     (error) =>
       error.statusCode === 400 &&
       error.message === "Invalid date range: from must be on or before to."
+  );
+});
+
+test("my transactions to date includes the final millisecond of the selected UTC day", () => {
+  assert.equal(
+    getEndOfUtcDay("2024-03-01").toISOString(),
+    "2024-03-01T23:59:59.999Z"
   );
 });

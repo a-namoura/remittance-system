@@ -70,6 +70,12 @@ function isValidIsoDate(value) {
   );
 }
 
+export function getEndOfUtcDay(value) {
+  const date = new Date(value);
+  date.setUTCHours(23, 59, 59, 999);
+  return date;
+}
+
 export function validateMyTransactionsQuery({ status, view, from, to } = {}) {
   if (status !== undefined && !MY_TRANSACTION_STATUSES.includes(status)) {
     const error = new Error("Invalid status query value.");
@@ -1016,9 +1022,8 @@ transactionRouter.get(
         if (!isNaN(fromDate)) query.createdAt.$gte = fromDate;
       }
       if (to) {
-        const toDate = new Date(to);
+        const toDate = getEndOfUtcDay(to);
         if (!isNaN(toDate)) {
-          toDate.setHours(23, 59, 59, 999);
           query.createdAt.$lte = toDate;
         }
       }
