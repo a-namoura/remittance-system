@@ -34,6 +34,7 @@ import {
 } from "../styles/formClasses.js";
 import { isValidEvmAddress, normalizeEvmAddress } from "../utils/security.js";
 import { copyText, getQrImageUrl, shortWallet } from "../utils/paylink.js";
+import { FALLBACK_NATIVE_CURRENCY, nativeCurrencyFrom } from "../utils/currency.js";
 import { useTransitionNotification } from "../utils/successTransition.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
@@ -300,6 +301,7 @@ export default function SendMoney() {
   const [transactionNotification, showTransactionNotification] =
     useTransitionNotification();
   const [availableBalance, setAvailableBalance] = useState(null);
+  const [nativeCurrency, setNativeCurrency] = useState(FALLBACK_NATIVE_CURRENCY);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
 
@@ -406,6 +408,7 @@ export default function SendMoney() {
         const balance =
           typeof result?.balance === "number" ? result.balance : null;
         setAvailableBalance(balance);
+        setNativeCurrency(nativeCurrencyFrom(result));
       } catch (err) {
         if (isCancelled) return;
         setAvailableBalance(null);
@@ -698,7 +701,7 @@ export default function SendMoney() {
     }
 
     if (amount > availableBalance) {
-      nextFieldErrors.amount = `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`;
+      nextFieldErrors.amount = `Insufficient balance. Available: ${availableBalance.toFixed(4)} ${nativeCurrency}.`;
       setFieldErrors(nextFieldErrors);
       return null;
     }
@@ -760,7 +763,7 @@ export default function SendMoney() {
     }
 
     if (amount > availableBalance) {
-      nextFieldErrors.amount = `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`;
+      nextFieldErrors.amount = `Insufficient balance. Available: ${availableBalance.toFixed(4)} ${nativeCurrency}.`;
       setFieldErrors(nextFieldErrors);
       return null;
     }
@@ -889,6 +892,7 @@ export default function SendMoney() {
         receiverWallet: details.wallet,
         amountEth: details.amount,
         verificationCode: normalizedCode,
+        assetSymbol: nativeCurrency,
       });
 
       handleTransactionResult(result, token);
@@ -943,6 +947,7 @@ export default function SendMoney() {
         receiverWallet: details.destination,
         amountEth: details.amount,
         verificationCode: normalizedCode,
+        assetSymbol: nativeCurrency,
       });
 
       handleTransactionResult(result, token);
@@ -992,7 +997,7 @@ export default function SendMoney() {
     if (amount > availableBalance) {
       setFieldErrors((current) => ({
         ...current,
-        amount: `Insufficient balance. Available: ${availableBalance.toFixed(4)} ETH.`,
+        amount: `Insufficient balance. Available: ${availableBalance.toFixed(4)} ${nativeCurrency}.`,
       }));
       return;
     }
@@ -1009,6 +1014,7 @@ export default function SendMoney() {
         token,
         amountEth: amount,
         note: String(linkNote || "").trim() || undefined,
+        assetSymbol: nativeCurrency,
       });
 
       const claimToken = String(response.linkToken || "").trim();
@@ -1470,7 +1476,7 @@ export default function SendMoney() {
                   <p className="text-xs text-gray-600">
                     Available balance:{" "}
                     <span className="font-mono font-semibold text-gray-900">
-                      {availableBalance.toFixed(4)} ETH
+                      {availableBalance.toFixed(4)} {nativeCurrency}
                     </span>
                   </p>
                 ) : (
@@ -1567,7 +1573,7 @@ export default function SendMoney() {
                             code: "",
                           }));
                         }}
-                        placeholder="0.00 ETH"
+                        placeholder={`0.00 ${nativeCurrency}`}
                         className={FORM_INPUT_BASE_CLASS}
                       />
                       <FieldError>{fieldErrors.amount}</FieldError>
@@ -1609,14 +1615,14 @@ export default function SendMoney() {
                           </div>
                           <div>
                             <p className="text-gray-500">Total amount</p>
-                            <p className="font-semibold text-gray-900">{amountEth || "0"} ETH</p>
+                            <p className="font-semibold text-gray-900">{amountEth || "0"} {nativeCurrency}</p>
                           </div>
                         </div>
                         {!balanceLoading && Number.isFinite(availableBalance) ? (
                           <p className="mt-1 text-[11px] text-gray-500">
                             Balance:{" "}
                             <span className="font-mono text-gray-700">
-                              {availableBalance.toFixed(4)} ETH
+                              {availableBalance.toFixed(4)} {nativeCurrency}
                             </span>
                           </p>
                         ) : null}
@@ -1724,7 +1730,7 @@ export default function SendMoney() {
                         code: "",
                       }));
                     }}
-                    placeholder="0.00 ETH"
+                    placeholder={`0.00 ${nativeCurrency}`}
                     className={FORM_INPUT_BASE_CLASS}
                   />
                   <FieldError>{fieldErrors.amount}</FieldError>
@@ -1813,7 +1819,7 @@ export default function SendMoney() {
                         amount: "",
                       }));
                     }}
-                    placeholder="0.00 ETH"
+                    placeholder={`0.00 ${nativeCurrency}`}
                     className={FORM_INPUT_BASE_CLASS}
                   />
                   <FieldError>{fieldErrors.amount}</FieldError>

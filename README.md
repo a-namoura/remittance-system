@@ -103,11 +103,19 @@ as pending. Confirmation is reconciled asynchronously, so block confirmation tim
 is not part of the user request response time. The backend exposes the configured
 2-second response target in `X-Response-Sla-Ms` and logs responses that exceed it.
 
+### Notification SLA
+
+For registration, login, wallet linking, password reset, and transaction outcomes,
+the UI notification SLA starts when the browser receives the mocked or real backend
+response (or, for a transaction, when a poll response first reports a terminal
+status). The success or error notification, including the backend failure reason,
+must be visible within 2 seconds. Transaction status is polled every 1 second.
+
 Optional currency/email settings used by specific features:
 
 ```env
-REM_NATIVE_CURRENCY=ETH
-REM_RATE_USD_PER_ETH=3000
+REM_NATIVE_CURRENCY=BNB
+REM_RATE_USD_PER_BNB=600
 REM_RATE_USD_PER_BTC=90000
 SENDGRID_API_KEY=...
 SENDGRID_FROM=no-reply@example.com

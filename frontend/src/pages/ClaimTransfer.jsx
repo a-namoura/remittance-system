@@ -296,7 +296,7 @@ export default function ClaimTransfer() {
               </p>
               <p className="text-lg font-semibold text-gray-900">
                 {preview?.amount}{" "}
-                {String(preview?.assetSymbol || "ETH").trim().toUpperCase() || "ETH"}
+                {String(preview?.assetSymbol || "BNB").trim().toUpperCase() || "BNB"}
               </p>
               {preview?.note && (
                 <p className="text-sm text-gray-600">Note: {preview.note}</p>

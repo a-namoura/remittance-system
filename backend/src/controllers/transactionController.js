@@ -12,7 +12,7 @@ import {
 } from "../utils/transactionRequests.js";
 import { rejectOutOfRangeTransferAmount } from "../utils/transferLimits.js";
 
-const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
+const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "BNB")
   .trim()
   .toUpperCase();
 

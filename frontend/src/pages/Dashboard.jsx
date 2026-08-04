@@ -20,6 +20,7 @@ import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
+import { FALLBACK_NATIVE_CURRENCY, nativeCurrencyFrom } from "../utils/currency.js";
 const BALANCE_REFRESH_INTERVAL_MS = 15 * 1000;
 const QUICK_PLUS_ACTIONS = [
   {
@@ -129,7 +130,7 @@ export default function Dashboard() {
   const [accountAddress, setAccountAddress] = useState("");
   const [accountBalances, setAccountBalances] = useState({});
   const [availableCurrencies, setAvailableCurrencies] = useState([]);
-  const [nativeCurrency, setNativeCurrency] = useState("ETH");
+  const [nativeCurrency, setNativeCurrency] = useState(FALLBACK_NATIVE_CURRENCY);
   const [fiatBalanceUsd, setFiatBalanceUsd] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
@@ -262,7 +263,7 @@ export default function Dashboard() {
       balanceLoadedRef.current = false;
       setAccountBalances({});
       setAvailableCurrencies([]);
-      setNativeCurrency("ETH");
+      setNativeCurrency(FALLBACK_NATIVE_CURRENCY);
       setFiatBalanceUsd(null);
       setBalanceError("");
     }
@@ -273,7 +274,7 @@ export default function Dashboard() {
           setBalanceLoading(false);
           setAccountBalances({});
           setAvailableCurrencies([]);
-          setNativeCurrency("ETH");
+          setNativeCurrency(FALLBACK_NATIVE_CURRENCY);
           setFiatBalanceUsd(null);
           setBalanceError("");
           balanceLoadedRef.current = false;
@@ -306,12 +307,10 @@ export default function Dashboard() {
           : Object.keys(balances);
 
         const fallbackCurrency =
-          String(result?.currency || result?.nativeCurrency || currencies[0] || "ETH")
+          String(result?.currency || result?.nativeCurrency || currencies[0] || FALLBACK_NATIVE_CURRENCY)
             .trim()
             .toUpperCase();
-        const nextNativeCurrency = String(result?.nativeCurrency || fallbackCurrency || "ETH")
-          .trim()
-          .toUpperCase();
+        const nextNativeCurrency = nativeCurrencyFrom(result, fallbackCurrency);
 
         const nextCurrencies = currencies.length > 0 ? currencies : [fallbackCurrency];
         const balanceCurrency = nextCurrencies.includes(nextNativeCurrency)
@@ -345,7 +344,7 @@ export default function Dashboard() {
           if (!balanceLoadedRef.current) {
             setAccountBalances({});
             setAvailableCurrencies([]);
-            setNativeCurrency("ETH");
+            setNativeCurrency(FALLBACK_NATIVE_CURRENCY);
             setFiatBalanceUsd(null);
           }
         }
@@ -419,10 +418,10 @@ export default function Dashboard() {
             {accountLinked && accountAddress ? (
               <>
                 <div className="text-xs">
-                  Currency: {nativeCurrency || availableCurrencies[0] || "ETH"}
+                  Currency: {nativeCurrency || availableCurrencies[0] || FALLBACK_NATIVE_CURRENCY}
                 </div>
                 <div>
-                  {nativeCurrency || "ETH"} balance:{" "}
+                  {nativeCurrency || FALLBACK_NATIVE_CURRENCY} balance:{" "}
                   {showBalanceLoading
                     ? "Loading..."
                     : hasDisplayBalance
@@ -557,7 +556,7 @@ export default function Dashboard() {
                 String(transaction.direction || "").toLowerCase() === "received"
                   ? "received"
                   : "sent";
-              const amountSymbol = String(transaction.assetSymbol || "ETH")
+              const amountSymbol = String(transaction.assetSymbol || FALLBACK_NATIVE_CURRENCY)
                 .trim()
                 .toUpperCase();
               const counterpartyLabel = direction === "received" ? "From" : "To";

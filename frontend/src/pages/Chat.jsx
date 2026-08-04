@@ -44,6 +44,7 @@ import {
 } from "../services/chatUnread.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
+import { FALLBACK_NATIVE_CURRENCY, nativeCurrencyFrom } from "../utils/currency.js";
 function formatClock(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
@@ -337,6 +338,7 @@ export default function Chat() {
   const [reporting, setReporting] = useState(false);
   const [requestedFriendHandled, setRequestedFriendHandled] = useState(false);
   const [walletBalance, setWalletBalance] = useState(null);
+  const [nativeCurrency, setNativeCurrency] = useState(FALLBACK_NATIVE_CURRENCY);
   const [walletBalanceLoading, setWalletBalanceLoading] = useState(false);
   const [walletBalanceError, setWalletBalanceError] = useState("");
 
@@ -548,6 +550,7 @@ export default function Chat() {
       const numericBalance =
         typeof response?.balance === "number" ? response.balance : null;
       setWalletBalance(numericBalance);
+      setNativeCurrency(nativeCurrencyFrom(response));
       return numericBalance;
     } catch (err) {
       setWalletBalance(null);
@@ -860,7 +863,7 @@ export default function Chat() {
           const requestAmount = latestMessage?.request?.amount;
           preview =
             requestAmount != null && requestAmount !== ""
-              ? `Request ${formatAmount(requestAmount)} ETH`
+              ? `Request ${formatAmount(requestAmount)} ${nativeCurrency}`
               : "Payment request";
         } else {
           try {
@@ -872,7 +875,7 @@ export default function Chat() {
             const decoded = parseMessagePayload(latestMessage.messageType, plaintext);
             if (decoded.kind === "request") {
               const amount = String(decoded.amountEth || "").trim();
-              preview = amount ? `Request ${amount} ETH` : "Payment request";
+              preview = amount ? `Request ${amount} ${nativeCurrency}` : "Payment request";
             } else {
               preview = String(decoded.text || "").trim() || "Message";
             }
@@ -885,7 +888,7 @@ export default function Chat() {
               );
               if (decoded.kind === "request") {
                 const amount = String(decoded.amountEth || "").trim();
-                preview = amount ? `Request ${amount} ETH` : "Payment request";
+                preview = amount ? `Request ${amount} ${nativeCurrency}` : "Payment request";
               } else {
                 preview = String(decoded.text || "").trim() || "Message";
               }
@@ -1537,7 +1540,7 @@ export default function Chat() {
 
     if (Number.isFinite(walletBalance) && amount > walletBalance) {
       setTimelineError(
-        `Insufficient balance. Available: ${walletBalance.toFixed(4)} ETH.`
+        `Insufficient balance. Available: ${walletBalance.toFixed(4)} ${nativeCurrency}.`
       );
       return null;
     }
@@ -1688,7 +1691,7 @@ export default function Chat() {
 
     if (Number.isFinite(walletBalance) && amount > walletBalance) {
       setRequestModalError(
-        `Insufficient balance. Available: ${walletBalance.toFixed(4)} ETH.`
+        `Insufficient balance. Available: ${walletBalance.toFixed(4)} ${nativeCurrency}.`
       );
       return;
     }
@@ -2080,7 +2083,7 @@ export default function Chat() {
                                   }`}
                                 >
                                   {formatAmount(payment.amount)}{" "}
-                                  {String(payment.assetSymbol || "ETH").trim().toUpperCase()}
+                                  {String(payment.assetSymbol || nativeCurrency).trim().toUpperCase()}
                                 </p>
                                 {payment.note ? (
                                   <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
@@ -2187,7 +2190,7 @@ export default function Chat() {
                                   </p>
                                   {requestAmountValue ? (
                                     <p className="mt-1 text-xl font-semibold">
-                                      {formatAmount(requestAmountValue)} ETH
+                                      {formatAmount(requestAmountValue)} {nativeCurrency}
                                     </p>
                                   ) : null}
                                   {requestNoteValue ? (
@@ -2503,7 +2506,7 @@ export default function Chat() {
                   <p className="text-xs text-gray-600">
                     Available balance:{" "}
                     <span className="font-semibold text-gray-900">
-                      {walletBalance.toFixed(4)} ETH
+                      {walletBalance.toFixed(4)} {nativeCurrency}
                     </span>
                   </p>
                 ) : (
@@ -2549,7 +2552,7 @@ export default function Chat() {
                       <div>
                         <p className="text-xs text-gray-500">Total amount</p>
                         <p className="font-semibold text-gray-900">
-                          {formatAmount(sendAmount)} ETH
+                          {formatAmount(sendAmount)} {nativeCurrency}
                         </p>
                       </div>
                       {String(sendNote || "").trim() ? (
@@ -2607,10 +2610,10 @@ export default function Chat() {
                         }
                         setRequestAmount(event.target.value);
                       }}
-                      placeholder="Amount ETH"
+                      placeholder={`Amount ${nativeCurrency}`}
                       className={FORM_INPUT_BASE_CLASS}
                     />
-                    <p className={`${FORM_HELP_TEXT_CLASS} mt-1`}>Enter the amount in ETH.</p>
+                    <p className={`${FORM_HELP_TEXT_CLASS} mt-1`}>Enter the amount in {nativeCurrency}.</p>
                   </div>
 
                   <div>
@@ -2704,7 +2707,7 @@ export default function Chat() {
                 Total amount
               </p>
               <p className="mt-1 text-lg font-semibold text-gray-900">
-                {formatAmount(requestModal.amount)} ETH
+                {formatAmount(requestModal.amount)} {nativeCurrency}
               </p>
               {requestModal.note ? (
                 <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{requestModal.note}</p>
@@ -2729,7 +2732,7 @@ export default function Chat() {
                     <p className="text-xs text-gray-600">
                       Available balance:{" "}
                       <span className="font-semibold text-gray-900">
-                        {walletBalance.toFixed(4)} ETH
+                        {walletBalance.toFixed(4)} {nativeCurrency}
                       </span>
                     </p>
                   ) : (

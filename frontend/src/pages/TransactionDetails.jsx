@@ -23,7 +23,7 @@ function statusBadgeClasses(status) {
 
 function formatAssetAmount(value, assetSymbol) {
   if (typeof value !== "number") return "-";
-  const symbol = String(assetSymbol || "ETH").trim().toUpperCase() || "ETH";
+  const symbol = String(assetSymbol || "BNB").trim().toUpperCase() || "BNB";
   return `${value} ${symbol}`;
 }
 

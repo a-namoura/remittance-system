@@ -299,7 +299,7 @@ export default function Admin() {
                   <th className="px-4 py-2 text-left">When</th>
                   <th className="px-4 py-2 text-left">Sender</th>
                   <th className="px-4 py-2 text-left">Receiver</th>
-                  <th className="px-4 py-2 text-left">Amount (ETH)</th>
+                  <th className="px-4 py-2 text-left">Amount</th>
                   <th className="px-4 py-2 text-left">Status</th>
                   <th className="px-4 py-2 text-left">Tx hash</th>
                 </tr>

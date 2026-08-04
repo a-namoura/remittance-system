@@ -281,7 +281,7 @@ export default function Transactions() {
               const counterpartyValueClass = counterpartyUsername || counterpartyDisplayName
                 ? "mt-1 text-xs text-gray-700"
                 : "mt-1 font-mono text-xs text-gray-700";
-              const assetSymbol = String(transaction.assetSymbol || "ETH")
+              const assetSymbol = String(transaction.assetSymbol || "BNB")
                 .trim()
                 .toUpperCase();
               const explorerUrl = getExplorerTxUrl(transaction.txHash);

@@ -6,7 +6,7 @@ import {
 } from "../utils/walletAddress.js";
 import { IN_FLIGHT_TRANSACTION_STATUSES } from "../utils/transactionRequests.js";
 
-const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
+const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "BNB")
   .trim()
   .toUpperCase();
 
@@ -44,7 +44,7 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       trim: true,
       uppercase: true,
-      default: DEFAULT_ASSET_SYMBOL || "ETH",
+      default: DEFAULT_ASSET_SYMBOL || "BNB",
       maxlength: 10,
     },
     status: {

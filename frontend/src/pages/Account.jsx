@@ -219,7 +219,7 @@ export default function Account() {
           : Object.keys(balances);
 
         const fallbackCurrency =
-          String(result?.currency || result?.nativeCurrency || currencies[0] || "ETH")
+          String(result?.currency || result?.nativeCurrency || currencies[0] || "BNB")
             .trim()
             .toUpperCase();
 

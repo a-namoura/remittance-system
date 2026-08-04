@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
+const DEFAULT_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "BNB")
   .trim()
   .toUpperCase();
 
@@ -26,7 +26,7 @@ const paymentLinkSchema = new mongoose.Schema(
       type: String,
       trim: true,
       uppercase: true,
-      default: DEFAULT_ASSET_SYMBOL || "ETH",
+      default: DEFAULT_ASSET_SYMBOL || "BNB",
       maxlength: 10,
     },
     note: {

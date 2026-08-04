@@ -1,4 +1,4 @@
-const DEFAULT_NATIVE_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "ETH")
+const DEFAULT_NATIVE_ASSET_SYMBOL = String(process.env.REM_NATIVE_CURRENCY || "BNB")
   .trim()
   .toUpperCase();
 
@@ -23,7 +23,7 @@ export function normalizeCurrencySymbol(value) {
 }
 
 export function getNativeAssetSymbol() {
-  return DEFAULT_NATIVE_ASSET_SYMBOL || "ETH";
+  return DEFAULT_NATIVE_ASSET_SYMBOL || "BNB";
 }
 
 export function getNativeUsdRate() {
