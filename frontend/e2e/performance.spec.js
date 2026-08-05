@@ -50,15 +50,18 @@ async function submitMockedTransfer(page) {
 }
 
 test("key pages load within 2 seconds on average", async ({ page }) => {
-  await authenticate(page);
   await mockApi(page);
-  const checks = [["/login", "Login"], ["/dashboard", "Welcome, Alex"], ["/transactions", "Activity"]];
   const durations = [];
-  for (const [path, heading] of checks) {
-    const startedAt = Date.now();
+  const startedAt = Date.now();
+  await page.goto("/login");
+  await expect(page.getByRole("heading", { name: "Login" })).toBeVisible({ timeout: SLA_MS });
+  durations.push(Date.now() - startedAt);
+  await authenticate(page);
+  for (const [path, heading] of [["/dashboard", "Welcome, Alex"], ["/transactions", "Activity"]]) {
+    const pageStartedAt = Date.now();
     await page.goto(path);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible({ timeout: SLA_MS });
-    durations.push(Date.now() - startedAt);
+    durations.push(Date.now() - pageStartedAt);
   }
   expect(durations.reduce((sum, value) => sum + value, 0) / durations.length).toBeLessThanOrEqual(SLA_MS);
 });
