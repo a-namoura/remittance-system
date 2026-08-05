@@ -73,8 +73,7 @@ test("full mocked /transactions/send flow validates input and submits within 2 s
   await page.getByRole("button", { name: "Address" }).click();
   await page.getByPlaceholder("0x...").fill("not-a-wallet");
   await page.getByPlaceholder(/0\.00 BNB/).fill("1");
-  await page.getByRole("button", { name: "Continue to verification" }).click();
-  await expect(page.getByText("Enter a valid destination wallet address.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue to verification" })).toBeDisabled();
   expect(api.sendRequests()).toBe(0);
 
   await page.getByPlaceholder("0x...").fill(RECIPIENT);

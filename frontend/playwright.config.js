@@ -10,6 +10,10 @@ export default defineConfig({
     : "list",
   webServer: {
     command: "npm run build && node ./node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4173",
+    env: {
+      VITE_API_BASE_URL: "https://api.test",
+      VITE_API_URL: "https://api.test",
+    },
     port: 4173,
     reuseExistingServer: !process.env.CI,
   },
