@@ -704,9 +704,41 @@ transactionRouter.post(
 );
 
 // POST /api/transactions/send
-transactionRouter.post(
+/**
+ * Creates the direct-send route with replaceable boundary dependencies.
+ * The default export wiring below intentionally uses the production services.
+ */
+export function createSendTransactionRouter({
+  protectMiddleware = protect,
+  verifyPaymentCode = requireAndConsumePaymentCode,
+  submitRemittanceRpc = submitRemittance,
+  getNativeBalance = getEthBalance,
+  updateWalletBalance = updateStoredWalletBalance,
+  walletModel = Wallet,
+  transactionModel = Transaction,
+  logAttempt = logTransferAttempt,
+  logResult = logTransferResult,
+  createRequestKey = createTransferRequestKey,
+  rejectInFlightTransfer = rejectInFlightDuplicateTransfer,
+  recordSubmission = recordTransactionSubmission,
+  settleSubmission = settleTransactionAfterSubmission,
+  markFailed = markTransactionFailedAndLogSyncError,
+} = {}) {
+  const router = express.Router();
+  const rejectInsufficientBalance = async (res, walletAddress, amount) => {
+    const normalizedAmount = Number(amount);
+    const balance = await getNativeBalance(walletAddress);
+    await updateWalletBalance(walletAddress, balance);
+    if (!Number.isFinite(balance) || !Number.isFinite(normalizedAmount) || normalizedAmount > balance) {
+      res.status(400);
+      throw new Error(`Insufficient balance. Available: ${Number.isFinite(balance) ? balance.toFixed(4) : "0.0000"} ${DEFAULT_ASSET_SYMBOL}.`);
+    }
+    return balance;
+  };
+
+  router.post(
   "/send",
-  protect,
+  protectMiddleware,
   allowQueryFields([]),
   allowBodyFields(["receiverWallet", "amountEth", "verificationCode", "assetSymbol"]),
   async (req, res, next) => {
@@ -717,7 +749,7 @@ transactionRouter.post(
     const { receiverWallet, amountEth, verificationCode } = req.body;
     const assetSymbol = normalizeTransferAssetSymbol(req.body?.assetSymbol);
 
-    await logTransferAttempt({
+    await logAttempt({
       user: req.user,
       req,
       flow: "direct_send",
@@ -744,7 +776,7 @@ transactionRouter.post(
       "receiverWallet"
     );
 
-    const walletDoc = await Wallet.findOne({ userId: req.user._id });
+    const walletDoc = await walletModel.findOne({ userId: req.user._id });
     if (!walletDoc || !walletDoc.isVerified) {
       res.status(400);
       throw new Error("You must link and verify a wallet before sending.");
@@ -759,19 +791,19 @@ transactionRouter.post(
     const amountNumber = Number(amountEth);
     rejectInvalidTransferAmount(res, amountNumber);
     rejectOutOfRangeTransferAmount(res, amountNumber);
-    await rejectInsufficientNativeBalance(res, senderWallet, amountNumber);
+    await rejectInsufficientBalance(res, senderWallet, amountNumber);
 
-    const transferRequestKey = createTransferRequestKey({
+    const transferRequestKey = createRequestKey({
       senderUserId: req.user._id,
       senderWallet,
       receiverWallet: normalizedReceiverWallet,
       amount: amountNumber,
       assetSymbol,
     });
-    await rejectInFlightDuplicateTransfer(res, transferRequestKey, req);
+    await rejectInFlightTransfer(res, transferRequestKey, req);
 
     try {
-      await requireAndConsumePaymentCode({
+      await verifyPaymentCode({
         user: req.user,
         code: verificationCode,
       });
@@ -782,7 +814,7 @@ transactionRouter.post(
 
     let receiverUserId = null;
     if (normalizedReceiverWallet) {
-      const receiverWalletDoc = await Wallet.findOne({
+      const receiverWalletDoc = await walletModel.findOne({
         address: normalizedReceiverWallet,
         isVerified: true,
       })
@@ -793,7 +825,7 @@ transactionRouter.post(
     }
 
     // Create DB record first with pending status
-    txDoc = await Transaction.create({
+    txDoc = await transactionModel.create({
       senderUserId: req.user._id,
       receiverUserId: receiverUserId || undefined,
       senderWallet,
@@ -805,20 +837,20 @@ transactionRouter.post(
       transferRequestKey,
     });
 
-    const submission = await submitRemittance(
+    const submission = await submitRemittanceRpc(
       normalizedReceiverWallet,
       amountNumber,
       {
         onSubmitted: (submission) =>
-          recordTransactionSubmission(txDoc, submission),
+          recordSubmission(txDoc, submission),
       }
     );
 
-    settleTransactionAfterSubmission({
+    settleSubmission({
       txDoc,
       submission,
       onSuccess: async () => {
-        await logTransferResult({
+        await logResult({
           user: req.user,
           req,
           flow: "direct_send",
@@ -832,7 +864,7 @@ transactionRouter.post(
         });
       },
       onFailure: async ({ error }) => {
-        await logTransferResult({
+        await logResult({
           user: req.user,
           req,
           flow: "direct_send",
@@ -867,7 +899,7 @@ transactionRouter.post(
   } catch (err) {
     if (isDuplicateTransferRequestKeyError(err)) {
       if (!transferResultLogged) {
-        await logTransferResult({
+        await logResult({
           user: req.user,
           req,
           flow: "direct_send",
@@ -881,11 +913,11 @@ transactionRouter.post(
 
     // If blockchain call failed, mark the transaction as failed
     if (txDoc && !["success", "failed"].includes(txDoc.status)) {
-      await markTransactionFailedAndLogSyncError(txDoc, err);
+      await markFailed(txDoc, err);
     }
 
     if (!transferResultLogged) {
-      await logTransferResult({
+      await logResult({
         user: req.user,
         req,
         flow: "direct_send",
@@ -896,7 +928,12 @@ transactionRouter.post(
     next(err);
   }
   }
-);
+  );
+
+  return router;
+}
+
+transactionRouter.use(createSendTransactionRouter());
 
 // GET /api/transactions/balance?wallet=0x...
 transactionRouter.get(

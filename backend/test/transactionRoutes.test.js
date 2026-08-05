@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import express from "express";
+import request from "supertest";
 import {
   MY_TRANSACTION_STATUSES,
   MY_TRANSACTION_VIEWS,
+  createSendTransactionRouter,
   getEndOfUtcDay,
   validateMyTransactionsQuery,
 } from "../src/routes/transactionRoutes.js";
@@ -90,4 +93,73 @@ test("my transactions to date includes the final millisecond of the selected UTC
     getEndOfUtcDay("2024-03-01").toISOString(),
     "2024-03-01T23:59:59.999Z"
   );
+});
+
+test("authenticated send returns 202 using injected verification and RPC dependencies within two seconds", async () => {
+  const senderWallet = "0x1111111111111111111111111111111111111111";
+  const receiverWallet = "0x2222222222222222222222222222222222222222";
+  const calls = { verify: 0, submit: 0 };
+  const transaction = { _id: "transaction-1", status: "pending", assetSymbol: "BNB" };
+  const walletModel = {
+    findOne(query) {
+      if (query.userId) return Promise.resolve({ address: senderWallet, isVerified: true });
+      return { select: () => ({ lean: async () => ({ userId: "receiver-1" }) }) };
+    },
+  };
+  const app = express();
+  app.use(express.json());
+  app.use(createSendTransactionRouter({
+    protectMiddleware: (req, res, next) => {
+      if (req.get("authorization") !== "Bearer test-token") return res.sendStatus(401);
+      req.user = { _id: "sender-1" };
+      next();
+    },
+    verifyPaymentCode: async ({ user, code }) => {
+      calls.verify += 1;
+      assert.equal(user._id, "sender-1");
+      assert.equal(code, "123456");
+    },
+    submitRemittanceRpc: async (receiver, amount) => {
+      calls.submit += 1;
+      assert.equal(receiver, receiverWallet);
+      assert.equal(amount, 1.25);
+      return { txHash: "0xabc", submittedAt: "2026-08-05T12:00:00.000Z" };
+    },
+    getNativeBalance: async () => 5,
+    updateWalletBalance: async () => {},
+    walletModel,
+    transactionModel: { create: async () => transaction },
+    logAttempt: async () => {},
+    logResult: async () => {},
+    createRequestKey: () => "request-1",
+    rejectInFlightTransfer: async () => {},
+    recordSubmission: async () => {},
+    settleSubmission: () => {},
+    markFailed: async () => {},
+  }));
+
+  const startedAt = performance.now();
+  const response = await request(app)
+    .post("/send")
+    .set("Authorization", "Bearer test-token")
+    .send({ receiverWallet, amountEth: "1.25", verificationCode: "123456" });
+
+  assert.ok(performance.now() - startedAt <= 2000);
+  assert.equal(response.status, 202);
+  assert.deepEqual(response.body, {
+    ok: true,
+    message: "Transaction submitted. Confirmation is processing.",
+    transaction: {
+      id: "transaction-1",
+      status: "pending",
+      txHash: "0xabc",
+      failureReason: null,
+      reconciliationError: null,
+      blockchainResultReceivedAt: null,
+      blockchainSyncedAt: null,
+      blockchainSubmittedAt: "2026-08-05T12:00:00.000Z",
+      assetSymbol: "BNB",
+    },
+  });
+  assert.deepEqual(calls, { verify: 1, submit: 1 });
 });
