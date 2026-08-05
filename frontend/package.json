@@ -11,6 +11,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "test:e2e": "playwright test",
+    "test:performance": "node scripts/run-performance-tests.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

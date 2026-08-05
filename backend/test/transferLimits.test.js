@@ -4,6 +4,7 @@ import {
   rejectInvalidTransferAmount,
   rejectOutOfRangeTransferAmount,
 } from "../src/utils/transferLimits.js";
+import { getNativeAssetSymbol } from "../src/utils/currency.js";
 
 function createResponse() {
   return {
@@ -69,7 +70,7 @@ test("transfer limits reject amounts above the configured maximum", () => {
     const res = createResponse();
     assert.throws(
       () => rejectOutOfRangeTransferAmount(res, 10.01),
-      /amountEth must be at most 10 ETH\./
+      new RegExp(`amountEth must be at most 10 ${getNativeAssetSymbol()}\\.`)
     );
     assert.equal(res.statusCode, 400);
   } finally {
