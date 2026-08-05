@@ -34,6 +34,24 @@ test("API middleware starts and completes within the 2 second SLA", () => {
   assert.ok(Date.now() - startedAt <= SLA_MS);
 });
 
+test("representative API routes carry the 2 second response SLA", () => {
+  for (const [method, originalUrl] of [
+    ["GET", "/api/me"],
+    ["GET", "/api/transactions/my?limit=10"],
+    ["POST", "/api/transactions/send-code"],
+    ["POST", "/api/transactions/send"],
+  ]) {
+    const res = new EventEmitter();
+    const headers = new Map();
+    res.setHeader = (name, value) => headers.set(name, value);
+    const startedAt = Date.now();
+    responseSlaMonitor({ method, originalUrl }, res, () => {});
+    res.emit("finish");
+    assert.equal(headers.get("X-Response-Sla-Ms"), String(SLA_MS));
+    assert.ok(Date.now() - startedAt <= SLA_MS, `${method} ${originalUrl}`);
+  }
+});
+
 test("transaction submission returns before confirmation and within 2 seconds", async () => {
   let confirmationStarted = false;
   const txDoc = {
