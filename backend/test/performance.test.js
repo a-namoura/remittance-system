@@ -10,6 +10,68 @@ import { apiRouter } from "../src/routes/index.js";
 const SLA_MS = 2_000;
 const RECIPIENT = "0x2222222222222222222222222222222222222222";
 
+function createPersistedMongoTransaction() {
+  let persisted = null;
+  let persistedAt = null;
+  const txDoc = {
+    _id: "transaction-1",
+    status: "pending",
+    txHash: "0xsubmitted",
+    failureReason: undefined,
+    blockchainResultReceivedAt: undefined,
+    blockchainSyncedAt: undefined,
+    blockNumber: undefined,
+    reconciliationMissCount: 0,
+    reconciliationError: undefined,
+    async save() {
+      // Model the asynchronous MongoDB write; settlement must wait for this
+      // persisted terminal snapshot before it reports completion.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      persistedAt = Date.now();
+      persisted = {
+        status: txDoc.status,
+        txHash: txDoc.txHash,
+        failureReason: txDoc.failureReason,
+        blockchainResultReceivedAt: txDoc.blockchainResultReceivedAt,
+        blockchainSyncedAt: txDoc.blockchainSyncedAt,
+        blockNumber: txDoc.blockNumber,
+      };
+    },
+  };
+
+  return {
+    txDoc,
+    getPersisted: () => persisted,
+    getPersistedAt: () => persistedAt,
+  };
+}
+
+async function settleAndWaitForPersistence({ txDoc, result }) {
+  let callbackPayload;
+  const settled = new Promise((resolve) => {
+    settleTransactionAfterSubmission({
+      txDoc,
+      submission: {
+        async waitForConfirmation() {
+          return result;
+        },
+      },
+      onSuccess: (payload) => {
+        callbackPayload = payload;
+        resolve();
+      },
+      onFailure: (payload) => {
+        callbackPayload = payload;
+        resolve();
+      },
+    });
+  });
+
+  const blockchainResultAt = Date.now();
+  await settled;
+  return { blockchainResultAt, callbackPayload };
+}
+
 test("API response SLA is 2 seconds by default", () => {
   const previous = process.env.API_RESPONSE_SLA_MS;
   delete process.env.API_RESPONSE_SLA_MS;
@@ -103,4 +165,54 @@ test("transaction submission returns before confirmation and within 2 seconds", 
   assert.equal(txDoc.status, "pending");
   assert.ok(Date.now() - startedAt <= SLA_MS);
 
+});
+
+test("final successful blockchain result is persisted to the MongoDB transaction within 2 seconds", async () => {
+  const mongoTransaction = createPersistedMongoTransaction();
+  const result = {
+    txHash: "0xconfirmed",
+    status: 1,
+    blockNumber: 12345,
+  };
+
+  const { blockchainResultAt, callbackPayload } = await settleAndWaitForPersistence({
+    txDoc: mongoTransaction.txDoc,
+    result,
+  });
+  const persisted = mongoTransaction.getPersisted();
+
+  assert.equal(callbackPayload.txDoc, mongoTransaction.txDoc);
+  assert.ok(mongoTransaction.getPersistedAt() - blockchainResultAt <= SLA_MS);
+  assert.equal(persisted.status, "success");
+  assert.equal(persisted.txHash, result.txHash);
+  assert.equal(persisted.failureReason, undefined);
+  assert.equal(persisted.blockNumber, result.blockNumber);
+  assert.ok(persisted.blockchainResultReceivedAt instanceof Date);
+  assert.ok(persisted.blockchainSyncedAt instanceof Date);
+  assert.ok(persisted.blockchainSyncedAt >= persisted.blockchainResultReceivedAt);
+});
+
+test("final failed blockchain result is persisted to the MongoDB transaction within 2 seconds", async () => {
+  const mongoTransaction = createPersistedMongoTransaction();
+  const result = {
+    txHash: "0xreverted",
+    status: 0,
+    blockNumber: 12346,
+  };
+
+  const { blockchainResultAt, callbackPayload } = await settleAndWaitForPersistence({
+    txDoc: mongoTransaction.txDoc,
+    result,
+  });
+  const persisted = mongoTransaction.getPersisted();
+
+  assert.equal(callbackPayload.error.blockchainExecutionFailed, true);
+  assert.ok(mongoTransaction.getPersistedAt() - blockchainResultAt <= SLA_MS);
+  assert.equal(persisted.status, "failed");
+  assert.equal(persisted.txHash, result.txHash);
+  assert.equal(persisted.failureReason, "Blockchain execution failed.");
+  assert.equal(persisted.blockNumber, result.blockNumber);
+  assert.ok(persisted.blockchainResultReceivedAt instanceof Date);
+  assert.ok(persisted.blockchainSyncedAt instanceof Date);
+  assert.ok(persisted.blockchainSyncedAt >= persisted.blockchainResultReceivedAt);
 });
