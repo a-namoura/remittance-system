@@ -34,7 +34,11 @@ const backendTest = {
   status: backendExitCode === 0 ? "expected" : "failed",
   durationMs: Date.now() - backendStartedAt,
 };
-const exitCode = await run("npx", ["playwright", "test", "e2e/performance.spec.js"], { ...process.env, PERFORMANCE_REPORT: "1" });
+const exitCode = await run(
+  "npx",
+  ["playwright", "test", "--workers=1", "e2e/performance.spec.js", "e2e/notification-sla.spec.js"],
+  { ...process.env, PERFORMANCE_REPORT: "1" }
+);
 await mkdir(reportDir, { recursive: true });
 let tests = [];
 try {
@@ -43,7 +47,7 @@ try {
   tests = [{ title: "Performance test runner", status: "failed", durationMs: 0 }];
 }
 tests.unshift(backendTest);
-const report = { generatedAt: new Date().toISOString(), thresholdsMs: { api: 2000, transactionSubmissionExcludingConfirmation: 2000, averagePageLoad: 2000, transactionResultUiAfterBackendResult: 2000 }, passed: backendExitCode === 0 && exitCode === 0 && tests.every((test) => test.status === "expected"), tests };
+const report = { generatedAt: new Date().toISOString(), thresholdsMs: { api: 2000, transactionSubmissionExcludingConfirmation: 2000, averagePageLoad: 2000, transactionResultUiAfterBackendResult: 2000, notificationUiAfterBackendResponse: 2000 }, passed: backendExitCode === 0 && exitCode === 0 && tests.every((test) => test.status === "expected"), tests };
 await writeFile(jsonReportPath, `${JSON.stringify(report, null, 2)}\n`);
 await writeFile(markdownReportPath, `# Performance test report\n\nStatus: **${report.passed ? "PASS" : "FAIL"}**\n\n| Check | Status | Duration |\n| --- | --- | ---: |\n${tests.map((test) => `| ${test.title} | ${test.status} | ${test.durationMs} ms |`).join("\n")}\n`);
 process.exitCode = backendExitCode || exitCode || (report.passed ? 0 : 1);
