@@ -26,11 +26,11 @@ const WALLET_OWNERSHIP_FAILED_MESSAGE =
 
 function getMetaMaskProvider() {
   if (typeof window === "undefined") return null;
-  const ethereum = window.ethereum;
-  if (!ethereum) return null;
-  if (ethereum.isMetaMask) return ethereum;
-  if (Array.isArray(ethereum.providers)) {
-    return ethereum.providers.find((provider) => provider?.isMetaMask) || null;
+  const injectedProvider = window.ethereum;
+  if (!injectedProvider) return null;
+  if (injectedProvider.isMetaMask) return injectedProvider;
+  if (Array.isArray(injectedProvider.providers)) {
+    return injectedProvider.providers.find((provider) => provider?.isMetaMask) || null;
   }
   return null;
 }
@@ -98,8 +98,8 @@ export default function ConnectWalletButton({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const ethereum = getMetaMaskProvider();
-    if (!ethereum?.on) return;
+    const walletProvider = getMetaMaskProvider();
+    if (!walletProvider?.on) return;
 
     const handleAccountsChanged = (accounts) => {
       if (!accounts || accounts.length === 0) {
@@ -118,11 +118,11 @@ export default function ConnectWalletButton({
       }
     };
 
-    ethereum.on("accountsChanged", handleAccountsChanged);
+    walletProvider.on("accountsChanged", handleAccountsChanged);
 
     return () => {
-      if (ethereum.removeListener) {
-        ethereum.removeListener("accountsChanged", handleAccountsChanged);
+      if (walletProvider.removeListener) {
+        walletProvider.removeListener("accountsChanged", handleAccountsChanged);
       }
     };
   }, [connected, onDisconnected]);
@@ -138,12 +138,12 @@ export default function ConnectWalletButton({
         throw new Error("You must be logged in to link a wallet.");
       }
 
-      const ethereum = getMetaMaskProvider();
-      if (!ethereum) {
+      const walletProvider = getMetaMaskProvider();
+      if (!walletProvider) {
         throw new Error(WALLET_PROVIDER_MISSING_MESSAGE);
       }
 
-      const provider = new ethers.BrowserProvider(ethereum);
+      const provider = new ethers.BrowserProvider(walletProvider);
       let accounts;
       try {
         accounts = await provider.send("eth_requestAccounts", []);
