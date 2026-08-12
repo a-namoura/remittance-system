@@ -137,7 +137,7 @@ function normalizedAddress(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function transferMatchesTransaction(txDoc, eventData) {
+export function transferMatchesTransaction(txDoc, eventData) {
   if (!eventData) return { matches: false, reason: "Transfer event was not found in the receipt." };
   if (normalizedAddress(txDoc.senderWallet) !== normalizedAddress(eventData.senderWallet)) {
     return { matches: false, reason: "Transfer event sender does not match the transaction record." };
@@ -279,7 +279,7 @@ async function handleMissingReceipt(txDoc, checkedAt, config) {
   const previousStatus = txDoc.status;
   const missCount = Number(txDoc.reconciliationMissCount || 0) + 1;
   const pendingAgeMs = checkedAt.getTime() - new Date(submittedAt(txDoc)).getTime();
-  const terminalReceiptDisappeared = previousStatus === "success";
+  const terminalReceiptDisappeared = ["success", "failed"].includes(previousStatus);
   const pendingReceiptExpired =
     previousStatus === "pending" && pendingAgeMs >= config.pendingTimeoutMs;
 
@@ -287,15 +287,16 @@ async function handleMissingReceipt(txDoc, checkedAt, config) {
   txDoc.lastReconciledAt = checkedAt;
   txDoc.reconciliationError = "Blockchain receipt was not found.";
 
-  if (
-    missCount >= config.missThreshold &&
-    (terminalReceiptDisappeared || pendingReceiptExpired)
-  ) {
+  if (missCount >= config.missThreshold && pendingReceiptExpired) {
     txDoc.status = "failed";
-    txDoc.failureReason = terminalReceiptDisappeared
-      ? "Confirmed blockchain receipt disappeared during reconciliation."
-      : "Blockchain receipt was not found before the pending timeout.";
+    txDoc.failureReason = "Blockchain receipt was not found before the pending timeout.";
     txDoc.blockchainSyncedAt = checkedAt;
+  }
+
+  // A missing RPC response must never rewrite a terminal blockchain result.
+  // Keep the original result intact and retain the reconciliation evidence.
+  if (terminalReceiptDisappeared) {
+    txDoc.reconciliationError = "Blockchain receipt was not found for a terminal transaction.";
   }
 
   await txDoc.save();
@@ -309,7 +310,7 @@ async function handleMissingReceipt(txDoc, checkedAt, config) {
   return false;
 }
 
-async function reconcileTransaction(txDoc, provider, config) {
+export async function reconcileTransaction(txDoc, provider, config) {
   const checkedAt = new Date();
   let receipt;
 
@@ -330,6 +331,16 @@ async function reconcileTransaction(txDoc, provider, config) {
   const previousStatus = txDoc.status;
   const chainStatus = receiptStatus(receipt);
   const blockNumber = Number(receipt.blockNumber);
+  const receiptHash = String(receipt.hash || "").trim();
+  if (receiptHash && normalizedAddress(receiptHash) !== normalizedAddress(txDoc.txHash)) {
+    await requireReconciliation(
+      txDoc,
+      previousStatus,
+      "Blockchain receipt hash does not match the transaction record.",
+      checkedAt
+    );
+    return { corrected: previousStatus !== "reconciliation_required", mismatch: true };
+  }
   const eventData = chainStatus === "success" ? transferEventFromReceipt(receipt) : null;
   const comparison = chainStatus === "success"
     ? transferMatchesTransaction(txDoc, eventData)
