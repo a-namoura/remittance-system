@@ -13,7 +13,7 @@
     },
     {
       "id": "SR-2",
-      "requirement": "Process cryptocurrency transfer requests through Ethereum-compatible smart contracts on the configured BSC network",
+      "requirement": "Process cryptocurrency transfer requests through EVM-compatible smart contracts on the configured BSC network",
       "tests": [
         "backend/test/systemRequirements.test.js: SR-2 EVM/BSC transfers invoke the payable remittance smart contract and retain its hash",
         "backend/test/transactionConsistency.test.js: pending blockchain submission retains MongoDB transfer fields and submission timestamp"
