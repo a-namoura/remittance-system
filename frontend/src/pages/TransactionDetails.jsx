@@ -238,7 +238,7 @@ export default function TransactionDetails() {
                     className="text-xs text-blue-600 hover:underline"
                     onClick={() => openExternalUrl(explorerUrl)}
                   >
-                    View on BscScan
+                    View on BscScan Testnet
                   </button>
                 )}
               </div>

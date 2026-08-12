@@ -4,7 +4,7 @@ import { network } from "hardhat";
 const { ethers } = await network.connect();
 
 describe("Remittance", function () {
-  it("transfers ETH and emits Transfer", async function () {
+  it("transfers the native asset and emits Transfer", async function () {
     const [sender, receiver] = await ethers.getSigners();
 
     const remittance = await ethers.deployContract("Remittance");

@@ -14,7 +14,7 @@ The system supports account onboarding, wallet linking, transfer links, direct s
 - Frontend: React 19, Vite, Tailwind CSS
 - Backend: Node.js, Express, Mongoose
 - Blockchain: Solidity + Hardhat 3 + ethers
-- Network target: BSC Testnet (chain ID `97`)
+- Deployment target: BNB Smart Chain Testnet (chain ID `97`)
 - Wallet: MetaMask-compatible EVM wallet
 
 ## Repository Layout
@@ -41,7 +41,7 @@ remittance-system/
 1. Configure backend environment:
    - Create `backend/.env`
    - You can start from root `.env.example`
-   - Add blockchain/email settings shown below if you want full transfer and verification functionality
+   - Add EVM-compatible blockchain and email settings shown below if you want full transfer and verification functionality
 2. Install backend dependencies and run backend:
 
    ```bash
@@ -98,7 +98,7 @@ REM_CONTRACT_ADDRESS=0xYourRemittanceContractAddress
 REM_CONTRACT_DEPLOYMENT_BLOCK=12345678
 ```
 
-Transfer endpoints return after the blockchain transaction is submitted and saved
+Transfer endpoints return after the EVM-compatible blockchain transaction is submitted and saved
 as pending. Confirmation is reconciled asynchronously, so block confirmation time
 is not part of the user request response time. The backend exposes the configured
 2-second response target in `X-Response-Sla-Ms` and logs responses that exceed it.

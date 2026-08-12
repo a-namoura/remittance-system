@@ -43,10 +43,10 @@ Expected `Remittance` test coverage:
 
 Current shared deployment metadata:
 
-- Network: BSC Testnet
+- Network: BNB Smart Chain Testnet
 - Chain ID: `97`
 - Contract address: `0xDE73104E421AfEa1A4c92d4D7fc5fFdC8d8e3BDa`
-- Explorer: `https://testnet.bscscan.com`
+- Explorer: BscScan Testnet (`https://testnet.bscscan.com`)
 - Verification transaction/reference: `0xde472c739ffc1443ea49e58fd8fb6e5e44bdb2c11fc9b6ca45bbca46fd39d16e`
 
 After each deployment:

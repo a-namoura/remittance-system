@@ -112,7 +112,7 @@ test("reconciliation compares every transfer identity field before accepting an 
     };
     assert.equal(transferMatchesTransaction(txDoc, event).matches, false, `${field} mismatch must be rejected`);
   }
-  assert.equal(transferMatchesTransaction({ ...txDoc, assetSymbol: "ETH" }, matchingEvent).matches, false);
+  assert.equal(transferMatchesTransaction({ ...txDoc, assetSymbol: "USDT" }, matchingEvent).matches, false);
 });
 
 test("reconciliation preserves terminal records when a receipt is temporarily unavailable", async () => {

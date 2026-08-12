@@ -1,6 +1,6 @@
 # Remittance Contracts
 
-Smart contracts and Hardhat scripts for remittance settlement on EVM networks (primary target: BSC Testnet).
+Smart contracts and Hardhat scripts for remittance settlement on EVM-compatible blockchains (deployment target: BNB Smart Chain Testnet).
 
 ## What Is Here
 
@@ -52,7 +52,7 @@ Run tests:
 npx hardhat test
 ```
 
-Deploy to BSC Testnet:
+Deploy to BNB Smart Chain Testnet:
 
 ```bash
 npx hardhat run scripts/deploy-remittance.ts --network bscTestnet

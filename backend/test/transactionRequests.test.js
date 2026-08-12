@@ -204,7 +204,7 @@ test("submission recovery persists reconciliation fields when document save fail
     senderWallet: "0xsender",
     receiverWallet: "0xreceiver",
     amount: 1.25,
-    assetSymbol: "ETH",
+    assetSymbol: "USDT",
     reconciliationMissCount: 4,
     reconciliationError: "old error",
     async save() {
@@ -231,5 +231,5 @@ test("submission recovery persists reconciliation fields when document save fail
   assert.equal(recoveryUpdate.$set.senderWallet, "0xsender");
   assert.equal(recoveryUpdate.$set.receiverWallet, "0xreceiver");
   assert.equal(recoveryUpdate.$set.amount, 1.25);
-  assert.equal(recoveryUpdate.$set.assetSymbol, "ETH");
+  assert.equal(recoveryUpdate.$set.assetSymbol, "USDT");
 });

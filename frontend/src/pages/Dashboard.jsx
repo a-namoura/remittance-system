@@ -612,7 +612,7 @@ export default function Dashboard() {
                         }}
                         className="mt-1 text-[11px] text-blue-600 hover:underline"
                       >
-                        View on BscScan
+                        View on BscScan Testnet
                       </button>
                     )}
                   </div>

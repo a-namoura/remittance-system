@@ -170,7 +170,7 @@ export async function sendRemittance(receiver, amountEth, options = {}) {
 }
 
 /**
- * Helper to read the ETH balance of any address (in BNB/ETH units).
+ * Helper to read the native-asset balance of any address.
  * Returns a Number (e.g., 0.1234)
  */
 export async function getEthBalance(address) {

@@ -3,7 +3,7 @@
 ## Scope and assumptions
 
 This model covers the React client, Express/MongoDB API, email and RPC providers,
-the BSC Testnet remittance contract, and CI/release artifacts. It does not claim
+the BNB Smart Chain Testnet remittance contract, and CI/release artifacts. It does not claim
 that the testnet deployment is suitable for custody or production money movement.
 The API's configured signing key is a high-value asset: compromise can submit
 transfers from the service-controlled wallet.
