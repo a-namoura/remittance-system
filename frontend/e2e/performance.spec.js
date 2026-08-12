@@ -66,7 +66,7 @@ test("key pages load within 2 seconds on average", async ({ page }) => {
   expect(durations.reduce((sum, value) => sum + value, 0) / durations.length).toBeLessThanOrEqual(SLA_MS);
 });
 
-test("full mocked /transactions/send flow validates input and submits within 2 seconds excluding confirmation", async ({ page }) => {
+test("validated transaction submits within 2 seconds after confirmation excluding blockchain confirmation", async ({ page }) => {
   await authenticate(page);
   const api = await mockApi(page);
   await page.goto("/send");
@@ -81,17 +81,20 @@ test("full mocked /transactions/send flow validates input and submits within 2 s
   await page.getByRole("button", { name: "Continue to verification" }).click();
   await page.getByRole("button", { name: "Send code" }).click();
   await page.getByPlaceholder("6 digits").fill("123456");
+  const confirmationAt = Date.now();
   await page.getByRole("button", { name: "Confirm and send" }).click();
   await expect(page.getByText("Transfer submitted. Waiting for confirmation...", { exact: false })).toBeVisible({ timeout: SLA_MS });
   expect(api.sendRequests()).toBe(1);
+  expect(Date.now() - confirmationAt).toBeLessThanOrEqual(SLA_MS);
   expect(Date.now() - startedAt).toBeLessThanOrEqual(SLA_MS);
 });
 
-test("terminal transaction result reaches the UI within 2 seconds of the backend result", async ({ page }) => {
+test("terminal blockchain hash reaches the UI within 2 seconds of the backend result", async ({ page }) => {
   await authenticate(page);
   const api = await mockApi(page);
   await submitMockedTransfer(page);
   await expect(page.locator(".app-success-transition")).toContainText("Transfer confirmed.", { timeout: SLA_MS });
+  await expect(page.locator(".app-success-transition")).toContainText("0xresult", { timeout: SLA_MS });
   expect(api.backendResultAt()).toBeGreaterThan(0);
   expect(Date.now() - api.backendResultAt()).toBeLessThanOrEqual(SLA_MS);
 });

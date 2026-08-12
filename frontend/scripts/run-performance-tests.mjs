@@ -19,28 +19,33 @@ const requirements = [
     "final successful blockchain result is persisted to the MongoDB transaction within 2 seconds",
     "final failed blockchain result is persisted to the MongoDB transaction within 2 seconds",
   ] },
-  { id: "REL-5.1", section: "Reliability 5.1", threshold: "Transfer identity and terminal state remain consistent", tests: [
-    "pending blockchain submission retains MongoDB transfer fields and submission timestamp",
+  { id: "REL-5.1", section: "Reliability 5.1", threshold: "Blockchain and MongoDB transaction records remain consistent", tests: [
     "successful blockchain result synchronizes MongoDB status, hash, block, and timestamps",
     "failed blockchain result synchronizes MongoDB without losing transfer fields",
   ] },
-  { id: "REL-5.2", section: "Reliability 5.2", threshold: "Reconciliation rejects mismatches and preserves terminal records", tests: [
-    "reconciliation compares every transfer identity field before accepting an event",
-    "reconciliation preserves terminal records when a receipt is temporarily unavailable",
-    "reconciliation preserves failed terminal records when a receipt is temporarily unavailable",
-  ] },
-  { id: "REL-5.3", section: "Reliability 5.3", threshold: "Database and RPC failures retain recoverable transaction state", tests: [
+  { id: "REL-5.2", section: "Reliability 5.2", threshold: "Records are preserved during temporary application, network, or database failures", tests: [
     "a temporary database write failure after broadcast retains a complete reconciliation snapshot",
     "temporary RPC receipt failures preserve pending and terminal records for retry",
     "temporary confirmation RPC failure stays pending and does not submit a duplicate transaction",
   ] },
-  { id: "REL-5.4", section: "Reliability 5.4", threshold: "Restart reconciliation recovers final chain results without duplicate submission", tests: [
+  { id: "REL-5.3", section: "Reliability 5.3", threshold: "Reconciliation verifies sender, receiver, amount, transaction hash, and status", tests: [
+    "reconciliation compares every transfer identity field before accepting an event",
     "restart reconciliation writes final chain success and failure without changing transfer identity",
   ] },
-  { id: "PERF-2.1", section: "Performance 2.1", threshold: "Average page load <= 2000 ms", tests: ["key pages load within 2 seconds on average"] },
-  { id: "PERF-2.2", section: "Performance 2.2", threshold: "Transaction submission excluding confirmation <= 2000 ms", tests: ["full mocked /transactions/send flow validates input and submits within 2 seconds excluding confirmation"] },
-  { id: "PERF-2.3", section: "Performance 2.3", threshold: "Terminal transaction result UI update <= 2000 ms", tests: ["terminal transaction result reaches the UI within 2 seconds of the backend result"] },
-  { id: "PERF-2.4", section: "Performance 2.4", threshold: "Terminal transaction failure UI update <= 2000 ms", tests: ["terminal transaction failure reason is shown in the UI within 2 seconds"] },
+  { id: "REL-5.4", section: "Reliability 5.4", threshold: "Recovery restores the final blockchain status", tests: [
+    "restart reconciliation writes final chain success and failure without changing transfer identity",
+  ] },
+  { id: "PERF-2.1", section: "Performance 2.1", threshold: "User and API requests <= 2000 ms, excluding blockchain confirmation", tests: [
+    "API middleware starts and completes within the 2 second SLA",
+    "representative API routes carry the 2 second response SLA",
+    "real representative Express endpoints respond within 2 seconds with mocked services",
+  ] },
+  { id: "PERF-2.2", section: "Performance 2.2", threshold: "Average page load <= 2000 ms", tests: ["key pages load within 2 seconds on average"] },
+  { id: "PERF-2.3", section: "Performance 2.3", threshold: "Transaction validation and submission <= 2000 ms after confirmation, excluding blockchain confirmation", tests: ["validated transaction submits within 2 seconds after confirmation excluding blockchain confirmation"] },
+  { id: "PERF-2.4", section: "Performance 2.4", threshold: "Blockchain hash or failure reason displayed <= 2000 ms after blockchain response", tests: [
+    "terminal blockchain hash reaches the UI within 2 seconds of the backend result",
+    "terminal transaction failure reason is shown in the UI within 2 seconds",
+  ] },
 ];
 
 function run(command, args, options = {}) {
