@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "test:e2e": "playwright test",
     "test:performance": "node scripts/run-performance-tests.mjs",
+    "test:requirements": "node scripts/run-performance-tests.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

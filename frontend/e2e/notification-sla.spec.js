@@ -57,7 +57,7 @@ async function completeRegistration(page, routeResponse) {
     if (path.endsWith("/log-phone-code")) return json(route, 200, {});
     return route.fallback();
   });
-  await page.route("**/api/auth/register", (route) =>
+  await page.route((url) => new URL(url).pathname === "/api/auth/register", (route) =>
     json(route, routeResponse.status, routeResponse.body, () => {
       responseAt = Date.now();
     })
