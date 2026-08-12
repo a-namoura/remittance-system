@@ -310,14 +310,22 @@ async function handleMissingReceipt(txDoc, checkedAt, config) {
   return false;
 }
 
-export async function reconcileTransaction(txDoc, provider, config) {
+export async function reconcileTransaction(
+  txDoc,
+  provider,
+  config,
+  { receiptTransferEvent = transferEventFromReceipt } = {}
+) {
   const checkedAt = new Date();
   let receipt;
 
   try {
     receipt = await provider.getTransactionReceipt(txDoc.txHash);
   } catch (err) {
-    txDoc.status = "reconciliation_required";
+    // A transport/RPC failure says nothing about chain execution.  In
+    // particular, never turn a known final result into a non-terminal state.
+    // Pending records remain pending so their idempotency key continues to
+    // prevent a second broadcast while the next reconciliation retries.
     txDoc.reconciliationError = normalizeError(err) || "Receipt lookup failed.";
     await saveReconciliationCheck(txDoc, checkedAt).catch(() => {});
     return { corrected: false, error: true };
@@ -341,7 +349,7 @@ export async function reconcileTransaction(txDoc, provider, config) {
     );
     return { corrected: previousStatus !== "reconciliation_required", mismatch: true };
   }
-  const eventData = chainStatus === "success" ? transferEventFromReceipt(receipt) : null;
+  const eventData = chainStatus === "success" ? receiptTransferEvent(receipt) : null;
   const comparison = chainStatus === "success"
     ? transferMatchesTransaction(txDoc, eventData)
     : { matches: true };

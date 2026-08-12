@@ -180,6 +180,32 @@ export async function markTransactionFailedAndLogSyncError(txDoc, err) {
   }
 }
 
+function isTemporaryBlockchainInfrastructureError(err) {
+  const code = String(
+    err?.code || err?.error?.code || err?.info?.error?.code || ""
+  ).toUpperCase();
+  const message = String(
+    err?.shortMessage || err?.reason || err?.message || ""
+  ).toLowerCase();
+
+  return (
+    ["NETWORK_ERROR", "SERVER_ERROR", "TIMEOUT", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN"].includes(code) ||
+    /^-32\d{3}$/.test(code) ||
+    /\b(rpc|network|socket|connection|timeout|temporar|rate limit|503|504)\b/.test(message)
+  );
+}
+
+// A confirmation waiter runs only after the transaction was broadcast.  An
+// unavailable RPC endpoint is therefore evidence we need to retry, never
+// evidence that the chain execution failed.
+export async function preserveTransactionForRecovery(txDoc, err) {
+  if (!txDoc) return;
+
+  txDoc.reconciliationError = getTransactionFailureReason(err);
+  txDoc.lastReconciledAt = new Date();
+  await txDoc.save();
+}
+
 export async function recordTransactionSubmission(txDoc, submission) {
   const txHash = stablePart(submission?.txHash);
   if (!txDoc || !txHash) return txDoc;
@@ -200,6 +226,7 @@ export async function recordTransactionSubmission(txDoc, submission) {
       receiverWallet: txDoc.receiverWallet,
       amount: txDoc.amount,
       assetSymbol: txDoc.assetSymbol,
+      status: txDoc.status || "pending",
       blockchainSubmittedAt: txDoc.blockchainSubmittedAt,
       reconciliationMissCount: 0,
       reconciliationError: undefined,
@@ -288,6 +315,12 @@ export function settleTransactionAfterSubmission({
       if (isTransactionSyncError(err)) {
         console.error("Transaction confirmation sync failed:", err.message);
         void logAudit({ action: "TRANSACTION_SYNC_FAILED", metadata: { transactionId: String(txDoc?._id || ""), syncTarget: "confirmation", error: err?.message || err } });
+      } else if (isTemporaryBlockchainInfrastructureError(err)) {
+        try {
+          await preserveTransactionForRecovery(txDoc, err);
+        } catch (recoveryErr) {
+          console.error("Transaction recovery save failed:", recoveryErr.message);
+        }
       } else {
         await markTransactionFailedAndLogSyncError(txDoc, err);
       }
