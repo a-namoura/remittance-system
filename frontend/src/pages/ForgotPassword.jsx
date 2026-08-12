@@ -102,24 +102,27 @@ export default function ForgotPassword() {
     const tokenFromLink = String(searchParams.get("resetToken") || "").trim();
     if (!tokenFromLink) return;
 
-    setPendingToken("");
-    setResetToken(tokenFromLink);
-    setCode("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setShowNewPassword(false);
-    setShowConfirmPassword(false);
-    setCooldown(0);
-    setError("");
-    setFieldErrors({
-      identifier: "",
-      verificationChannel: "",
-      code: "",
-      newPassword: "",
-      confirmPassword: "",
-    });
-    setInfo("Set a new password to complete account recovery.");
-    setStep(STEPS.PASSWORD);
+    const resetId = window.setTimeout(() => {
+      setPendingToken("");
+      setResetToken(tokenFromLink);
+      setCode("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
+      setCooldown(0);
+      setError("");
+      setFieldErrors({
+        identifier: "",
+        verificationChannel: "",
+        code: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      setInfo("Set a new password to complete account recovery.");
+      setStep(STEPS.PASSWORD);
+    }, 0);
+    return () => window.clearTimeout(resetId);
   }, [searchParams]);
 
   useEffect(() => {

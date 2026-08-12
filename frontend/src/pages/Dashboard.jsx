@@ -258,14 +258,17 @@ export default function Dashboard() {
 
   useEffect(() => {
     let isCancelled = false;
+    let resetId = null;
 
     if (accountLinked && accountAddress) {
       balanceLoadedRef.current = false;
-      setAccountBalances({});
-      setAvailableCurrencies([]);
-      setNativeCurrency(FALLBACK_NATIVE_CURRENCY);
-      setFiatBalanceUsd(null);
-      setBalanceError("");
+      resetId = window.setTimeout(() => {
+        setAccountBalances({});
+        setAvailableCurrencies([]);
+        setNativeCurrency(FALLBACK_NATIVE_CURRENCY);
+        setFiatBalanceUsd(null);
+        setBalanceError("");
+      }, 0);
     }
 
     async function fetchAccountBalance() {
@@ -361,6 +364,7 @@ export default function Dashboard() {
     return () => {
       isCancelled = true;
       clearInterval(refreshId);
+      if (resetId != null) window.clearTimeout(resetId);
     };
   }, [accountLinked, accountAddress]);
 

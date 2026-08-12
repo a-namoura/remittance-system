@@ -606,14 +606,17 @@ export default function Chat() {
   useEffect(() => {
     friendPreviewByMessageRef.current = {};
     plaintextCacheAttemptedRef.current = new Set();
-    setFriendPreviewByPeer({});
     unreadDividerSeedRef.current = {
       peerUserId: "",
       seenMessageId: "",
     };
-    setUnreadDividerMessageId("");
-    setUnreadDividerDismissed(false);
-    setUnreadStateVersion((value) => value + 1);
+    const resetId = window.setTimeout(() => {
+      setFriendPreviewByPeer({});
+      setUnreadDividerMessageId("");
+      setUnreadDividerDismissed(false);
+      setUnreadStateVersion((value) => value + 1);
+    }, 0);
+    return () => window.clearTimeout(resetId);
   }, [me?.id]);
 
   useEffect(
@@ -742,7 +745,8 @@ export default function Chat() {
   }, [me]);
 
   useEffect(() => {
-    refreshWalletBalance();
+    const refreshId = window.setTimeout(refreshWalletBalance, 0);
+    return () => window.clearTimeout(refreshId);
   }, [refreshWalletBalance]);
 
   useEffect(() => {
@@ -771,19 +775,19 @@ export default function Chat() {
   }, [composerActionsOpen]);
 
   useEffect(() => {
-    setComposerActionsOpen(false);
-    setMessageActionBusyId("");
+    const resetId = window.setTimeout(() => {
+      setComposerActionsOpen(false);
+      setMessageActionBusyId("");
+    }, 0);
+    return () => window.clearTimeout(resetId);
   }, [activeFriendId]);
 
   useEffect(() => {
-    const peerId = String(activeFriendId || "").trim();
-    if (!peerId) {
+    const resetId = window.setTimeout(() => {
       setUnreadDividerMessageId("");
       setUnreadDividerDismissed(false);
-      return;
-    }
-    setUnreadDividerMessageId("");
-    setUnreadDividerDismissed(false);
+    }, 0);
+    return () => window.clearTimeout(resetId);
   }, [activeFriendId]);
 
   useEffect(() => {
@@ -919,7 +923,7 @@ export default function Chat() {
     return () => {
       isCancelled = true;
     };
-  }, [friends, identity]);
+  }, [friends, identity, nativeCurrency]);
 
   async function fetchPeerPublicKey(
     peerUserId,
@@ -1164,7 +1168,8 @@ export default function Chat() {
   }, [identity, loadHistory, me?.id]);
 
   useEffect(() => {
-    setRequestedFriendHandled(false);
+    const resetId = window.setTimeout(() => setRequestedFriendHandled(false), 0);
+    return () => window.clearTimeout(resetId);
   }, [
     hasRequestedFriend,
     requestedPeerUserId,
@@ -1175,30 +1180,33 @@ export default function Chat() {
   ]);
 
   useEffect(() => {
-    if (requestedFriendHandled) return;
-    if (!hasRequestedFriend) {
+    const resolveId = window.setTimeout(() => {
+      if (requestedFriendHandled) return;
+      if (!hasRequestedFriend) {
+        if (requestedComposerMode) {
+          setSendTransferStep("details");
+          setComposerMode(requestedComposerMode);
+          setComposerActionsOpen(false);
+        }
+        setRequestedFriendHandled(true);
+        return;
+      }
+      if (friendsLoading) return;
+      if (!requestedFriend) {
+        setRequestedFriendHandled(true);
+        setTimelineError("Requested friend is not in your chat-ready contacts.");
+        return;
+      }
+
       if (requestedComposerMode) {
         setSendTransferStep("details");
         setComposerMode(requestedComposerMode);
         setComposerActionsOpen(false);
       }
+      openFriendThread(requestedFriend);
       setRequestedFriendHandled(true);
-      return;
-    }
-    if (friendsLoading) return;
-    if (!requestedFriend) {
-      setRequestedFriendHandled(true);
-      setTimelineError("Requested friend is not in your chat-ready contacts.");
-      return;
-    }
-
-    if (requestedComposerMode) {
-      setSendTransferStep("details");
-      setComposerMode(requestedComposerMode);
-      setComposerActionsOpen(false);
-    }
-    openFriendThread(requestedFriend);
-    setRequestedFriendHandled(true);
+    }, 0);
+    return () => window.clearTimeout(resolveId);
   }, [
     requestedFriendHandled,
     hasRequestedFriend,

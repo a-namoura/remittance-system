@@ -432,8 +432,11 @@ export default function SendMoney() {
     const matched = friends.find((friend) => String(friend.id) === String(friendParam));
     if (matched) {
       const recipient = friendRecipient(matched);
-      setSelectedRecipient(recipient);
-      setSearch(recipient.label);
+      const prefillId = window.setTimeout(() => {
+        setSelectedRecipient(recipient);
+        setSearch(recipient.label);
+      }, 0);
+      return () => window.clearTimeout(prefillId);
     }
   }, [friendParam, friends, selectedRecipient]);
 
@@ -441,20 +444,23 @@ export default function SendMoney() {
     if (requestPrefillDone) return;
     if (!requestToParam || !isValidEvmAddress(requestToParam)) return;
 
-    setRequestPrefillDone(true);
-    setActiveMethod("address");
-    setManualAddress(requestToParam);
+    const prefillId = window.setTimeout(() => {
+      setRequestPrefillDone(true);
+      setActiveMethod("address");
+      setManualAddress(requestToParam);
 
-    const parsedRequestedAmount = Number(requestAmountParam);
-    if (Number.isFinite(parsedRequestedAmount) && parsedRequestedAmount > 0) {
-      setAmountEth(String(parsedRequestedAmount));
-    }
+      const parsedRequestedAmount = Number(requestAmountParam);
+      if (Number.isFinite(parsedRequestedAmount) && parsedRequestedAmount > 0) {
+        setAmountEth(String(parsedRequestedAmount));
+      }
 
-    const requestedBy = requestFromParam ? ` from @${requestFromParam}` : "";
-    setMethodSuccess(
-      `Request link loaded${requestedBy}. Confirm method details and send when ready.`
-    );
-    setMethodError("");
+      const requestedBy = requestFromParam ? ` from @${requestFromParam}` : "";
+      setMethodSuccess(
+        `Request link loaded${requestedBy}. Confirm method details and send when ready.`
+      );
+      setMethodError("");
+    }, 0);
+    return () => window.clearTimeout(prefillId);
   }, [requestPrefillDone, requestToParam, requestAmountParam, requestFromParam]);
 
   useEffect(() => {
@@ -462,9 +468,11 @@ export default function SendMoney() {
 
     const token = requireAuthToken();
     if (!token) {
-      setAccounts([]);
-      setAccountError("You must be logged in.");
-      return undefined;
+      const clearId = window.setTimeout(() => {
+        setAccounts([]);
+        setAccountError("You must be logged in.");
+      }, 0);
+      return () => window.clearTimeout(clearId);
     }
 
     const timeoutId = window.setTimeout(async () => {

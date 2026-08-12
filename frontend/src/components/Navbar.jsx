@@ -325,7 +325,7 @@ export default function Navbar({
     let isCancelled = false;
 
     if (!me?.id) {
-      setChatUnreadCount(0);
+      queueMicrotask(() => setChatUnreadCount(0));
       return undefined;
     }
 
@@ -413,7 +413,7 @@ export default function Navbar({
         unreadPulseTimerRef.current = null;
       }, NAVBAR_BADGE_PULSE_MS);
     } else if (Number(chatUnreadCount) <= 0) {
-      setPulseUnreadBadge(false);
+      queueMicrotask(() => setPulseUnreadBadge(false));
       if (unreadPulseTimerRef.current != null) {
         window.clearTimeout(unreadPulseTimerRef.current);
         unreadPulseTimerRef.current = null;
