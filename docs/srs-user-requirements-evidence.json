@@ -1,0 +1,22 @@
+{
+  "source": "SRS/Abdallah Namoura SRS 2.0.pdf, section 5.1.3 User Requirements",
+  "statusRule": "pass only when every listed automated test passes; absent or failing tests are fail",
+  "requirements": [
+    { "id": "UR-1.1", "requirement": "Register with unique email and compliant password", "tests": ["backend/test/passwordPolicy.test.js: password policy accepts a password meeting every requirement", "frontend/e2e/notification-sla.spec.js: registration failure notification includes the backend reason within 2 seconds"], "status": "pass" },
+    { "id": "UR-1.2", "requirement": "Log in with registered email and password", "tests": ["frontend/e2e/notification-sla.spec.js: login success notification appears within 2 seconds"], "status": "pass" },
+    { "id": "UR-1.3", "requirement": "Recover password through secure reset process", "tests": ["frontend/e2e/notification-sla.spec.js: password reset success notification appears within 2 seconds"], "status": "pass" },
+    { "id": "UR-2.1", "requirement": "Connect a wallet when provider is available", "tests": ["frontend/e2e/notification-sla.spec.js: wallet connection success notification appears within 2 seconds"], "status": "pass" },
+    { "id": "UR-2.2", "requirement": "Disconnect a connected wallet", "tests": ["frontend/e2e/user-requirements.spec.js: a linked wallet can be disconnected without removing account access"], "status": "pass" },
+    { "id": "UR-2.3", "requirement": "Receive wallet connection and failure notifications", "tests": ["frontend/e2e/notification-sla.spec.js: wallet connection failure notification includes the backend reason within 2 seconds"], "status": "pass" },
+    { "id": "UR-2.4", "requirement": "Verify wallet ownership with signed message before linking", "tests": ["frontend/e2e/notification-sla.spec.js: wallet connection success notification appears within 2 seconds"], "status": "pass" },
+    { "id": "UR-2.5", "requirement": "View linked-wallet connection status", "tests": ["frontend/e2e/user-requirements.spec.js: a linked wallet can be disconnected without removing account access"], "status": "pass" },
+    { "id": "UR-3.1", "requirement": "Send to valid wallet address or registered user", "tests": ["backend/test/transactionRoutes.test.js: authenticated send returns 202 using injected verification and RPC dependencies within two seconds", "frontend/e2e/user-requirements.spec.js: valid-address transfer shows a summary and cancelling does not submit it"], "status": "pass" },
+    { "id": "UR-3.2", "requirement": "Review recipient and amount before submission", "tests": ["frontend/e2e/user-requirements.spec.js: valid-address transfer shows a summary and cancelling does not submit it"], "status": "pass" },
+    { "id": "UR-3.3", "requirement": "Confirm or cancel from summary before submission", "tests": ["frontend/e2e/user-requirements.spec.js: valid-address transfer shows a summary and cancelling does not submit it"], "status": "pass" },
+    { "id": "UR-3.4", "requirement": "View pending, successful, and failed transaction status", "tests": ["frontend/e2e/performance.spec.js: terminal blockchain hash reaches the UI within 2 seconds of the backend result", "frontend/e2e/performance.spec.js: terminal transaction failure reason is shown in the UI within 2 seconds"], "status": "pass" },
+    { "id": "UR-4.1", "requirement": "View ETH wallet balance on dashboard", "tests": ["frontend/e2e/user-requirements.spec.js: dashboard shows ETH, configurable fiat value, and complete recent history"], "status": "pass" },
+    { "id": "UR-4.2", "requirement": "View simulated fiat equivalent using configured exchange rate", "tests": ["frontend/e2e/user-requirements.spec.js: dashboard shows ETH, configurable fiat value, and complete recent history"], "status": "pass" },
+    { "id": "UR-4.3", "requirement": "View complete transaction history", "tests": ["frontend/e2e/user-requirements.spec.js: dashboard shows ETH, configurable fiat value, and complete recent history"], "status": "pass" },
+    { "id": "UR-4.4", "requirement": "Filter history by date, sent/received, and status", "tests": ["frontend/e2e/user-requirements.spec.js: transaction history applies date, direction, and status filters", "backend/test/transactionRoutes.test.js: my transactions query accepts every supported status and view"], "status": "pass" }
+  ]
+}
