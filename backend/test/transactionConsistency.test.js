@@ -144,3 +144,35 @@ test("reconciliation preserves terminal records when a receipt is temporarily un
   assert.match(txDoc.reconciliationError, /terminal transaction/);
   assert.ok(txDoc.lastReconciledAt instanceof Date);
 });
+
+test("reconciliation preserves failed terminal records when a receipt is temporarily unavailable", async () => {
+  const originalReceivedAt = new Date("2026-08-06T10:00:00.000Z");
+  const originalSyncedAt = new Date("2026-08-06T10:01:00.000Z");
+  const txDoc = transaction({
+    status: "failed",
+    txHash: "0xfailed-terminal",
+    blockNumber: 104,
+    failureReason: "execution reverted",
+    blockchainResultReceivedAt: originalReceivedAt,
+    blockchainSyncedAt: originalSyncedAt,
+    reconciliationMissCount: 2,
+  });
+  const provider = { async getTransactionReceipt() { return null; } };
+
+  const result = await reconcileTransaction(txDoc, provider, {
+    missThreshold: 3,
+    pendingTimeoutMs: 1,
+  });
+
+  assert.deepEqual(result, { corrected: false, missing: true });
+  assertTransferFields(txDoc);
+  assert.equal(txDoc.status, "failed");
+  assert.equal(txDoc.txHash, "0xfailed-terminal");
+  assert.equal(txDoc.blockNumber, 104);
+  assert.equal(txDoc.failureReason, "execution reverted");
+  assert.deepEqual(txDoc.blockchainResultReceivedAt, originalReceivedAt);
+  assert.deepEqual(txDoc.blockchainSyncedAt, originalSyncedAt);
+  assert.equal(txDoc.reconciliationMissCount, 3);
+  assert.match(txDoc.reconciliationError, /terminal transaction/);
+  assert.ok(txDoc.lastReconciledAt instanceof Date);
+});
