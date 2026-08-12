@@ -365,7 +365,7 @@ export default function Admin() {
                                 className="text-[10px] text-blue-600 hover:underline"
                                 onClick={() => openExternalUrl(explorerUrl)}
                               >
-                                View on BscScan Testnet
+                                View on BscScan
                               </button>
                             )}
                           </div>
