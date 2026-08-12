@@ -118,14 +118,14 @@ function createConfirmationWaiter({ tx, wallet, normalizedReceiver, amountEth })
 export async function submitRemittance(
   receiver,
   amountEth,
-  { onSubmitted } = {}
+  { onSubmitted, getClient = getRemittanceClient } = {}
 ) {
   const normalizedReceiver = normalizeEvmAddress(receiver);
   if (!normalizedReceiver) {
     throw new Error("Receiver must be a valid address.");
   }
 
-  const { contract, wallet } = getRemittanceClient();
+  const { contract, wallet } = getClient();
 
   const value = parseEther(String(amountEth));
 

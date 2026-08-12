@@ -1,0 +1,43 @@
+{
+  "source": "SRS/Abdallah Namoura SRS 2.0.pdf, section 5.1.4 System Requirements",
+  "statusRule": "pass only when every listed automated test passes; absent or failing tests are fail",
+  "requirements": [
+    {
+      "id": "SR-1",
+      "requirement": "Enforce user authentication before granting access to protected functions",
+      "tests": [
+        "backend/test/systemRequirements.test.js: SR-1 protected authentication accepts only a valid token for an active persisted session",
+        "backend/test/transactionRoutes.test.js: authenticated send returns 202 using injected verification and RPC dependencies within two seconds"
+      ],
+      "status": "pass"
+    },
+    {
+      "id": "SR-2",
+      "requirement": "Process cryptocurrency transfer requests through Ethereum-compatible smart contracts on the configured BSC network",
+      "tests": [
+        "backend/test/systemRequirements.test.js: SR-2 EVM/BSC transfers invoke the payable remittance smart contract and retain its hash",
+        "backend/test/transactionConsistency.test.js: pending blockchain submission retains MongoDB transfer fields and submission timestamp"
+      ],
+      "status": "pass"
+    },
+    {
+      "id": "SR-3",
+      "requirement": "Store user, wallet, transaction, and system log data persistently in MongoDB",
+      "tests": [
+        "backend/test/systemRequirements.test.js: SR-3 user, wallet, transaction, and system-log data have persistent MongoDB models",
+        "backend/test/transactionConsistency.test.js: successful blockchain result synchronizes MongoDB status, hash, block, and timestamps"
+      ],
+      "status": "pass"
+    },
+    {
+      "id": "SR-4",
+      "requirement": "Remain accessible through a modern JavaScript browser with wallet-provider integration",
+      "tests": [
+        "frontend/e2e/user-requirements.spec.js: wallet UI reports no connection and a missing provider",
+        "frontend/e2e/user-requirements.spec.js: wallet UI reports a rejected connection request",
+        "frontend/e2e/notification-sla.spec.js: wallet connection success notification appears within 2 seconds"
+      ],
+      "status": "pass"
+    }
+  ]
+}
