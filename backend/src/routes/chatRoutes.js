@@ -754,7 +754,11 @@ chatRouter.get("/threads/:threadId/history", protect, async (req, res, next) => 
         receiverWallet: paymentDoc.receiverWallet,
         amount: paymentDoc.amount,
         note: paymentDoc.note || "",
-        assetSymbol: paymentDoc.assetSymbol || DEFAULT_CHAT_ASSET_SYMBOL,
+        assetSymbol:
+          String(paymentDoc.assetSymbol || "").trim().toUpperCase() === "ETH" &&
+          DEFAULT_CHAT_ASSET_SYMBOL === "BNB"
+            ? DEFAULT_CHAT_ASSET_SYMBOL
+            : paymentDoc.assetSymbol || DEFAULT_CHAT_ASSET_SYMBOL,
         status: paymentDoc.status,
         txHash: paymentDoc.txHash || null,
         direction,

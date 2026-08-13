@@ -9,6 +9,7 @@ import {
 import { getTransactionById } from "../services/transactionApi.js";
 import { requireAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
+import { displayCurrency } from "../utils/currency.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
 
@@ -23,7 +24,7 @@ function statusBadgeClasses(status) {
 
 function formatAssetAmount(value, assetSymbol) {
   if (typeof value !== "number") return "-";
-  const symbol = String(assetSymbol || "BNB").trim().toUpperCase() || "BNB";
+  const symbol = displayCurrency(assetSymbol);
   return `${value} ${symbol}`;
 }
 

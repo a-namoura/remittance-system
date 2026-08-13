@@ -20,7 +20,7 @@ import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
-import { FALLBACK_NATIVE_CURRENCY, nativeCurrencyFrom } from "../utils/currency.js";
+import { displayCurrency, FALLBACK_NATIVE_CURRENCY, nativeCurrencyFrom } from "../utils/currency.js";
 const BALANCE_REFRESH_INTERVAL_MS = 15 * 1000;
 const QUICK_PLUS_ACTIONS = [
   {
@@ -560,9 +560,10 @@ export default function Dashboard() {
                 String(transaction.direction || "").toLowerCase() === "received"
                   ? "received"
                   : "sent";
-              const amountSymbol = String(transaction.assetSymbol || FALLBACK_NATIVE_CURRENCY)
-                .trim()
-                .toUpperCase();
+              const amountSymbol = displayCurrency(
+                transaction.assetSymbol,
+                nativeCurrency || FALLBACK_NATIVE_CURRENCY
+              );
               const counterpartyLabel = direction === "received" ? "From" : "To";
               const counterpartyUsername =
                 direction === "received"

@@ -156,6 +156,9 @@ function rejectSelfTransfer(res, senderWallet, receiverWallet) {
 
 function normalizeTransferAssetSymbol(rawSymbol) {
   const normalized = normalizeCurrencySymbol(rawSymbol);
+  if (normalized === "ETH" && DEFAULT_ASSET_SYMBOL === "BNB") {
+    return DEFAULT_ASSET_SYMBOL;
+  }
   return normalized || DEFAULT_ASSET_SYMBOL;
 }
 

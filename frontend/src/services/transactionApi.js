@@ -1,5 +1,43 @@
 import { apiRequest } from "./api.js";
 
+const FALLBACK_NATIVE_CURRENCY = "BNB";
+
+async function getInjectedNativeBalance(wallet) {
+  const ethereum = globalThis?.window?.ethereum;
+  if (!ethereum?.request) return null;
+
+  const expectedChainId = Number(import.meta.env.VITE_CHAIN_ID || import.meta.env.VITE_REM_CHAIN_ID || 97);
+  const [chainIdHex, accounts] = await Promise.all([
+    ethereum.request({ method: "eth_chainId" }),
+    ethereum.request({ method: "eth_accounts" }),
+  ]);
+
+  if (Number.parseInt(String(chainIdHex), 16) !== expectedChainId) return null;
+  const normalizedWallet = String(wallet).toLowerCase();
+  if (!Array.isArray(accounts) || !accounts.some((account) => String(account).toLowerCase() === normalizedWallet)) {
+    return null;
+  }
+
+  const balanceHex = await ethereum.request({
+    method: "eth_getBalance",
+    params: [wallet, "latest"],
+  });
+  const nativeBalance = Number(BigInt(balanceHex)) / 1e18;
+  if (!Number.isFinite(nativeBalance)) return null;
+
+  return {
+    ok: true,
+    wallet,
+    balance: nativeBalance,
+    currency: FALLBACK_NATIVE_CURRENCY,
+    nativeBalance,
+    nativeCurrency: FALLBACK_NATIVE_CURRENCY,
+    balances: { [FALLBACK_NATIVE_CURRENCY]: nativeBalance },
+    availableCurrencies: [FALLBACK_NATIVE_CURRENCY],
+    source: "wallet",
+  };
+}
+
 export async function createTransferLink({
   token,
   amountEth,
@@ -75,6 +113,14 @@ export async function getWalletBalance({
   const normalizedWallet = String(wallet || "").trim();
   if (!normalizedWallet) {
     throw new Error("wallet is required");
+  }
+
+  try {
+    const liveBalance = await getInjectedNativeBalance(normalizedWallet);
+    if (liveBalance) return liveBalance;
+  } catch {
+    // Fall back to the authenticated backend lookup when the injected wallet
+    // is unavailable, locked, or on a different chain.
   }
 
   const params = new URLSearchParams({ wallet: normalizedWallet });

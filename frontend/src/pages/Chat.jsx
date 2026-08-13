@@ -44,7 +44,7 @@ import {
 } from "../services/chatUnread.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
-import { FALLBACK_NATIVE_CURRENCY, nativeCurrencyFrom } from "../utils/currency.js";
+import { displayCurrency, FALLBACK_NATIVE_CURRENCY, nativeCurrencyFrom } from "../utils/currency.js";
 function formatClock(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
@@ -2091,7 +2091,7 @@ export default function Chat() {
                                   }`}
                                 >
                                   {formatAmount(payment.amount)}{" "}
-                                  {String(payment.assetSymbol || nativeCurrency).trim().toUpperCase()}
+                                  {displayCurrency(payment.assetSymbol, nativeCurrency)}
                                 </p>
                                 {payment.note ? (
                                   <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">

@@ -16,6 +16,7 @@ import {
   FORM_SMALL_SECONDARY_BUTTON_CLASS,
 } from "../styles/formClasses.js";
 import { formatDateTime } from "../utils/datetime.js";
+import { displayCurrency } from "../utils/currency.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
 
@@ -281,9 +282,7 @@ export default function Transactions() {
               const counterpartyValueClass = counterpartyUsername || counterpartyDisplayName
                 ? "mt-1 text-xs text-gray-700"
                 : "mt-1 font-mono text-xs text-gray-700";
-              const assetSymbol = String(transaction.assetSymbol || "BNB")
-                .trim()
-                .toUpperCase();
+              const assetSymbol = displayCurrency(transaction.assetSymbol);
               const explorerUrl = getExplorerTxUrl(transaction.txHash);
 
               return (

@@ -9,12 +9,8 @@ import {
   readWalletState,
   writeWalletState,
 } from "../services/session.js";
-import {
-  FORM_FIELD_LABEL_CLASS,
-  FORM_FILTER_CONTROL_CLASS,
-} from "../styles/formClasses.js";
-
 import { getUserErrorMessage } from "../utils/userError.js";
+const BALANCE_REFRESH_INTERVAL_MS = 10 * 1000;
 function badgeClass(ok) {
   return ok ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700";
 }
@@ -108,7 +104,6 @@ export default function Account() {
   const [accountLinked, setAccountLinked] = useState(false);
   const [accountAddress, setAccountAddress] = useState("");
   const [accountBalances, setAccountBalances] = useState({});
-  const [availableCurrencies, setAvailableCurrencies] = useState([]);
   const [selectedCurrency, setSelectedCurrency] = useState("");
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
@@ -141,7 +136,6 @@ export default function Account() {
           setAccountLinked(false);
           setAccountAddress("");
           setAccountBalances({});
-          setAvailableCurrencies([]);
           setSelectedCurrency("");
           return;
         }
@@ -159,7 +153,6 @@ export default function Account() {
         if (!stored.linked || !stored.address) {
           clearWalletState(user.id);
           setAccountBalances({});
-          setAvailableCurrencies([]);
           setSelectedCurrency("");
         }
       } catch (err) {
@@ -187,7 +180,6 @@ export default function Account() {
         if (!isCancelled) {
           setBalanceLoading(false);
           setAccountBalances({});
-          setAvailableCurrencies([]);
           setSelectedCurrency("");
           setBalanceError("");
         }
@@ -232,20 +224,17 @@ export default function Account() {
 
         if (!Number.isFinite(nextBalance)) {
           setAccountBalances({});
-          setAvailableCurrencies(nextCurrencies);
           setSelectedCurrency(nextSelectedCurrency);
           setBalanceError("Failed to load account balance.");
           return;
         }
 
         setAccountBalances(balances);
-        setAvailableCurrencies(nextCurrencies);
         setSelectedCurrency(nextSelectedCurrency);
       } catch (err) {
         if (!isCancelled) {
           setBalanceError(getUserErrorMessage(err, "Failed to load account balance."));
           setAccountBalances({});
-          setAvailableCurrencies([]);
           setSelectedCurrency("");
         }
       } finally {
@@ -256,9 +245,11 @@ export default function Account() {
     }
 
     fetchBalance();
+    const refreshId = window.setInterval(fetchBalance, BALANCE_REFRESH_INTERVAL_MS);
 
     return () => {
       isCancelled = true;
+      window.clearInterval(refreshId);
     };
   }, [accountLinked, accountAddress, selectedCurrency]);
 
@@ -303,31 +294,12 @@ export default function Account() {
           {accountLinked && accountAddress ? (
             <div className="space-y-1 text-xs text-gray-600">
               <div className="font-mono break-all">Address: {accountAddress}</div>
-              <div className="flex flex-col gap-1 sm:max-w-xs">
-                <label htmlFor="account-balance-currency" className={FORM_FIELD_LABEL_CLASS}>
-                  Currency
-                </label>
-                <select
-                  id="account-balance-currency"
-                  value={selectedCurrency}
-                  onChange={(event) =>
-                    setSelectedCurrency(String(event.target.value || "").toUpperCase())
-                  }
-                  className={FORM_FILTER_CONTROL_CLASS}
-                >
-                  {availableCurrencies.map((currency) => (
-                    <option key={currency} value={currency}>
-                      {currency}
-                    </option>
-                  ))}
-                </select>
-              </div>
               <div>
                 Balance:{" "}
                 {balanceLoading
                   ? "Loading..."
                   : hasBalanceValue
-                    ? `${balanceValue.toFixed(4)} ${selectedCurrency}`
+                    ? balanceValue.toFixed(4)
                     : "-"}
               </div>
               {balanceError && <div className="text-red-600">{balanceError}</div>}
@@ -344,7 +316,6 @@ export default function Account() {
               setAccountLinked(true);
               setAccountAddress(address);
               setAccountBalances({});
-              setAvailableCurrencies([]);
               setSelectedCurrency("");
               if (me?.id) {
                 writeWalletState(me.id, address);
@@ -354,7 +325,6 @@ export default function Account() {
               setAccountLinked(false);
               setAccountAddress("");
               setAccountBalances({});
-              setAvailableCurrencies([]);
               setSelectedCurrency("");
               if (me?.id) {
                 clearWalletState(me.id);

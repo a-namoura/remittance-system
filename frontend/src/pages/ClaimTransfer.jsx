@@ -16,6 +16,7 @@ import {
 } from "../services/transactionApi.js";
 import { getAuthToken, requireAuthToken } from "../services/session.js";
 import { useTransitionNotification } from "../utils/successTransition.js";
+import { displayCurrency } from "../utils/currency.js";
 import { isValidEvmAddress } from "../utils/security.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
@@ -296,7 +297,7 @@ export default function ClaimTransfer() {
               </p>
               <p className="text-lg font-semibold text-gray-900">
                 {preview?.amount}{" "}
-                {String(preview?.assetSymbol || "BNB").trim().toUpperCase() || "BNB"}
+                {displayCurrency(preview?.assetSymbol)}
               </p>
               {preview?.note && (
                 <p className="text-sm text-gray-600">Note: {preview.note}</p>
