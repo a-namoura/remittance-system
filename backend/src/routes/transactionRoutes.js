@@ -1143,6 +1143,7 @@ transactionRouter.get(
         fiatAmountUsd,
         fiatCurrency,
         rateUsdPerAsset,
+        canCancel: isSender && t.status === "pending" && !t.txHash,
       };
     });
 
@@ -1156,6 +1157,74 @@ transactionRouter.get(
   } catch (err) {
     next(err);
   }
+  }
+);
+
+// POST /api/transactions/:id/cancel
+transactionRouter.post(
+  "/:id/cancel",
+  protect,
+  allowQueryFields([]),
+  allowBodyFields([]),
+  async (req, res, next) => {
+    try {
+      const tx = await Transaction.findById(req.params.id).lean();
+      if (!tx) {
+        res.status(404);
+        throw new Error("Transaction not found.");
+      }
+
+      if (normalizeObjectId(tx.senderUserId) !== req.user._id.toString()) {
+        res.status(403);
+        throw new Error("Only the sender can cancel this transaction.");
+      }
+
+      if (tx.status !== "pending") {
+        res.status(409);
+        throw new Error("Only pending transactions can be cancelled.");
+      }
+
+      if (tx.txHash) {
+        res.status(409);
+        throw new Error("This transaction has already been submitted to the blockchain and cannot be cancelled.");
+      }
+
+      const cancelled = await Transaction.findOneAndUpdate(
+        {
+          _id: tx._id,
+          senderUserId: req.user._id,
+          status: "pending",
+          $or: [{ txHash: { $exists: false } }, { txHash: null }, { txHash: "" }],
+        },
+        { $set: { status: "cancelled" } },
+        { new: true }
+      ).lean();
+
+      if (!cancelled) {
+        res.status(409);
+        throw new Error("This transaction is no longer cancellable.");
+      }
+
+      await logAudit({
+        user: req.user,
+        action: "TRANSFER_CANCELLED",
+        metadata: { transactionId: String(cancelled._id) },
+        req,
+      });
+
+      res.json({
+        ok: true,
+        message: "Transfer cancelled.",
+        transaction: {
+          id: cancelled._id,
+          status: cancelled.status,
+          updatedAt: cancelled.updatedAt,
+          canCancel: false,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
   }
 );
 
@@ -1223,6 +1292,7 @@ transactionRouter.get(
         blockchainSyncedAt: tx.blockchainSyncedAt || null,
         type: tx.type || null,
         direction,
+        canCancel: isSender && tx.status === "pending" && !tx.txHash,
         createdAt: tx.createdAt,
         updatedAt: tx.updatedAt,
         fiatAmountUsd,

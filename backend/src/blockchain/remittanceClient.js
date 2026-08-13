@@ -2,7 +2,14 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import { JsonRpcProvider, Wallet, Contract, parseEther, formatEther } from "ethers";
+import {
+  Contract,
+  FetchRequest,
+  JsonRpcProvider,
+  Wallet,
+  formatEther,
+  parseEther,
+} from "ethers";
 import { normalizeEvmAddress } from "../utils/walletAddress.js";
 
 dotenv.config();
@@ -20,6 +27,15 @@ let REMITTANCE_ABI;
 let providerInstance;
 let readContractInstance;
 let readContractAddress;
+
+const DEFAULT_RPC_TIMEOUT_MS = 30_000;
+
+function getRpcTimeoutMs() {
+  const configured = Number(process.env.BSC_RPC_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0
+    ? Math.floor(configured)
+    : DEFAULT_RPC_TIMEOUT_MS;
+}
 
 try {
   const abiRaw = fs.readFileSync(abiPath, "utf8");
@@ -59,7 +75,9 @@ export function getRemittanceProvider() {
   }
 
   if (!providerInstance) {
-    providerInstance = new JsonRpcProvider(rpcUrl, undefined, {
+    const request = new FetchRequest(rpcUrl);
+    request.timeout = getRpcTimeoutMs();
+    providerInstance = new JsonRpcProvider(request, undefined, {
       batchMaxCount: 1,
     });
   }

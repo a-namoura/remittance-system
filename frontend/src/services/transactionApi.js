@@ -183,6 +183,16 @@ export async function getTransactionById({ token, id }) {
   return apiRequest(path, { token });
 }
 
+export async function cancelTransaction({ token, id }) {
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) throw new Error("Transaction id is required");
+
+  return apiRequest(`/api/transactions/${encodeURIComponent(normalizedId)}/cancel`, {
+    method: "POST",
+    token,
+  });
+}
+
 export async function pollTransactionUntilSettled({
   token,
   id,

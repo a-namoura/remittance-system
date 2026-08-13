@@ -6,7 +6,7 @@ import {
   PageHeader,
   PageLoading,
 } from "../components/PageLayout.jsx";
-import { getTransactionById } from "../services/transactionApi.js";
+import { cancelTransaction, getTransactionById } from "../services/transactionApi.js";
 import { requireAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
 import { displayCurrency } from "../utils/currency.js";
@@ -40,6 +40,24 @@ export default function TransactionDetails() {
   const [transaction, setTransaction] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+
+  async function handleCancel() {
+    if (!transaction?.canCancel || cancelling) return;
+    const token = requireAuthToken({ message: "You are not logged in.", onMissing: setError });
+    if (!token) return;
+
+    try {
+      setCancelling(true);
+      setError("");
+      const data = await cancelTransaction({ token, id: transaction.id });
+      setTransaction((current) => ({ ...current, ...data.transaction }));
+    } catch (err) {
+      setError(getUserErrorMessage(err, "Failed to cancel transfer."));
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   useEffect(() => {
     let isCancelled = false;
@@ -179,6 +197,16 @@ export default function TransactionDetails() {
                     ? "Received"
                     : "Sent"}
                 </span>
+              )}
+              {transaction.canCancel && (
+                <button
+                  type="button"
+                  disabled={cancelling}
+                  onClick={handleCancel}
+                  className="rounded-full border border-red-200 px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {cancelling ? "Cancelling..." : "Cancel transfer"}
+                </button>
               )}
             </div>
           </div>
