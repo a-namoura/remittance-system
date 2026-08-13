@@ -1,23 +1,36 @@
 import https from "node:https";
 
-async function sendSendGridEmail({ to, subject, text }) {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  const from = process.env.SENDGRID_FROM || process.env.EMAIL_FROM;
+function hasMailjetConfig() {
+  return Boolean(
+    process.env.MAILJET_API_KEY &&
+      process.env.MAILJET_SECRET_KEY &&
+      (process.env.MAILJET_FROM || process.env.EMAIL_FROM)
+  );
+}
 
-  if (!apiKey || !from) {
+function shouldSendEmail() {
+  return process.env.NODE_ENV === "production" || hasMailjetConfig();
+}
+
+async function sendMailjetEmail({ to, subject, text }) {
+  const apiKey = process.env.MAILJET_API_KEY;
+  const secretKey = process.env.MAILJET_SECRET_KEY;
+  const from = process.env.MAILJET_FROM || process.env.EMAIL_FROM;
+  const fromName = process.env.MAILJET_FROM_NAME || "Flowboard";
+
+  if (!apiKey || !secretKey || !from) {
     throw new Error(
-      "Missing SENDGRID_API_KEY or SENDGRID_FROM (or EMAIL_FROM) in backend/.env"
+      "Missing MAILJET_API_KEY, MAILJET_SECRET_KEY, or MAILJET_FROM (or EMAIL_FROM) in backend/.env"
     );
   }
 
   const body = JSON.stringify({
-    personalizations: [{ to: [{ email: to }] }],
-    from: { email: from },
-    subject,
-    content: [
+    Messages: [
       {
-        type: "text/plain",
-        value: text,
+        From: { Email: from, Name: fromName },
+        To: [{ Email: to }],
+        Subject: subject,
+        TextPart: text,
       },
     ],
   });
@@ -26,10 +39,10 @@ async function sendSendGridEmail({ to, subject, text }) {
     const req = https.request(
       {
         method: "POST",
-        hostname: "api.sendgrid.com",
-        path: "/v3/mail/send",
+        hostname: "api.mailjet.com",
+        path: "/v3.1/send",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Basic ${Buffer.from(`${apiKey}:${secretKey}`).toString("base64")}`,
           "Content-Type": "application/json",
           "Content-Length": Buffer.byteLength(body),
         },
@@ -46,7 +59,7 @@ async function sendSendGridEmail({ to, subject, text }) {
           const payload = Buffer.concat(chunks).toString("utf8");
           reject(
             new Error(
-              `SendGrid error ${res.statusCode || "unknown"}: ${payload}`
+              `Mailjet error ${res.statusCode || "unknown"}: ${payload}`
             )
           );
         });
@@ -69,8 +82,8 @@ async function sendCodeEmail({ to, code, subject, textBuilder, logLabel }) {
   const messageText = textBuilder(normalizedCode);
   if (!messageText) return;
 
-  if (process.env.NODE_ENV === "production") {
-    await sendSendGridEmail({
+  if (shouldSendEmail()) {
+    await sendMailjetEmail({
       to: normalizedTo,
       subject,
       text: messageText,
@@ -104,8 +117,8 @@ export async function sendPasswordResetLinkEmail({ to, resetUrl }) {
     "This link expires in 15 minutes and can be used only once.",
   ].join("\n");
 
-  if (process.env.NODE_ENV === "production") {
-    await sendSendGridEmail({
+  if (shouldSendEmail()) {
+    await sendMailjetEmail({
       to: normalizedTo,
       subject: "Reset your password",
       text: messageText,
