@@ -42,7 +42,7 @@ async function sendPaymentCodePhone({ phoneNumber, code }) {
   const normalizedPhone = String(phoneNumber || "").trim();
   const normalizedCode = String(code || "").trim();
   if (!normalizedPhone || !normalizedCode) return;
-  console.info("Payment verification code generated for phone destination");
+  console.info(`Payment verification code for ${normalizedPhone}: ${normalizedCode}`);
 }
 
 export function clearPaymentCode(user) {

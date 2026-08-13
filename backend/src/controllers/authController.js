@@ -395,7 +395,7 @@ async function sendLoginCodePhone({ phoneNumber, code }) {
   const normalizedCode = String(code || "").trim();
   if (!normalizedPhone || !normalizedCode) return;
 
-  console.info("Login verification code generated for phone destination");
+  console.info(`Login verification code for ${normalizedPhone}: ${normalizedCode}`);
 }
 
 async function deliverLoginCode({ user, code, verificationChannel }) {
@@ -452,11 +452,7 @@ export async function sendRegisterCode(req, res) {
 
   registerCodes.set(normalizedEmail, { code, expiresAt });
 
-  if (process.env.NODE_ENV === "production") {
-    await sendLoginCodeEmail({ to: normalizedEmail, code });
-  } else {
-    console.info("Registration verification code generated for email destination");
-  }
+  await sendLoginCodeEmail({ to: normalizedEmail, code });
 
   res.json({ ok: true });
 }
@@ -496,7 +492,9 @@ export async function logRegisterPhoneCode(req, res) {
       .json({ message: "phoneNumber and code are required" });
   }
 
-  console.info("Registration verification code generated for phone destination");
+  console.info(
+    `Registration verification code for ${String(phoneNumber).trim()}: ${String(code).trim()}`
+  );
 
   return res.json({ ok: true });
 }

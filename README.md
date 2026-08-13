@@ -117,11 +117,6 @@ Optional currency/email settings used by specific features:
 REM_NATIVE_CURRENCY=BNB
 REM_RATE_USD_PER_BNB=600
 REM_RATE_USD_PER_BTC=90000
-MAILJET_API_KEY=...
-MAILJET_SECRET_KEY=...
-MAILJET_FROM=no-reply@example.com
-MAILJET_FROM_NAME=Flowboard
-# or EMAIL_FROM as fallback sender
 ```
 
 ## Run With Docker Compose

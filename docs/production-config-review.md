@@ -8,6 +8,6 @@ Repository administrators must create the `production` environment in **Settings
 
 Only non-sensitive, browser-safe values may use the `VITE_` prefix. They are embedded in the frontend build and are public by design. Examples include `VITE_API_URL` and `VITE_EXPLORER_BASE_URL`.
 
-Keep credentials and private operational settings in the deployment platform's secret manager, never in an environment example, frontend environment file, repository variable, image, or workflow log. This includes `JWT_SECRET`, `MONGODB_URI`, `BSC_TESTNET_PRIVATE_KEY`, `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`, `BACKUP_ENCRYPTION_KEY`, and restore credentials. Give production application, backup, and restore roles separate secret access as described in [production security](production-security.md).
+Keep credentials and private operational settings in the deployment platform's secret manager, never in an environment example, frontend environment file, repository variable, image, or workflow log. This includes `JWT_SECRET`, `MONGODB_URI`, `BSC_TESTNET_PRIVATE_KEY`, `BACKUP_ENCRYPTION_KEY`, and restore credentials. Give production application, backup, and restore roles separate secret access as described in [production security](production-security.md).
 
 The policy check rejects populated secret-like entries in committed `.env.example` files and secret-like `VITE_` variables. It also verifies every Node package declares the supported runtime range.
