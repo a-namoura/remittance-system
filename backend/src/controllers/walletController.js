@@ -300,9 +300,6 @@ export async function linkWallet(req, res) {
     { returnDocument: "after", runValidators: true, upsert: true }
   );
 
-  await refreshWalletBalance(doc.address);
-  const walletForResponse = (await Wallet.findById(doc._id).lean()) || doc;
-
   await logWalletConnectionEvent({
     req,
     operation: "link",
@@ -310,17 +307,24 @@ export async function linkWallet(req, res) {
     walletAddress: doc.address,
   });
 
+  // Linking proves wallet ownership and must not depend on the availability of
+  // the external chain RPC. Refresh the cached balance without delaying the
+  // response; the balance endpoint can also refresh it on demand later.
+  void refreshWalletBalance(doc.address).catch((err) => {
+    console.warn("Wallet linked, but the background balance refresh failed:", err);
+  });
+
   return res.json({
     ok: true,
     message: "Wallet successfully verified and linked to your account.",
     wallet: {
-      address: walletForResponse.address,
-      isVerified: walletForResponse.isVerified,
-      verifiedAt: walletForResponse.verifiedAt,
-      balance: walletForResponse.nativeBalance ?? null,
-      balanceSymbol: walletForResponse.nativeBalanceSymbol || null,
-      balanceUpdatedAt: walletForResponse.nativeBalanceUpdatedAt || null,
-      balanceSyncError: walletForResponse.balanceSyncError || null,
+      address: doc.address,
+      isVerified: doc.isVerified,
+      verifiedAt: doc.verifiedAt,
+      balance: doc.nativeBalance ?? null,
+      balanceSymbol: doc.nativeBalanceSymbol || null,
+      balanceUpdatedAt: doc.nativeBalanceUpdatedAt || null,
+      balanceSyncError: doc.balanceSyncError || null,
     },
   });
 }
