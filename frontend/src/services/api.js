@@ -12,8 +12,22 @@ if (import.meta.env.PROD && !String(API_URL).startsWith("https://")) {
   throw new Error("Production VITE_API_URL must use HTTPS.");
 }
 
-const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS) || 15000;
+const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS) || 30000;
+const MUTATION_TIMEOUT_MS =
+  Number(import.meta.env.VITE_API_MUTATION_TIMEOUT_MS) || 120000;
 let requestSequence = 0;
+
+function getRequestTimeoutMs(method, timeoutMs) {
+  const explicitTimeout = Number(timeoutMs);
+  if (Number.isFinite(explicitTimeout) && explicitTimeout > 0) {
+    return explicitTimeout;
+  }
+
+  const normalizedMethod = String(method || "GET").toUpperCase();
+  return ["GET", "HEAD", "OPTIONS"].includes(normalizedMethod)
+    ? DEFAULT_TIMEOUT_MS
+    : MUTATION_TIMEOUT_MS;
+}
 
 function normalizePath(path) {
   const value = String(path || "");
@@ -60,16 +74,25 @@ function toRequestBody(body) {
 
 export async function apiRequest(
   path,
-  { method = "GET", body, token, signal, trackRequest = true } = {}
+  {
+    method = "GET",
+    body,
+    token,
+    signal,
+    trackRequest = true,
+    timeoutMs,
+  } = {}
 ) {
   const requestId = ++requestSequence;
   const finalToken = token ?? getAuthToken();
   const shouldTrackRequest = Boolean(trackRequest);
   const controller = new AbortController();
-  const timeout = globalThis.setTimeout(
-    () => controller.abort(),
-    DEFAULT_TIMEOUT_MS
-  );
+  const requestTimeoutMs = getRequestTimeoutMs(method, timeoutMs);
+  let didTimeOut = false;
+  const timeout = globalThis.setTimeout(() => {
+    didTimeOut = true;
+    controller.abort();
+  }, requestTimeoutMs);
 
   const abortFromSignal = () => controller.abort();
   if (signal) {
@@ -127,7 +150,7 @@ export async function apiRequest(
 
     return data;
   } catch (error) {
-    if (error?.name === "AbortError") {
+    if (error?.name === "AbortError" && didTimeOut) {
       const timeoutError = new Error("Request timed out. Please try again.");
       if (shouldTrackRequest) {
         emitRequestEvent({
@@ -139,6 +162,10 @@ export async function apiRequest(
         });
       }
       throw timeoutError;
+    }
+
+    if (error?.name === "AbortError") {
+      throw error;
     }
 
     if (shouldTrackRequest && !error?.alreadyReported) {
