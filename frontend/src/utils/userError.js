@@ -55,7 +55,9 @@ export function getUserErrorMessage(error, fallback = "Something went wrong. Ple
   if (!error) return safeFallback;
 
   if (error?.isApiError) {
-    if (error.status === 401) return "Your session has expired. Please sign in again.";
+    if (error.status === 401) {
+      return normalize(error.message) || "Your session has expired. Please sign in again.";
+    }
     if (error.status === 403) return "You do not have permission to perform this action.";
     return safeFallback;
   }

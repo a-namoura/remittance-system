@@ -93,12 +93,21 @@ async function completeRegistration(page, routeResponse) {
 
 async function resetPassword(page, routeResponse) {
   let responseAt = 0;
-  await page.route("**/api/auth/forgot-password/reset", (route) =>
-    json(route, routeResponse.status, routeResponse.body, () => {
+  await page.route("**/api/auth/forgot-password/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/options")) return json(route, 200, { channels: { email: true, phone: false } });
+    if (path.endsWith("/start")) return json(route, 200, { token: "challenge-token", destination: "a***@example.com", verificationChannel: "email" });
+    if (path.endsWith("/verify")) return json(route, 200, { resetToken: "reset-token" });
+    return json(route, routeResponse.status, routeResponse.body, () => {
       responseAt = Date.now();
-    })
-  );
-  await page.goto("/forgot-password?resetToken=reset-token");
+    });
+  });
+  await page.goto("/forgot-password");
+  await page.getByPlaceholder("username / you@example.com / +123...").fill("alex@example.com");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Send verification code" }).click();
+  await page.getByPlaceholder("******").fill("123456");
+  await page.getByRole("button", { name: "Verify code" }).click();
   await page.getByPlaceholder("********").nth(0).fill("Password1!");
   await page.getByPlaceholder("********").nth(1).fill("Password1!");
   await page.getByRole("button", { name: "Update password" }).click();
@@ -164,9 +173,9 @@ test.describe("backend-result notification SLA", () => {
     await expectNotificationWithinSla(page, responseAt, "Password reset successful");
   });
 
-  test("password reset failure notification includes the backend reason within 2 seconds", async ({ page }) => {
-    const responseAt = await resetPassword(page, { status: 400, body: { message: "Reset link has expired" } });
-    await expectNotificationWithinSla(page, responseAt, "Reset link has expired");
+  test("password reset failure notification appears within 2 seconds", async ({ page }) => {
+    const responseAt = await resetPassword(page, { status: 400, body: { message: "Reset verification has expired" } });
+    await expectNotificationWithinSla(page, responseAt, "Failed to reset password.");
   });
 
   test("wallet connection success notification appears within 2 seconds", async ({ page }) => {

@@ -1,12 +1,11 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
-import { getFrontendOrigin as getSecureFrontendOrigin } from "../config/security.js";
 import { User } from "../models/User.js";
 import { hashAuditIdentifier, logAudit } from "../utils/audit.js";
 import {
   sendLoginCodeEmail,
-  sendPasswordResetLinkEmail,
+  sendPasswordResetCodeEmail,
 } from "../utils/email.js";
 
 const AUTH_METHODS = {
@@ -225,25 +224,6 @@ function clearPasswordResetToken(user) {
   user.passwordResetExpiresAt = undefined;
 }
 
-function getFrontendOrigin() {
-  if (process.env.NODE_ENV === "production") return getSecureFrontendOrigin();
-  const configured =
-    process.env.FRONTEND_URL ||
-    process.env.CLIENT_URL ||
-    process.env.APP_URL ||
-    (process.env.WALLET_LINK_DOMAIN
-      ? `http://${process.env.WALLET_LINK_DOMAIN}`
-      : "");
-
-  return String(configured || "http://localhost:5173").replace(/\/+$/, "");
-}
-
-function buildPasswordResetUrl(token) {
-  return `${getFrontendOrigin()}/forgot-password?resetToken=${encodeURIComponent(
-    token
-  )}`;
-}
-
 function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -398,7 +378,13 @@ async function sendLoginCodePhone({ phoneNumber, code }) {
   console.info(`Login verification code for ${normalizedPhone}: ${normalizedCode}`);
 }
 
-async function deliverLoginCode({ user, code, verificationChannel }) {
+async function deliverLoginCode({
+  user,
+  code,
+  verificationChannel,
+  emailSender = sendLoginCodeEmail,
+  phoneLogLabel = "Login",
+}) {
   if (verificationChannel === VERIFICATION_CHANNELS.PHONE) {
     const phoneNumber = String(user.phoneNumber || "").trim();
     if (!phoneNumber) {
@@ -407,14 +393,18 @@ async function deliverLoginCode({ user, code, verificationChannel }) {
       throw err;
     }
 
-    await sendLoginCodePhone({ phoneNumber, code });
+    if (phoneLogLabel === "Login") {
+      await sendLoginCodePhone({ phoneNumber, code });
+    } else {
+      console.info(`${phoneLogLabel} verification code for ${phoneNumber}: ${code}`);
+    }
     return {
       channel: VERIFICATION_CHANNELS.PHONE,
       destination: maskPhone(phoneNumber),
     };
   }
 
-  await sendLoginCodeEmail({ to: user.email, code });
+  await emailSender({ to: user.email, code });
   return {
     channel: VERIFICATION_CHANNELS.EMAIL,
     destination: maskEmail(user.email),
@@ -995,48 +985,19 @@ export async function forgotPasswordStart(req, res) {
       .json({ message: "No phone number found for this account" });
   }
 
-  if (verificationChannel === VERIFICATION_CHANNELS.EMAIL) {
-    const resetToken = createPasswordResetToken(user);
-    clearLoginCode(user);
-    await user.save();
-
-    const resetUrl = buildPasswordResetUrl(resetToken);
-    try {
-      await sendPasswordResetLinkEmail({ to: user.email, resetUrl });
-    } catch (err) {
-      clearPasswordResetToken(user);
-      await user.save();
-
-      return res
-        .status(err.statusCode || 400)
-        .json({ message: err.message || "Failed to send password reset link" });
-    }
-
-    await logAudit({
-      user,
-      action: "PASSWORD_RESET_LINK_SENT",
-      metadata: {
-        verificationChannel,
-      },
-      req,
-    });
-
-    return res.json({
-      ok: true,
-      resetLinkSent: true,
-      expiresInMinutes: 15,
-      verificationChannel,
-      destination: maskEmail(user.email),
-    });
-  }
-
   const code = generateCode();
   setLoginCode(user, code);
   await user.save();
 
   let delivery;
   try {
-    delivery = await deliverLoginCode({ user, code, verificationChannel });
+    delivery = await deliverLoginCode({
+      user,
+      code,
+      verificationChannel,
+      emailSender: sendPasswordResetCodeEmail,
+      phoneLogLabel: "Password reset",
+    });
   } catch (err) {
     clearLoginCode(user);
     await user.save();
@@ -1111,7 +1072,13 @@ export async function forgotPasswordResend(req, res) {
 
   let delivery;
   try {
-    delivery = await deliverLoginCode({ user, code, verificationChannel });
+    delivery = await deliverLoginCode({
+      user,
+      code,
+      verificationChannel,
+      emailSender: sendPasswordResetCodeEmail,
+      phoneLogLabel: "Password reset",
+    });
   } catch (err) {
     clearLoginCode(user);
     await user.save();
@@ -1240,6 +1207,8 @@ export async function forgotPasswordReset(req, res) {
   user.passwordHash = await bcrypt.hash(newPassword, 10);
   clearLoginCode(user);
   clearPasswordResetToken(user);
+  user.failedLoginAttempts = 0;
+  user.failedLoginLockedUntil = undefined;
   incrementSessionVersion(user);
   await user.save();
 

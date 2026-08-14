@@ -19,12 +19,15 @@ export async function sendLoginCodeEmail({ to, code }) {
   });
 }
 
-export async function sendPasswordResetLinkEmail({ to, resetUrl }) {
-  const normalizedTo = String(to || "").trim();
-  const normalizedResetUrl = String(resetUrl || "").trim();
-  if (!normalizedTo || !normalizedResetUrl) return;
-
-  console.info(`Password reset link generated for ${normalizedTo}: ${normalizedResetUrl}`);
+export async function sendPasswordResetCodeEmail({ to, code }) {
+  await sendCodeEmail({
+    to,
+    code,
+    subject: "Your password reset verification code",
+    textBuilder: (normalizedCode) =>
+      `Your password reset verification code is ${normalizedCode}.`,
+    logLabel: "Password reset",
+  });
 }
 
 export async function sendPaymentCodeEmail({ to, code }) {
