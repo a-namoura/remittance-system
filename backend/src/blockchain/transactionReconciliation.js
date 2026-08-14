@@ -168,7 +168,11 @@ function normalizedAddress(value) {
 
 export function transferMatchesTransaction(txDoc, eventData) {
   if (!eventData) return { matches: false, reason: "Transfer event was not found in the receipt." };
-  if (normalizedAddress(txDoc.senderWallet) !== normalizedAddress(eventData.senderWallet)) {
+  const expectedOnChainSender = normalizedAddress(txDoc.onChainSenderWallet);
+  // Application records created before onChainSenderWallet was introduced are
+  // backfilled from their immutable receipt after receiver, asset, and amount
+  // have been verified below. Blockchain-ingested records always know it.
+  if (expectedOnChainSender && expectedOnChainSender !== normalizedAddress(eventData.senderWallet)) {
     return { matches: false, reason: "Transfer event sender does not match the transaction record." };
   }
   if (normalizedAddress(txDoc.receiverWallet) !== normalizedAddress(eventData.receiverWallet)) {
@@ -184,7 +188,7 @@ export function transferMatchesTransaction(txDoc, eventData) {
 }
 
 async function requireReconciliation(txDoc, previousStatus, reason, checkedAt = new Date()) {
-  txDoc.status = "reconciliation_required";
+  txDoc.status = "pending";
   txDoc.reconciliationError = reason;
   txDoc.lastReconciledAt = checkedAt;
   await txDoc.save();
@@ -376,7 +380,7 @@ export async function reconcileTransaction(
       "Blockchain receipt hash does not match the transaction record.",
       checkedAt
     );
-    return { corrected: previousStatus !== "reconciliation_required", mismatch: true };
+    return { corrected: previousStatus !== "pending", mismatch: true };
   }
   const eventData = chainStatus === "success" ? receiptTransferEvent(receipt) : null;
   const comparison = chainStatus === "success"
@@ -385,7 +389,11 @@ export async function reconcileTransaction(
 
   if (!comparison.matches) {
     await requireReconciliation(txDoc, previousStatus, comparison.reason, checkedAt);
-    return { corrected: previousStatus !== "reconciliation_required", mismatch: true };
+    return { corrected: previousStatus !== "pending", mismatch: true };
+  }
+
+  if (!txDoc.onChainSenderWallet && eventData?.senderWallet) {
+    txDoc.onChainSenderWallet = eventData.senderWallet;
   }
 
   const needsCorrection =
@@ -481,6 +489,10 @@ async function ingestTransferEvent(event) {
       return { ingested: false, mismatch: true };
     }
 
+    if (!txDoc.onChainSenderWallet) {
+      txDoc.onChainSenderWallet = data.senderWallet;
+    }
+
     txDoc.blockNumber = data.blockNumber;
     txDoc.blockHash = data.blockHash || undefined;
     txDoc.eventLogIndex = data.eventLogIndex;
@@ -515,6 +527,7 @@ async function ingestTransferEvent(event) {
       senderUserId,
       receiverUserId,
       senderWallet: data.senderWallet,
+      onChainSenderWallet: data.senderWallet,
       receiverWallet: data.receiverWallet,
       amount: data.amount,
       assetSymbol: getNativeAssetSymbol(),
@@ -653,6 +666,12 @@ export async function reconcileTransactions({ force = false, forceBefore, skipEv
 
   reconciliationRunning = true;
   try {
+    // Fold records written by older releases into the single non-terminal
+    // state before applying the current schema validation.
+    await Transaction.updateMany(
+      { status: "reconciliation_required" },
+      { $set: { status: "pending" } }
+    );
     const config = getConfig();
     const recheckSince = new Date(Date.now() - config.recheckWindowMs);
     const query = force
@@ -666,7 +685,6 @@ export async function reconcileTransactions({ force = false, forceBefore, skipEv
           txHash: { $type: "string", $ne: "" },
           $or: [
             { status: "pending" },
-            { status: "reconciliation_required" },
             {
               status: { $in: ["success", "failed"] },
               $or: [
@@ -691,7 +709,7 @@ export async function reconcileTransactions({ force = false, forceBefore, skipEv
         if (result.error) errors += 1;
       } catch (err) {
         errors += 1;
-        txDoc.status = "reconciliation_required";
+        txDoc.status = "pending";
         txDoc.reconciliationError = normalizeError(err) || "Reconciliation failed.";
         txDoc.lastReconciledAt = new Date();
         await txDoc.save().catch(() => {});

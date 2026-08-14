@@ -95,7 +95,7 @@ export async function refreshTransactionWalletBalances(
 
   const addresses = [
     ...new Set(
-      [transaction.senderWallet, transaction.receiverWallet]
+      [transaction.onChainSenderWallet, transaction.receiverWallet]
         .map((address) => normalizeEvmAddress(address))
         .filter(Boolean)
     ),

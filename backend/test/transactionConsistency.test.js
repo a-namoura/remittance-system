@@ -50,6 +50,7 @@ function transaction(overrides = {}) {
   return {
     _id: "transaction-1",
     senderWallet,
+    onChainSenderWallet: senderWallet,
     receiverWallet,
     amount: 1.25,
     assetSymbol: "BNB",
@@ -70,11 +71,17 @@ test("pending blockchain submission retains MongoDB transfer fields and submissi
   const txDoc = transaction();
   const submittedAt = new Date("2026-08-02T10:00:00.000Z");
 
-  await recordTransactionSubmission(txDoc, { txHash: "0xpending", submittedAt });
+  const blockchainSigner = "0x3333333333333333333333333333333333333333";
+  await recordTransactionSubmission(txDoc, {
+    txHash: "0xpending",
+    submittedAt,
+    from: blockchainSigner,
+  });
 
   assertTransferFields(txDoc);
   assert.equal(txDoc.status, "pending");
   assert.equal(txDoc.txHash, "0xpending");
+  assert.equal(txDoc.onChainSenderWallet, blockchainSigner);
   assert.deepEqual(txDoc.blockchainSubmittedAt, submittedAt);
   assert.equal(txDoc.blockNumber, undefined);
   assert.equal(txDoc.reconciliationMissCount, 0);
@@ -86,6 +93,7 @@ test("successful blockchain result synchronizes MongoDB status, hash, block, and
   const txDoc = transaction({
     txHash: "0xsubmitted",
     senderWallet: "sender-wallet",
+    onChainSenderWallet: "sender-wallet",
     receiverWallet: "receiver-wallet",
   });
   const receivedAt = new Date();
@@ -147,6 +155,37 @@ test("reconciliation compares every transfer identity field before accepting an 
     assert.equal(transferMatchesTransaction(txDoc, event).matches, false, `${field} mismatch must be rejected`);
   }
   assert.equal(transferMatchesTransaction({ ...txDoc, assetSymbol: "USDT" }, matchingEvent).matches, false);
+});
+
+test("legacy application records accept a verified event and backfill its on-chain signer", async () => {
+  const txDoc = transaction({
+    onChainSenderWallet: undefined,
+    txHash: "0xlegacy",
+    status: "success",
+    blockNumber: 104,
+    blockchainSyncedAt: new Date(),
+  });
+  const provider = {
+    async getTransactionReceipt() {
+      return { hash: "0xlegacy", status: 1, blockNumber: 104, logs: [] };
+    },
+  };
+  const receiptTransferEvent = () => ({
+    senderWallet: "0x3333333333333333333333333333333333333333",
+    receiverWallet,
+    amount: 1.25,
+  });
+
+  await reconcileTransaction(txDoc, provider, {
+    missThreshold: 3,
+    pendingTimeoutMs: 1,
+  }, { receiptTransferEvent });
+
+  assert.equal(
+    txDoc.onChainSenderWallet,
+    "0x3333333333333333333333333333333333333333"
+  );
+  assert.equal(txDoc.status, "success");
 });
 
 test("reconciliation preserves terminal records when a receipt is temporarily unavailable", async () => {

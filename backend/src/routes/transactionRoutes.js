@@ -55,7 +55,6 @@ export const MY_TRANSACTION_STATUSES = Object.freeze([
   "success",
   "failed",
   "cancelled",
-  "reconciliation_required",
 ]);
 export const MY_TRANSACTION_VIEWS = Object.freeze(["all", "sent", "received"]);
 

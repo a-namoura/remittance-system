@@ -49,7 +49,7 @@ const transactionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "success", "failed", "cancelled", "reconciliation_required"],
+      enum: ["pending", "success", "failed", "cancelled"],
       default: "pending",
     },
     txHash: { type: String, trim: true },
@@ -103,6 +103,17 @@ const transactionSchema = new mongoose.Schema(
     transferRequestKey: {
       type: String,
       trim: true,
+    },
+    // The wallet that actually signed and funded the blockchain transaction.
+    // This differs from senderWallet while transfers are submitted by the
+    // custodial service signer on a user's behalf.
+    onChainSenderWallet: {
+      type: String,
+      set: formatWalletAddressForStorage,
+      validate: {
+        validator: (value) => value == null || isValidEvmAddress(value),
+        message: createInvalidWalletAddressMessage("onChainSenderWallet"),
+      },
     },
     paymentLinkId: {
       type: mongoose.Schema.Types.ObjectId,

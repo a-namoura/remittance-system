@@ -145,12 +145,20 @@ export async function submitRemittance(
 
   const { contract, wallet } = getClient();
 
+  const onChainSender = normalizeEvmAddress(wallet.address);
+  if (!onChainSender) {
+    throw new Error("Configured blockchain signer has an invalid address.");
+  }
+  if (onChainSender === normalizedReceiver) {
+    throw new Error("The receiver cannot be the blockchain signer address.");
+  }
+
   const value = parseEther(String(amountEth));
 
   const tx = await contract.transfer(normalizedReceiver, { value });
   const submittedAt = new Date();
   const submission = {
-    from: wallet.address,
+    from: onChainSender,
     to: normalizedReceiver,
     value: amountEth,
     txHash: tx.hash,

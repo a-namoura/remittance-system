@@ -20,7 +20,6 @@ function statusBadgeClasses(status) {
   if (status === "success") return "bg-green-100 text-green-700";
   if (status === "failed") return "bg-red-100 text-red-700";
   if (status === "cancelled") return "bg-gray-100 text-gray-700";
-  if (status === "reconciliation_required") return "bg-orange-100 text-orange-800 ring-1 ring-orange-300";
   return "bg-yellow-100 text-yellow-800";
 }
 
@@ -194,11 +193,11 @@ export default function TransactionDetails() {
             </div>
           </div>
 
-          {transaction.status === "reconciliation_required" && (
+          {transaction.status === "pending" && transaction.reconciliationError && (
             <div className="rounded-xl border border-orange-300 bg-orange-50 p-4 text-sm text-orange-900">
-              <div className="font-semibold">Reconciliation required</div>
+              <div className="font-semibold">Confirmation pending</div>
               <div className="mt-1">
-                {transaction.reconciliationError || "We could not verify this transaction on the blockchain. It requires review before its final status can be confirmed."}
+                {transaction.reconciliationError}
               </div>
             </div>
           )}

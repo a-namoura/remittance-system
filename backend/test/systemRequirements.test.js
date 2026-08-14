@@ -81,6 +81,19 @@ test("SR-2 EVM/BSC transfers invoke the payable remittance smart contract and re
   });
 });
 
+test("SR-2 rejects transfers back to the custodial blockchain signer", async () => {
+  const signer = "0x1111111111111111111111111111111111111111";
+  await assert.rejects(
+    submitRemittance(signer, "1", {
+      getClient: () => ({
+        contract: { transfer: async () => assert.fail("must not broadcast") },
+        wallet: { address: signer },
+      }),
+    }),
+    /receiver cannot be the blockchain signer/i
+  );
+});
+
 test("SR-3 user, wallet, transaction, and system-log data have persistent MongoDB models", () => {
   const requiredModels = [
     [User, "users", ["email", "passwordHash", "sessionVersion"]],

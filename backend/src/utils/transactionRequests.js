@@ -211,6 +211,7 @@ export async function recordTransactionSubmission(txDoc, submission) {
   if (!txDoc || !txHash) return txDoc;
 
   txDoc.txHash = txHash;
+  txDoc.onChainSenderWallet = stablePart(submission?.from) || txDoc.onChainSenderWallet;
   txDoc.blockchainSubmittedAt = asDate(submission?.submittedAt || new Date());
   txDoc.reconciliationMissCount = 0;
   txDoc.reconciliationError = undefined;
@@ -223,6 +224,7 @@ export async function recordTransactionSubmission(txDoc, submission) {
     const recovery = {
       txHash: txDoc.txHash,
       senderWallet: txDoc.senderWallet,
+      onChainSenderWallet: txDoc.onChainSenderWallet,
       receiverWallet: txDoc.receiverWallet,
       amount: txDoc.amount,
       assetSymbol: txDoc.assetSymbol,
