@@ -130,7 +130,9 @@ export async function apiRequest(
       }
 
       const message = response.status === 401
-        ? "Your session has expired. Please sign in again."
+        ? finalToken
+          ? "Your session has expired. Please sign in again."
+          : "Authentication failed. Please check your details and try again."
         : response.status === 403
           ? "You do not have permission to perform this action."
           : "The request could not be completed.";
