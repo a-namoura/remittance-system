@@ -13,9 +13,9 @@ import {
   FORM_CODE_INPUT_CLASS,
   FORM_INPUT_BASE_CLASS,
   FORM_MUTED_BUTTON_CLASS,
-  FORM_PRIMARY_BUTTON_DISABLED_CLASS,
   formChannelButtonClass,
 } from "../styles/formClasses.js";
+import FormSubmitButton from "../components/FormSubmitButton.jsx";
 
 import { getEmailIdentifierError } from "../utils/emailValidation.js";
 import { getUserErrorMessage } from "../utils/userError.js";
@@ -405,13 +405,16 @@ export default function Login() {
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
+          <FormSubmitButton
+            busy={loading}
+            prerequisites={[
+              identifier.trim(),
+              !getEmailIdentifierError(identifier.trim()),
+              password,
+            ]}
           >
             Continue
-          </button>
+          </FormSubmitButton>
         </form>
       )}
 
@@ -451,13 +454,15 @@ export default function Login() {
             <FieldError>{fieldErrors.verificationChannel}</FieldError>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
+          <FormSubmitButton
+            busy={loading}
+            prerequisites={[
+              verificationChannel,
+              verificationChannel !== CHANNELS.PHONE || !phoneDisabled,
+            ]}
           >
             Send verification code
-          </button>
+          </FormSubmitButton>
         </form>
       )}
 
@@ -494,13 +499,12 @@ export default function Login() {
             </p>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
+          <FormSubmitButton
+            busy={loading}
+            prerequisites={[pendingToken, code.trim()]}
           >
             Verify and sign in
-          </button>
+          </FormSubmitButton>
 
           <div className="text-center">
             <button

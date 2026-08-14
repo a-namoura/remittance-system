@@ -16,10 +16,9 @@ import {
 import {
   FORM_CODE_INPUT_CLASS,
   FORM_INPUT_BASE_CLASS,
-  FORM_PRIMARY_BUTTON_CLASS,
-  FORM_PRIMARY_BUTTON_DISABLED_CLASS,
   FORM_SELECT_BASE_CLASS,
 } from "../styles/formClasses.js";
+import FormSubmitButton from "../components/FormSubmitButton.jsx";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 const STEPS = {
@@ -714,13 +713,12 @@ export default function Register() {
           </div>
 
           {!emailCodeSent && (
-            <button
-              type="submit"
-              disabled={loading}
-              className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
+            <FormSubmitButton
+              busy={loading}
+              prerequisites={[email.trim(), isValidEmail(email.trim())]}
             >
               Send code
-            </button>
+            </FormSubmitButton>
           )}
 
           {emailCodeSent && (
@@ -750,7 +748,7 @@ export default function Register() {
                     <button
                       type="button"
                       onClick={handleVerifyRegisterCode}
-                      disabled={loading}
+                      disabled={loading || !emailCode.trim()}
                       className="px-6 py-2 rounded-full bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-60"
                     >
                       Verify
@@ -794,13 +792,9 @@ export default function Register() {
             </>
           )}
 
-          <button
-            type="submit"
-            disabled={loading || !emailVerified}
-            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
-          >
+          <FormSubmitButton busy={loading} prerequisites={[emailVerified]}>
             Continue
-          </button>
+          </FormSubmitButton>
         </form>
       )}
 
@@ -833,13 +827,12 @@ export default function Register() {
             <FieldError>{fieldErrors.password}</FieldError>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
+          <FormSubmitButton
+            busy={loading}
+            prerequisites={[password, !getPasswordPolicyError(password)]}
           >
             Continue
-          </button>
+          </FormSubmitButton>
         </form>
       )}
 
@@ -925,9 +918,9 @@ export default function Register() {
             </div>
           </div>
 
-          <button type="submit" className={FORM_PRIMARY_BUTTON_CLASS}>
+          <FormSubmitButton busy={loading} prerequisites={[phone.trim()]}>
             Send SMS code
-          </button>
+          </FormSubmitButton>
 
           <button
             type="button"
@@ -983,9 +976,12 @@ export default function Register() {
           </div>
 
           {!phoneVerified && (
-            <button type="submit" className={FORM_PRIMARY_BUTTON_CLASS}>
+            <FormSubmitButton
+              busy={loading}
+              prerequisites={[phoneCode.trim()]}
+            >
               Verify number
-            </button>
+            </FormSubmitButton>
           )}
 
           <button
@@ -1081,9 +1077,17 @@ export default function Register() {
             </p>
           </div>
 
-          <button type="submit" className={FORM_PRIMARY_BUTTON_CLASS}>
+          <FormSubmitButton
+            prerequisites={[
+              firstName.trim(),
+              lastName.trim(),
+              username.trim().length >= 3,
+              dob,
+              dob && !isUnder17(dob),
+            ]}
+          >
             Continue
-          </button>
+          </FormSubmitButton>
         </form>
       )}
 
@@ -1194,13 +1198,18 @@ export default function Register() {
             <FieldError>{fieldErrors.agreeAccuracy}</FieldError>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
+          <FormSubmitButton
+            busy={loading}
+            prerequisites={[
+              employmentStatus,
+              sourceOfFunds.trim(),
+              monthlyVolume.trim(),
+              agreeGuidelines,
+              agreeAccuracy,
+            ]}
           >
             {loading ? "Creating account..." : "Create account"}
-          </button>
+          </FormSubmitButton>
         </form>
       )}
 

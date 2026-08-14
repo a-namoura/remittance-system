@@ -9,6 +9,7 @@ import {
   FORM_HELP_TEXT_CLASS,
   FORM_INPUT_BASE_CLASS,
 } from "../styles/formClasses.js";
+import FormSubmitButton from "../components/FormSubmitButton.jsx";
 import { formatDateOnly } from "../utils/datetime.js";
 import { isValidEvmAddress } from "../utils/security.js";
 
@@ -525,13 +526,18 @@ export default function Friends() {
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-md bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
+                <FormSubmitButton
+                  busy={saving}
+                  variant="compact"
+                  prerequisites={[
+                    name.trim(),
+                    username.trim() || walletAddress.trim(),
+                    !walletAddress.trim() ||
+                      isValidEvmAddress(walletAddress.trim()),
+                  ]}
                 >
                   {saving ? "Saving..." : "Save friend"}
-                </button>
+                </FormSubmitButton>
               </div>
             </form>
           </div>

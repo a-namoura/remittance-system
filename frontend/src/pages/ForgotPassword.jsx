@@ -15,9 +15,9 @@ import {
   FORM_CODE_INPUT_CLASS,
   FORM_INPUT_BASE_CLASS,
   FORM_MUTED_BUTTON_CLASS,
-  FORM_PRIMARY_BUTTON_DISABLED_CLASS,
   formChannelButtonClass,
 } from "../styles/formClasses.js";
+import FormSubmitButton from "../components/FormSubmitButton.jsx";
 
 import { getEmailIdentifierError } from "../utils/emailValidation.js";
 import { getUserErrorMessage } from "../utils/userError.js";
@@ -454,13 +454,15 @@ export default function ForgotPassword() {
             <FieldError>{fieldErrors.identifier}</FieldError>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
+          <FormSubmitButton
+            busy={loading}
+            prerequisites={[
+              identifier.trim(),
+              !getEmailIdentifierError(identifier.trim()),
+            ]}
           >
             Continue
-          </button>
+          </FormSubmitButton>
         </form>
       )}
 
@@ -500,15 +502,17 @@ export default function ForgotPassword() {
             <FieldError>{fieldErrors.verificationChannel}</FieldError>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
+          <FormSubmitButton
+            busy={loading}
+            prerequisites={[
+              verificationChannel,
+              verificationChannel !== CHANNELS.PHONE || !phoneDisabled,
+            ]}
           >
             {verificationChannel === CHANNELS.EMAIL
               ? "Send password reset link"
               : "Send verification code"}
-          </button>
+          </FormSubmitButton>
         </form>
       )}
 
@@ -545,13 +549,12 @@ export default function ForgotPassword() {
             </p>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
+          <FormSubmitButton
+            busy={loading}
+            prerequisites={[pendingToken, code.trim()]}
           >
             Verify code
-          </button>
+          </FormSubmitButton>
 
           <div className="text-center">
             <button
@@ -627,13 +630,18 @@ export default function ForgotPassword() {
             <FieldError>{fieldErrors.confirmPassword}</FieldError>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={FORM_PRIMARY_BUTTON_DISABLED_CLASS}
+          <FormSubmitButton
+            busy={loading}
+            prerequisites={[
+              resetToken,
+              newPassword,
+              !getPasswordPolicyError(newPassword),
+              confirmPassword,
+              newPassword === confirmPassword,
+            ]}
           >
             Update password
-          </button>
+          </FormSubmitButton>
         </form>
       )}
 

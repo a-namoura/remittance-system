@@ -75,12 +75,19 @@ async function completeRegistration(page, routeResponse) {
   await page.getByPlaceholder("yourname").fill("alexdoe");
   await page.locator('input[type="date"]').fill("1990-01-01");
   await page.getByRole("button", { name: "Continue" }).click();
+  const createAccountButton = page.getByRole("button", { name: "Create account" });
+  await expect(createAccountButton).toBeDisabled();
   await page.locator("select").nth(0).selectOption("employed");
+  await expect(createAccountButton).toBeDisabled();
   await page.locator("select").nth(1).selectOption("salary_employment");
+  await expect(createAccountButton).toBeDisabled();
   await page.locator("select").nth(2).selectOption("0_500");
+  await expect(createAccountButton).toBeDisabled();
   await page.locator('input[type="checkbox"]').nth(0).check();
+  await expect(createAccountButton).toBeDisabled();
   await page.locator('input[type="checkbox"]').nth(1).check();
-  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(createAccountButton).toBeEnabled();
+  await createAccountButton.click();
   return () => responseAt;
 }
 
