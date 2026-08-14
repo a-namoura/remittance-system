@@ -129,6 +129,35 @@ function isRpcLogLimitError(err) {
   );
 }
 
+export async function queryTransferEventsAdaptive(
+  contract,
+  filter,
+  fromBlock,
+  toBlock
+) {
+  try {
+    const events = await contract.queryFilter(filter, fromBlock, toBlock);
+    return [{ fromBlock, toBlock, events }];
+  } catch (err) {
+    if (!isRpcLogLimitError(err) || fromBlock >= toBlock) throw err;
+
+    const middleBlock = Math.floor((fromBlock + toBlock) / 2);
+    const left = await queryTransferEventsAdaptive(
+      contract,
+      filter,
+      fromBlock,
+      middleBlock
+    );
+    const right = await queryTransferEventsAdaptive(
+      contract,
+      filter,
+      middleBlock + 1,
+      toBlock
+    );
+    return [...left, ...right];
+  }
+}
+
 function receiptStatus(receipt) {
   return Number(receipt?.status) === 1 ? "success" : "failed";
 }
@@ -570,9 +599,10 @@ async function syncTransferEvents(provider, config) {
       safeBlock,
       batchStart + config.eventBlockBatchSize - 1
     );
-    let events;
+    let ranges;
     try {
-      events = await contract.queryFilter(
+      ranges = await queryTransferEventsAdaptive(
+        contract,
         contract.filters.Transfer(),
         batchStart,
         batchEnd
@@ -591,24 +621,26 @@ async function syncTransferEvents(provider, config) {
       throw err;
     }
 
-    scanned += events.length;
-    for (const event of events) {
-      const result = await ingestTransferEvent(event);
-      if (result.ingested) ingested += 1;
-      if (result.updated) updated += 1;
-    }
+    for (const range of ranges) {
+      scanned += range.events.length;
+      for (const event of range.events) {
+        const result = await ingestTransferEvent(event);
+        if (result.ingested) ingested += 1;
+        if (result.updated) updated += 1;
+      }
 
-    await BlockchainSyncState.findOneAndUpdate(
-      { key: stateKey },
-      {
-        $set: {
-          chainId,
-          contractAddress,
-          lastProcessedBlock: batchEnd,
+      await BlockchainSyncState.findOneAndUpdate(
+        { key: stateKey },
+        {
+          $set: {
+            chainId,
+            contractAddress,
+            lastProcessedBlock: range.toBlock,
+          },
         },
-      },
-      { upsert: true, returnDocument: "after", runValidators: true }
-    );
+        { upsert: true, returnDocument: "after", runValidators: true }
+      );
+    }
   }
 
   return { scanned, ingested, updated };

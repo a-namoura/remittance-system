@@ -5,12 +5,46 @@ import {
   syncTransactionWithBlockchainResult,
 } from "../src/utils/transactionRequests.js";
 import {
+  queryTransferEventsAdaptive,
   reconcileTransaction,
   transferMatchesTransaction,
 } from "../src/blockchain/transactionReconciliation.js";
 
 const senderWallet = "0x1111111111111111111111111111111111111111";
 const receiverWallet = "0x2222222222222222222222222222222222222222";
+
+test("event synchronization splits block ranges rejected by the RPC provider", async () => {
+  const calls = [];
+  const contract = {
+    async queryFilter(_filter, fromBlock, toBlock) {
+      calls.push([fromBlock, toBlock]);
+      if (toBlock - fromBlock + 1 > 2) {
+        const error = new Error("limit exceeded");
+        error.code = -32005;
+        throw error;
+      }
+      return [{ blockNumber: fromBlock }, { blockNumber: toBlock }];
+    },
+  };
+
+  const ranges = await queryTransferEventsAdaptive(contract, {}, 100, 107);
+
+  assert.deepEqual(calls, [
+    [100, 107],
+    [100, 103],
+    [100, 101],
+    [102, 103],
+    [104, 107],
+    [104, 105],
+    [106, 107],
+  ]);
+  assert.deepEqual(ranges.map(({ fromBlock, toBlock }) => [fromBlock, toBlock]), [
+    [100, 101],
+    [102, 103],
+    [104, 105],
+    [106, 107],
+  ]);
+});
 
 function transaction(overrides = {}) {
   return {
