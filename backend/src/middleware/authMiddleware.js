@@ -28,6 +28,7 @@ export async function protect(req, res, next) {
 
     const user = await User.findById(decoded.userId).select(
       "+loginCode +loginCodeExpiresAt +paymentCode +paymentCodeExpiresAt +paymentCodeChannel"
+      + " +pendingPhoneNumber +phoneChangeCode +phoneChangeCodeExpiresAt"
     );
 
     if (!user) {

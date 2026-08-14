@@ -95,6 +95,19 @@ const userSchema = new mongoose.Schema(
     phoneVerifiedAt: {
       type: Date,
     },
+    pendingPhoneNumber: {
+      type: String,
+      trim: true,
+      select: false,
+    },
+    phoneChangeCode: {
+      type: String,
+      select: false,
+    },
+    phoneChangeCodeExpiresAt: {
+      type: Date,
+      select: false,
+    },
     dateOfBirth: {
       type: Date,
     },
@@ -119,6 +132,18 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    isDiscoverable: {
+      type: Boolean,
+      default: true,
+    },
+    blockedUserIds: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    }],
   },
   { timestamps: true }
 );

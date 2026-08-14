@@ -29,7 +29,7 @@ export default function Landing() {
               Across Borders
             </h1>
             <p className="mt-4 text-sm md:text-base text-gray-600 max-w-md">
-              Send money fast to friends and family abroad, with transparent
+              Send money fast to people you care about abroad, with transparent
               rates and full transaction tracking.
             </p>
           </div>

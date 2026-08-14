@@ -75,6 +75,7 @@ apiRouter.get("/me", protect, async (req, res, next) => {
         firstName: req.user.firstName || "",
         lastName: req.user.lastName || "",
         phoneNumber: req.user.phoneNumber || "",
+        isDiscoverable: req.user.isDiscoverable !== false,
         wallet: walletDoc
           ? {
               linked: true,

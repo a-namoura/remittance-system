@@ -31,8 +31,15 @@ const BASE_NAV_GROUPS = [
   {
     title: "Social",
     items: [
-      { to: "/friends", label: "Friends", icon: "friends" },
+      { to: "/contacts", label: "Contacts", icon: "friends" },
       { to: "/chat", label: "Chat", icon: "chat" },
+    ],
+  },
+  {
+    title: "Personal",
+    items: [
+      { to: "/profile", label: "Profile", icon: "profile" },
+      { to: "/settings", label: "Settings", icon: "settings" },
     ],
   },
 ];
@@ -239,6 +246,24 @@ function navIcon(name) {
     );
   }
 
+  if (name === "profile") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="8" r="3.2" />
+        <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
+      </svg>
+    );
+  }
+
+  if (name === "settings") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+      </svg>
+    );
+  }
+
   return (
     <svg
       viewBox="0 0 24 24"
@@ -273,8 +298,18 @@ export default function Navbar({
   const previousUnreadCountRef = useRef(null);
 
   const navGroups = useMemo(
-    () => (me?.role === "admin" ? [...BASE_NAV_GROUPS, ADMIN_NAV_GROUP] : BASE_NAV_GROUPS),
-    [me?.role]
+    () => {
+      const hasWallet = Boolean(me?.wallet?.linked && me?.wallet?.address);
+      const groups = BASE_NAV_GROUPS.map((group) => ({
+        ...group,
+        items: hasWallet
+          ? group.items
+          : group.items.filter((item) => item.to !== "/send"),
+      }));
+
+      return me?.role === "admin" ? [...groups, ADMIN_NAV_GROUP] : groups;
+    },
+    [me?.role, me?.wallet?.linked, me?.wallet?.address]
   );
 
   const mobileNavItems = useMemo(
@@ -512,7 +547,7 @@ export default function Navbar({
                           : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                       }`}
                     >
-                      <span className="inline-flex h-5 w-5 items-center justify-center">
+                      <span className="inline-flex h-6 w-6 items-center justify-center [&>svg]:h-5 [&>svg]:w-5">
                         {navIcon(item.icon)}
                       </span>
 
@@ -613,12 +648,14 @@ export default function Navbar({
                     {me.role === "admin" ? "Administrator" : "Member"}
                   </p>
                 </div>
-                <span
+                <Link
+                  to="/profile"
                   title={displayName}
+                  aria-label="Open profile"
                   className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-xs font-semibold text-white"
                 >
                   {profileInitials}
-                </span>
+                </Link>
                 <button
                   type="button"
                   onClick={handleLogout}

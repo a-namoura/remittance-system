@@ -13,6 +13,11 @@ const friendSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    targetUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+    },
     label: {
       type: String,
       required: true,

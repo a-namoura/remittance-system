@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { Friend } from "../models/Friend.js";
+import { User } from "../models/User.js";
 import {
   createInvalidWalletAddressMessage,
   normalizeEvmAddress,
@@ -16,11 +17,15 @@ export async function listFriends(req, res, next) {
     const items = await Friend.find({ userId: req.user._id })
       .sort({ createdAt: -1 })
       .lean();
+    const usernames = items.map((item) => String(item.username || "").trim()).filter(Boolean);
+    const users = usernames.length ? await User.find({ username: { $in: usernames } }).select("_id username").lean() : [];
+    const userIdByUsername = new Map(users.map((user) => [String(user.username).toLowerCase(), user._id]));
 
     res.json({
       ok: true,
       friends: items.map((friend) => ({
         id: friend._id,
+        targetUserId: friend.targetUserId || userIdByUsername.get(String(friend.username || "").toLowerCase()) || null,
         label: friend.label,
         username: friend.username || null,
         walletAddress: friend.walletAddress || null,
@@ -35,7 +40,7 @@ export async function listFriends(req, res, next) {
 
 export async function createFriend(req, res, next) {
   try {
-    const { label, username, walletAddress, notes } = req.body;
+    const { label, username, walletAddress, notes, targetUserId } = req.body;
 
     const rawLabel = label ? String(label).trim() : "";
     const rawUsername = username ? String(username).trim() : "";
@@ -44,7 +49,7 @@ export async function createFriend(req, res, next) {
 
     if (!rawLabel) {
       res.status(400);
-      throw new Error("Name is required for the friend.");
+      throw new Error("Name is required for the contact.");
     }
 
     if (
@@ -92,6 +97,7 @@ export async function createFriend(req, res, next) {
 
     const doc = await Friend.create({
       userId: req.user._id,
+      targetUserId: mongoose.Types.ObjectId.isValid(String(targetUserId || "")) ? targetUserId : undefined,
       label: rawLabel,
       username: hasUsername ? rawUsername : undefined,
       walletAddress: normalizedWallet,
@@ -102,6 +108,7 @@ export async function createFriend(req, res, next) {
       ok: true,
       friend: {
         id: doc._id,
+        targetUserId: doc.targetUserId || null,
         label: doc.label,
         username: doc.username || null,
         walletAddress: doc.walletAddress || null,
@@ -112,7 +119,7 @@ export async function createFriend(req, res, next) {
   } catch (err) {
     if (err.code === 11000) {
       res.status(409);
-      return next(new Error("You already have a friend with this name."));
+      return next(new Error("You already have a contact with this name."));
     }
     next(err);
   }
@@ -124,7 +131,7 @@ export async function deleteFriend(req, res, next) {
 
     if (!mongoose.Types.ObjectId.isValid(String(id || ""))) {
       res.status(400);
-      throw new Error("Invalid friend id.");
+      throw new Error("Invalid contact id.");
     }
 
     const doc = await Friend.findOneAndDelete({
@@ -134,12 +141,12 @@ export async function deleteFriend(req, res, next) {
 
     if (!doc) {
       res.status(404);
-      throw new Error("Friend not found.");
+      throw new Error("Contact not found.");
     }
 
     res.json({
       ok: true,
-      message: "Friend deleted.",
+      message: "Contact deleted.",
     });
   } catch (err) {
     next(err);

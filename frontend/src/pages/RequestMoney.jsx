@@ -17,6 +17,7 @@ import {
 } from "../styles/formClasses.js";
 import { copyText, getQrImageUrl } from "../utils/paylink.js";
 import { useSuccessTransitionMessage } from "../utils/successTransition.js";
+import { CopyIcon, ShareIcon } from "../components/ActionIcons.jsx";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 function buildRequestLink({ walletAddress, amountEth, note, username }) {
@@ -256,15 +257,17 @@ export default function RequestMoney() {
                 <button
                   type="button"
                   onClick={handleCopyLink}
-                  className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
+                  className={`inline-flex h-10 min-w-28 items-center justify-center gap-2 ${FORM_INLINE_SECONDARY_BUTTON_CLASS}`}
                 >
+                  <CopyIcon />
                   {linkCopied ? "Copied" : "Copy"}
                 </button>
                 <button
                   type="button"
                   onClick={handleShareLink}
-                  className={FORM_INLINE_PRIMARY_BUTTON_CLASS}
+                  className={`inline-flex h-10 min-w-28 items-center justify-center gap-2 ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                 >
+                  <ShareIcon />
                   Share
                 </button>
               </div>

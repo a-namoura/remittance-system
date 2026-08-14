@@ -1,5 +1,18 @@
+import { useEffect, useState } from "react";
+import { publishSystemNotification } from "../services/systemNotifications.js";
+
 function joinClasses(...values) {
   return values.filter(Boolean).join(" ");
+}
+
+function AutoDismissNotice({ children, className }) {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setVisible(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, []);
+  if (!visible) return null;
+  return <div role="status" aria-live="polite" className={joinClasses(className, "transition-opacity duration-200")}>{children}</div>;
 }
 
 const NOTICE_CLASS_BY_VARIANT = {
@@ -53,8 +66,11 @@ export function PageHeader({
 }
 
 export function PageError({ children, className = "" }) {
-  if (!children) return null;
-  return <div className={joinClasses("app-page-error", className)}>{children}</div>;
+  useEffect(() => {
+    if (children) publishSystemNotification(children, { variant: "error" });
+  }, [children]);
+  void className;
+  return null;
 }
 
 export function FieldError({ children, className = "" }) {
@@ -70,7 +86,12 @@ export function FieldError({ children, className = "" }) {
 }
 
 export function PageNotice({ children, className = "", variant = "info" }) {
-  if (!children) return null;
+  useEffect(() => {
+    if (children && (variant === "success" || variant === "error")) {
+      publishSystemNotification(children, { variant });
+    }
+  }, [children, variant]);
+  if (!children || variant === "success" || variant === "error") return null;
   const toneClass = NOTICE_CLASS_BY_VARIANT[variant] || NOTICE_CLASS_BY_VARIANT.info;
   return <div className={joinClasses(toneClass, className)}>{children}</div>;
 }

@@ -501,9 +501,49 @@ function otherParticipantId(threadDoc, userId) {
   return peer ? String(peer) : null;
 }
 
+async function rejectBlockedChat(res, userId, peerUserId) {
+  const blocked = await User.exists({
+    $or: [
+      { _id: userId, blockedUserIds: peerUserId },
+      { _id: peerUserId, blockedUserIds: userId },
+    ],
+  });
+  if (blocked) {
+    res.status(403);
+    throw new Error("Chat is unavailable for this user.");
+  }
+}
+
 chatRouter.get("/friends", protect, async (req, res, next) => {
   try {
-    const contacts = await resolveFriendContacts(req.user._id);
+    const savedContacts = await resolveFriendContacts(req.user._id);
+    const existingPeerIds = new Set(savedContacts.map((contact) => String(contact.peerUserId)));
+    const threads = await ChatThread.find({ participants: req.user._id }).select("participants").lean();
+    const threadPeerIds = threads.map((thread) => otherParticipantId(thread, req.user._id)).filter(Boolean);
+    const owner = await User.findById(req.user._id).select("blockedUserIds").lean();
+    const blockedIds = new Set((owner?.blockedUserIds || []).map(String));
+    const incomingPeers = threadPeerIds.filter((id) => !existingPeerIds.has(id) && !blockedIds.has(id));
+    const peerUsers = incomingPeers.length ? await User.find({
+      _id: { $in: incomingPeers },
+      isDisabled: { $ne: true },
+      blockedUserIds: { $ne: req.user._id },
+    }).select("_id username firstName lastName").lean() : [];
+    const peerWallets = incomingPeers.length ? await Wallet.find({ userId: { $in: incomingPeers }, isVerified: true }).select("userId address").lean() : [];
+    const walletByPeer = new Map(peerWallets.map((wallet) => [String(wallet.userId), normalizeAddress(wallet.address)]));
+    const conversationContacts = peerUsers.map((peer) => ({
+      friendId: null,
+      label: getUserDisplayName(peer),
+      username: peer.username,
+      walletAddress: walletByPeer.get(String(peer._id)) || null,
+      notes: null,
+      createdAt: null,
+      peerUserId: String(peer._id),
+      peerUsername: peer.username,
+      peerDisplayName: getUserDisplayName(peer),
+      peerWalletAddress: walletByPeer.get(String(peer._id)) || null,
+      isSavedContact: false,
+    }));
+    const contacts = [...savedContacts.filter((contact) => !blockedIds.has(String(contact.peerUserId))).map((contact) => ({ ...contact, isSavedContact: true })), ...conversationContacts];
     const contactsWithThreads = await attachLatestThreadMetadata({
       contacts,
       viewerUserId: req.user._id,
@@ -559,9 +599,10 @@ chatRouter.get("/keys/:userId", protect, async (req, res, next) => {
 
     if (requesterId !== peerId) {
       const contact = await resolveFriendContactByPeer(req.user._id, requestedUserId);
-      if (!contact) {
+      const sharedThread = await ChatThread.exists({ participantKey: buildParticipantKey(req.user._id, requestedUserId) });
+      if (!contact && !sharedThread) {
         res.status(403);
-        throw new Error("Encrypted chat is only available with saved friends.");
+        throw new Error("Encrypted chat is only available with saved contacts.");
       }
     }
 
@@ -594,14 +635,25 @@ chatRouter.get("/threads/:peerUserId", protect, async (req, res, next) => {
       throw new Error("Cannot create a chat with yourself.");
     }
 
-    const friendContact = await resolveFriendContactByPeer(req.user._id, peerUserId);
-    if (!friendContact) {
-      res.status(403);
-      throw new Error("You can only open request chats with your saved friends.");
-    }
-
+    let friendContact = await resolveFriendContactByPeer(req.user._id, peerUserId);
     const participantKey = buildParticipantKey(req.user._id, peerUserId);
     let thread = await ChatThread.findOne({ participantKey }).lean();
+    if (!friendContact && !thread) {
+      res.status(403);
+      throw new Error("You can only start chats with saved contacts.");
+    }
+
+    const users = await User.find({ _id: { $in: [req.user._id, peerUserId] } }).select("_id username firstName lastName blockedUserIds").lean();
+    const requester = users.find((user) => String(user._id) === String(req.user._id));
+    const peer = users.find((user) => String(user._id) === String(peerUserId));
+    if (!peer || requester?.blockedUserIds?.some((id) => String(id) === String(peerUserId)) || peer.blockedUserIds?.some((id) => String(id) === String(req.user._id))) {
+      res.status(403);
+      throw new Error("Chat is unavailable for this user.");
+    }
+    if (!friendContact) {
+      const wallet = await Wallet.findOne({ userId: peerUserId, isVerified: true }).select("address").lean();
+      friendContact = { peerUserId, peerDisplayName: getUserDisplayName(peer), peerUsername: peer.username, peerWalletAddress: wallet?.address || null, label: getUserDisplayName(peer) };
+    }
 
     if (!thread) {
       try {
@@ -813,6 +865,7 @@ chatRouter.post("/threads/:threadId/messages", protect, async (req, res, next) =
       res.status(400);
       throw new Error("recipientUserId must be the other participant in this thread.");
     }
+    await rejectBlockedChat(res, req.user._id, recipientUserId);
 
     const messageType = String(req.body?.messageType || "text");
     if (!["text", "request"].includes(messageType)) {
@@ -1143,6 +1196,7 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       res.status(400);
       throw new Error("Unable to resolve chat recipient.");
     }
+    await rejectBlockedChat(res, req.user._id, recipientUserId);
 
     const amountNumber = Number(req.body?.amountEth);
     rejectInvalidTransferAmount(res, amountNumber);

@@ -10,6 +10,7 @@ import {
   writeWalletState,
 } from "../services/session.js";
 import { getUserErrorMessage } from "../utils/userError.js";
+import CopyableWalletAddress from "../components/CopyableWalletAddress.jsx";
 const BALANCE_REFRESH_INTERVAL_MS = 10 * 1000;
 function badgeClass(ok) {
   return ok ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700";
@@ -293,7 +294,7 @@ export default function Account() {
 
           {accountLinked && accountAddress ? (
             <div className="space-y-1 text-xs text-gray-600">
-              <div className="font-mono break-all">Address: {accountAddress}</div>
+              <CopyableWalletAddress address={accountAddress} label="Address" className="px-2 py-1" />
               <div>
                 Balance:{" "}
                 {balanceLoading

@@ -14,6 +14,16 @@ a,
   cursor: pointer;
 }
 
+button:not(:disabled) {
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, filter 160ms ease;
+}
+
+button:not(:disabled):hover {
+  filter: brightness(0.97);
+  box-shadow: 0 4px 12px rgb(15 23 42 / 0.1);
+  transform: translateY(-1px);
+}
+
 .app-auth-main {
   --app-page-max-width: 110rem;
 }

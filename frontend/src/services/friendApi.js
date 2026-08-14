@@ -10,18 +10,19 @@ export async function createFriend({
   username,
   walletAddress,
   notes,
+  targetUserId,
 }) {
   return apiRequest("/api/friends", {
     method: "POST",
     token,
-    body: { label, username, walletAddress, notes },
+    body: { label, username, walletAddress, notes, targetUserId },
   });
 }
 
 export async function deleteFriend({ token, id }) {
   const normalizedId = String(id || "").trim();
   if (!normalizedId) {
-    throw new Error("Friend id is required");
+    throw new Error("Contact id is required");
   }
 
   return apiRequest(`/api/friends/${encodeURIComponent(normalizedId)}`, {

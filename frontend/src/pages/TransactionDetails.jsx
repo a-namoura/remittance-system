@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import {
   PageContainer,
   PageError,
@@ -12,6 +12,8 @@ import { formatDateTime } from "../utils/datetime.js";
 import { displayCurrency } from "../utils/currency.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
+import CopyableWalletAddress from "../components/CopyableWalletAddress.jsx";
+import BackButton from "../components/BackButton.jsx";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 function statusBadgeClasses(status) {
@@ -34,7 +36,6 @@ function formatUsd(value, currency) {
 }
 
 export default function TransactionDetails() {
-  const navigate = useNavigate();
   const { id } = useParams();
 
   const [transaction, setTransaction] = useState(null);
@@ -132,25 +133,7 @@ export default function TransactionDetails() {
 
   return (
     <PageContainer stack>
-      <button
-        type="button"
-        onClick={() => navigate("/transactions")}
-        className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          className="h-4 w-4"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M15 18 9 12l6-6" />
-        </svg>
-        Back to Activity
-      </button>
+      <div><BackButton to="/transactions" label="Back to Activity" /></div>
 
       <PageHeader
         title="Transaction Details"
@@ -223,33 +206,17 @@ export default function TransactionDetails() {
           <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-1">
               <div className="text-xs text-gray-500">Sender</div>
-              <div
-                className={`text-sm text-gray-900 ${
-                  showSenderSecondaryWallet ? "" : "font-mono break-all"
-                }`}
-              >
-                {senderPrimaryValue}
-              </div>
+              {showSenderSecondaryWallet ? <div className="text-sm text-gray-900">{senderPrimaryValue}</div> : <CopyableWalletAddress address={transaction.senderWallet} label="" className="p-1 text-sm text-gray-900" />}
               {showSenderSecondaryWallet && (
-                <div className="font-mono text-[11px] break-all text-gray-500">
-                  {transaction.senderWallet}
-                </div>
+                <CopyableWalletAddress address={transaction.senderWallet} label="" className="p-1 text-[11px] text-gray-500" />
               )}
             </div>
 
             <div className="space-y-1">
               <div className="text-xs text-gray-500">Receiver</div>
-              <div
-                className={`text-sm text-gray-900 ${
-                  showReceiverSecondaryWallet ? "" : "font-mono break-all"
-                }`}
-              >
-                {receiverPrimaryValue}
-              </div>
+              {showReceiverSecondaryWallet ? <div className="text-sm text-gray-900">{receiverPrimaryValue}</div> : <CopyableWalletAddress address={transaction.receiverWallet} label="" className="p-1 text-sm text-gray-900" />}
               {showReceiverSecondaryWallet && (
-                <div className="font-mono text-[11px] break-all text-gray-500">
-                  {transaction.receiverWallet}
-                </div>
+                <CopyableWalletAddress address={transaction.receiverWallet} label="" className="p-1 text-[11px] text-gray-500" />
               )}
             </div>
           </div>

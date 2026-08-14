@@ -127,13 +127,17 @@ export async function apiRequest(
         clearAuthToken();
       }
 
-      const message = getUserErrorMessage(
-        data?.message,
-        `Request failed (${response.status})`
-      );
+      const message = response.status === 401
+        ? "Your session has expired. Please sign in again."
+        : response.status === 403
+          ? "You do not have permission to perform this action."
+          : "The request could not be completed.";
       const error = new Error(message);
       error.status = response.status;
-      error.data = data;
+      error.isApiError = true;
+      // Keep only a stable machine code. Backend messages and payloads must never
+      // become browser-visible notification content.
+      error.code = typeof data?.code === "string" ? data.code : "REQUEST_FAILED";
       error.alreadyReported = true;
       if (shouldTrackRequest) {
         emitRequestEvent({

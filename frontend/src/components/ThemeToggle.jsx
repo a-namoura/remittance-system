@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 const THEME_STORAGE_KEY = "theme-preference";
+const THEME_CHANGE_EVENT = "app-theme-preference-change";
 
 function getSystemTheme() {
   if (typeof window === "undefined") return "light";
@@ -43,6 +44,12 @@ export default function ThemeToggle({ className = "" }) {
   }, []);
 
   useEffect(() => {
+    const syncPreference = (event) => setPreference(event.detail);
+    window.addEventListener(THEME_CHANGE_EVENT, syncPreference);
+    return () => window.removeEventListener(THEME_CHANGE_EVENT, syncPreference);
+  }, []);
+
+  useEffect(() => {
     const root = document.documentElement;
     root.classList.toggle("dark", resolvedTheme === "dark");
     root.style.colorScheme = resolvedTheme;
@@ -58,11 +65,10 @@ export default function ThemeToggle({ className = "" }) {
   }, [preference]);
 
   function handleToggle() {
-    setPreference((currentPreference) => {
-      const currentTheme =
-        currentPreference === "system" ? systemTheme : currentPreference;
-      return currentTheme === "dark" ? "light" : "dark";
-    });
+    const currentTheme = preference === "system" ? systemTheme : preference;
+    const nextPreference = currentTheme === "dark" ? "light" : "dark";
+    setPreference(nextPreference);
+    window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: nextPreference }));
   }
 
   const isDark = resolvedTheme === "dark";

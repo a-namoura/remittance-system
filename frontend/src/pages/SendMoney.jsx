@@ -36,6 +36,7 @@ import { isValidEvmAddress, normalizeEvmAddress } from "../utils/security.js";
 import { copyText, getQrImageUrl, shortWallet } from "../utils/paylink.js";
 import { FALLBACK_NATIVE_CURRENCY, nativeCurrencyFrom } from "../utils/currency.js";
 import { useTransitionNotification } from "../utils/successTransition.js";
+import { CopyIcon, ShareIcon } from "../components/ActionIcons.jsx";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 const PAYMENT_OPTIONS = [
@@ -349,7 +350,7 @@ export default function SendMoney() {
         setFriends(response.friends || []);
       } catch (err) {
         if (isCancelled) return;
-        setPageError(getUserErrorMessage(err, "Failed to load friends."));
+        setPageError(getUserErrorMessage(err, "Failed to load contacts."));
       } finally {
         if (!isCancelled) {
           setLoadingFriends(false);
@@ -465,6 +466,16 @@ export default function SendMoney() {
 
   useEffect(() => {
     let isCancelled = false;
+    const trimmedSearch = search.trim();
+
+    if (!trimmedSearch) {
+      const clearId = window.setTimeout(() => {
+        setAccounts([]);
+        setAccountError("");
+        setLoadingAccounts(false);
+      }, 0);
+      return () => window.clearTimeout(clearId);
+    }
 
     const token = requireAuthToken();
     if (!token) {
@@ -480,7 +491,7 @@ export default function SendMoney() {
         setLoadingAccounts(true);
         setAccountError("");
 
-        const response = await searchUsers({ token, query: search, limit: 10 });
+        const response = await searchUsers({ token, query: trimmedSearch, limit: 10 });
         if (isCancelled) return;
         setAccounts(response.users || []);
       } catch (err) {
@@ -546,7 +557,7 @@ export default function SendMoney() {
       const recipient = friendRecipient(existing);
       setSelectedRecipient(recipient);
       setSearch(recipient.label);
-      setMethodSuccess(`${existing.label} is already in your friends list.`);
+      setMethodSuccess(`${existing.label} is already in your contacts list.`);
       setIsSearchOpen(false);
       return;
     }
@@ -558,7 +569,7 @@ export default function SendMoney() {
 
       const username = String(account.username || "").trim();
       const walletAddress = String(account.walletAddress || "").trim();
-      const label = String(account.displayName || "").trim() || username || "Friend";
+      const label = String(account.displayName || "").trim() || username || "Contact";
 
       const response = await createFriend({
         token,
@@ -568,17 +579,17 @@ export default function SendMoney() {
       });
 
       if (!response.friend) {
-        throw new Error("Failed to add friend.");
+        throw new Error("Failed to add contact.");
       }
 
       const recipient = friendRecipient(response.friend);
       setFriends((prev) => [response.friend, ...prev]);
       setSelectedRecipient(recipient);
       setSearch(recipient.label);
-      setMethodSuccess(`${response.friend.label} added to friends.`);
+      setMethodSuccess(`${response.friend.label} added to contacts.`);
       setIsSearchOpen(false);
     } catch (err) {
-      setMethodError(getUserErrorMessage(err, "Failed to add friend."));
+      setMethodError(getUserErrorMessage(err, "Failed to add contact."));
     } finally {
       setAddingFriendId("");
     }
@@ -1285,11 +1296,11 @@ export default function SendMoney() {
                               : "bg-gray-200 text-gray-600"
                           }`}
                         >
-                          {data.walletAddress ? "Friend" : "No wallet"}
+                          {data.walletAddress ? "Contact" : "No wallet"}
                         </span>
                       ) : existing ? (
                         <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-semibold text-emerald-700">
-                          In friends
+                          In contacts
                         </span>
                       ) : (
                         <button
@@ -1359,11 +1370,11 @@ export default function SendMoney() {
         <section className="mt-5 rounded-2xl border border-gray-200 bg-white/85 p-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-800">
-              Saved friends ({friends.length})
+              Saved contacts ({friends.length})
             </h2>
             <button
               type="button"
-              onClick={() => navigate("/friends")}
+              onClick={() => navigate("/contacts")}
               className="text-xs font-medium text-purple-700 hover:underline"
             >
               Manage
@@ -1373,13 +1384,13 @@ export default function SendMoney() {
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {loadingFriends && (
               <div className="rounded-xl bg-white px-3 py-2 text-xs text-gray-500">
-                Loading friends...
+                Loading contacts...
               </div>
             )}
 
             {!loadingFriends && quickFriends.length === 0 && (
               <div className="rounded-xl bg-white px-3 py-2 text-xs text-gray-500">
-                No saved friends yet.
+                No saved contacts yet.
               </div>
             )}
 
@@ -1662,7 +1673,7 @@ export default function SendMoney() {
                         type="button"
                         onClick={handleSendCode}
                         disabled={!canSendAddressCode}
-                        className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
+                        className={`inline-flex h-10 min-w-28 items-center justify-center gap-2 ${FORM_INLINE_SECONDARY_BUTTON_CLASS}`}
                       >
                         {codeSending ? "Sending code..." : "Send code"}
                       </button>
@@ -1872,13 +1883,15 @@ export default function SendMoney() {
                         onClick={handleCopyLink}
                         className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
                       >
+                        <CopyIcon />
                         {linkCopied ? "Copied" : "Copy"}
                       </button>
                       <button
                         type="button"
                         onClick={handleShareLink}
-                        className={FORM_INLINE_PRIMARY_BUTTON_CLASS}
+                        className={`inline-flex h-10 min-w-28 items-center justify-center gap-2 ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                       >
+                        <ShareIcon />
                         Share
                       </button>
                     </div>

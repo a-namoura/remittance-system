@@ -5,6 +5,7 @@ import ThemeToggle from "./components/ThemeToggle.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import GlobalRequestFeedback from "./components/GlobalRequestFeedback.jsx";
+import SystemNotifications from "./components/SystemNotifications.jsx";
 import { PageLoading } from "./components/PageLayout.jsx";
 
 const Landing = lazy(() => import("./pages/Landing.jsx"));
@@ -14,6 +15,10 @@ const ForgotPassword = lazy(() => import("./pages/ForgotPassword.jsx"));
 const ClaimTransfer = lazy(() => import("./pages/ClaimTransfer.jsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
 const Account = lazy(() => import("./pages/Account.jsx"));
+const Profile = lazy(() => import("./pages/Profile.jsx"));
+const Settings = lazy(() => import("./pages/Settings.jsx"));
+const Blocked = lazy(() => import("./pages/Blocked.jsx"));
+const MyData = lazy(() => import("./pages/MyData.jsx"));
 const Friends = lazy(() => import("./pages/Friends.jsx"));
 const RequestMoney = lazy(() => import("./pages/RequestMoney.jsx"));
 const Chat = lazy(() => import("./pages/Chat.jsx"));
@@ -34,7 +39,12 @@ const PUBLIC_ROUTES = [
 const PROTECTED_ROUTES = [
   { path: "/dashboard", element: <Dashboard /> },
   { path: "/account", element: <Account /> },
-  { path: "/friends", element: <Friends /> },
+  { path: "/profile", element: <Profile /> },
+  { path: "/settings", element: <Settings /> },
+  { path: "/settings/blocked", element: <Blocked /> },
+  { path: "/settings/data", element: <MyData /> },
+  { path: "/contacts", element: <Friends /> },
+  { path: "/friends", element: <Navigate to="/contacts" replace /> },
   { path: "/request", element: <RequestMoney /> },
   { path: "/request-money", element: <Navigate to="/request" replace /> },
   { path: "/chat", element: <Chat /> },
@@ -98,6 +108,7 @@ export default function App() {
   return (
     <>
       <GlobalRequestFeedback key={`${location.pathname}${location.search}`} />
+      <SystemNotifications />
 
       <Routes>
         {PUBLIC_ROUTES.map(({ path, element }) => (

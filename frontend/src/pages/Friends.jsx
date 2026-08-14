@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
 import { createFriend, deleteFriend, listFriends } from "../services/friendApi.js";
+import { getCurrentUser } from "../services/authApi.js";
 import { requireAuthToken } from "../services/session.js";
 import { searchUsers } from "../services/userApi.js";
 import {
@@ -14,6 +15,9 @@ import { formatDateOnly } from "../utils/datetime.js";
 import { isValidEvmAddress } from "../utils/security.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
+import { blockUser } from "../services/userApi.js";
+import ActionDialog from "../components/ActionDialog.jsx";
+import CopyableWalletAddress from "../components/CopyableWalletAddress.jsx";
 const MAX_FRIEND_NAME = 80;
 const MAX_FRIEND_USERNAME = 40;
 const MAX_FRIEND_NOTES = 280;
@@ -46,6 +50,7 @@ export default function Friends() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [hasLinkedWallet, setHasLinkedWallet] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [name, setName] = useState("");
@@ -58,6 +63,9 @@ export default function Friends() {
   const [accountResults, setAccountResults] = useState([]);
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState("");
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [blockTarget, setBlockTarget] = useState(null);
+  const [blocking, setBlocking] = useState(false);
 
   useEffect(() => {
     let isCancelled = false;
@@ -78,12 +86,18 @@ export default function Friends() {
       try {
         setLoading(true);
         setError("");
-        const data = await listFriends({ token });
+        const [data, currentUser] = await Promise.all([
+          listFriends({ token }),
+          getCurrentUser({ token }),
+        ]);
         if (isCancelled) return;
         setFriends(data.friends || []);
+        setHasLinkedWallet(
+          Boolean(currentUser?.wallet?.linked && currentUser?.wallet?.address)
+        );
       } catch (err) {
         if (isCancelled) return;
-        setError(getUserErrorMessage(err, "Failed to load friends."));
+        setError(getUserErrorMessage(err, "Failed to load contacts."));
       } finally {
         if (!isCancelled) {
           setLoading(false);
@@ -106,14 +120,14 @@ export default function Friends() {
       return;
     }
 
-    const confirmed = window.confirm("Remove this friend from your list?");
+    const confirmed = window.confirm("Remove this contact from your list?");
     if (!confirmed) return;
 
     try {
       await deleteFriend({ token, id: friendId });
       setFriends((prev) => prev.filter((friend) => String(friend.id) !== String(friendId)));
     } catch (err) {
-      setError(getUserErrorMessage(err, "Failed to remove friend."));
+      setError(getUserErrorMessage(err, "Failed to remove contact."));
     }
   }
 
@@ -127,6 +141,7 @@ export default function Friends() {
     setAccountResults([]);
     setAccountLoading(false);
     setAccountError("");
+    setSelectedAccountId("");
     setIsModalOpen(true);
   }
 
@@ -135,6 +150,7 @@ export default function Friends() {
     setSaving(false);
     setModalError("");
     setAccountError("");
+    setSelectedAccountId("");
   }
 
   function applyAccountResult(account) {
@@ -151,6 +167,7 @@ export default function Friends() {
     setWalletAddress(accountWallet);
     setAccountQuery(accountUsername);
     setAccountError("");
+    setSelectedAccountId(String(account.id || ""));
   }
 
   async function handleCreateFriend(event) {
@@ -163,7 +180,7 @@ export default function Friends() {
     const normalizedNotes = notes.trim();
 
     if (!normalizedName) {
-      setModalError("Friend name is required.");
+      setModalError("Contact name is required.");
       return;
     }
 
@@ -192,6 +209,7 @@ export default function Friends() {
         username: normalizedUsername || undefined,
         walletAddress: normalizedWallet || undefined,
         notes: normalizedNotes || undefined,
+        targetUserId: selectedAccountId || undefined,
       });
 
       if (response.friend) {
@@ -199,10 +217,23 @@ export default function Friends() {
       }
       closeModal();
     } catch (err) {
-      setModalError(getUserErrorMessage(err, "Failed to save friend."));
+      setModalError(getUserErrorMessage(err, "Failed to save contact."));
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleBlockContact(friend) {
+    if (!friend.targetUserId) return;
+    try {
+      setBlocking(true);
+      const token = requireAuthToken({ onMissing: () => setError("You must be logged in.") });
+      if (!token) return;
+      await blockUser({ token, userId: friend.targetUserId });
+      setFriends((current) => current.filter((item) => String(item.id) !== String(friend.id)));
+      setBlockTarget(null);
+    } catch (err) { setError(getUserErrorMessage(err, "Failed to block contact.")); }
+    finally { setBlocking(false); }
   }
 
   const filteredFriends = useMemo(() => {
@@ -270,7 +301,7 @@ export default function Friends() {
   return (
     <PageContainer stack>
       <PageHeader
-        title="Friends"
+        title="Contacts"
         description="Manage your saved recipients and quickly reuse them while sending money."
         actions={
           <button
@@ -278,7 +309,7 @@ export default function Friends() {
             onClick={openModal}
             className="inline-flex h-10 items-center justify-center rounded-full bg-purple-600 px-4 text-sm font-semibold text-white hover:bg-purple-700"
           >
-            Add friend
+            Add contact
           </button>
         }
       />
@@ -287,7 +318,7 @@ export default function Friends() {
 
       <div className="rounded-2xl border bg-white p-4">
         <label htmlFor="friends-search" className={FORM_FIELD_LABEL_CLASS}>
-          Search friends
+          Search contacts
         </label>
         <p className={`${FORM_HELP_TEXT_CLASS} mb-2`}>
           Search saved recipients by name, username, or wallet address.
@@ -297,29 +328,29 @@ export default function Friends() {
           type="text"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search friends..."
+          placeholder="Search contacts..."
           className={FORM_INPUT_BASE_CLASS}
         />
       </div>
 
       {loading ? (
         <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
-          Loading friends...
+          Loading contacts...
         </div>
       ) : filteredFriends.length === 0 ? (
         <div className="rounded-2xl border bg-white p-8 text-center">
           <p className="text-base font-medium text-gray-900">
-            No friends saved yet
+            No contacts saved yet
           </p>
           <p className="mt-1 text-sm text-gray-600">
-            Add friends to speed up future transfers.
+            Add contacts to speed up future transfers. Contacts are one-sided and do not require approval.
           </p>
           <button
             type="button"
             onClick={openModal}
             className="mt-4 inline-flex h-9 items-center justify-center rounded-full bg-purple-600 px-4 text-sm font-semibold text-white hover:bg-purple-700"
           >
-            Add your first friend
+            Add your first contact
           </button>
         </div>
       ) : (
@@ -338,13 +369,10 @@ export default function Friends() {
                     Added {formatDateOnly(friend.createdAt) || "-"}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteFriend(friend.id)}
-                  className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-                >
-                  Remove
-                </button>
+                <div className="flex gap-2">
+                  {friend.targetUserId ? <button type="button" onClick={() => setBlockTarget(friend)} className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50">Block</button> : null}
+                  <button type="button" onClick={() => handleDeleteFriend(friend.id)} className="rounded-md border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">Remove</button>
+                </div>
               </div>
 
               {friend.username && (
@@ -354,23 +382,21 @@ export default function Friends() {
               )}
 
               {friend.walletAddress && (
-                <div className="text-xs font-mono break-all text-gray-600">
-                  Wallet: {friend.walletAddress}
-                </div>
+                <CopyableWalletAddress address={friend.walletAddress} className="px-2 py-1 text-xs text-gray-600" />
               )}
 
               {friend.notes && (
                 <p className="text-sm text-gray-600">{friend.notes}</p>
               )}
 
-              <div className="pt-1">
+              {hasLinkedWallet && isValidEvmAddress(String(friend.walletAddress || "").trim()) ? <div className="pt-1">
                 <Link
                   to={buildChatSendLink(friend)}
                   className="inline-flex text-xs font-medium text-purple-600 hover:underline"
                 >
-                  Send money to this friend
+                  Send money to this contact
                 </Link>
-              </div>
+              </div> : null}
             </article>
           ))}
         </div>
@@ -380,12 +406,12 @@ export default function Friends() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">Add friend</h2>
+              <h2 className="text-sm font-semibold text-gray-900">Add contact</h2>
               <button
                 type="button"
                 onClick={closeModal}
                 className="text-sm text-gray-400 hover:text-gray-600"
-                aria-label="Close add friend modal"
+                aria-label="Close add contact modal"
               >
                 X
               </button>
@@ -450,7 +476,7 @@ export default function Friends() {
 
               <div>
                 <label htmlFor="friend-name" className={FORM_FIELD_LABEL_CLASS}>
-                  Friend name
+                  Contact name
                 </label>
                 <input
                   id="friend-name"
@@ -536,13 +562,14 @@ export default function Friends() {
                       isValidEvmAddress(walletAddress.trim()),
                   ]}
                 >
-                  {saving ? "Saving..." : "Save friend"}
+                  {saving ? "Saving..." : "Save contact"}
                 </FormSubmitButton>
               </div>
             </form>
           </div>
         </div>
       )}
+      <ActionDialog open={Boolean(blockTarget)} title={`Block ${blockTarget?.label || "contact"}?`} description="They will no longer be able to find or contact you. You can unblock them later from Settings → Blocked." confirmLabel="Block" danger busy={blocking} onCancel={() => setBlockTarget(null)} onConfirm={() => handleBlockContact(blockTarget)} />
     </PageContainer>
   );
 }

@@ -7,6 +7,8 @@ import {
   PageNotice,
 } from "../components/PageLayout.jsx";
 import SuccessTransition from "../components/SuccessTransition.jsx";
+import ActionDialog from "../components/ActionDialog.jsx";
+import CopyableWalletAddress from "../components/CopyableWalletAddress.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import {
   cacheChatMessagePlaintext,
@@ -23,6 +25,7 @@ import {
   upsertChatPublicKey,
 } from "../services/chatApi.js";
 import { requireAuthToken } from "../services/session.js";
+import { blockUser } from "../services/userApi.js";
 import {
   getWalletBalance,
 } from "../services/transactionApi.js";
@@ -91,9 +94,9 @@ function getInitials(value) {
 
 function getFirstName(value) {
   const text = String(value || "").trim();
-  if (!text) return "Friend";
+  if (!text) return "Contact";
   const parts = text.split(/\s+/).filter(Boolean);
-  return parts[0] || "Friend";
+  return parts[0] || "Contact";
 }
 
 function requestGlyph() {
@@ -336,6 +339,8 @@ export default function Chat() {
 
   const [peerPublicKeys, setPeerPublicKeys] = useState({});
   const [reporting, setReporting] = useState(false);
+  const [moderationAction, setModerationAction] = useState("");
+  const [reportReason, setReportReason] = useState("");
   const [requestedFriendHandled, setRequestedFriendHandled] = useState(false);
   const [walletBalance, setWalletBalance] = useState(null);
   const [nativeCurrency, setNativeCurrency] = useState(FALLBACK_NATIVE_CURRENCY);
@@ -473,10 +478,12 @@ export default function Chat() {
   const transferBlockReason = !myWalletReady
     ? "Link and verify your wallet in Account before using chat transfers."
     : !peerWalletReady
-    ? "This friend does not have a linked wallet/account to receive funds."
+    ? "This contact does not have a linked wallet/account to receive funds."
     : "";
-  const isSendComposer = composerMode === "send";
-  const isRequestComposer = composerMode === "request";
+  const hasLinkedWallet = Boolean(me?.wallet?.linked && me?.wallet?.address);
+  const isSendComposer = composerMode === "send" && hasLinkedWallet && peerWalletReady;
+  const isRequestComposer =
+    composerMode === "request" && hasLinkedWallet && peerWalletReady;
   const isSendTransferSummaryStep = isSendComposer && sendTransferStep === "summary";
   const sendAmountValue = Number(sendAmount);
   const hasPositiveSendAmount =
@@ -944,7 +951,7 @@ export default function Chat() {
     });
     const key = response?.publicKeyJwk || null;
     if (!key) {
-      throw new Error("Friend has no chat key.");
+      throw new Error("Contact has no chat key.");
     }
 
     setPeerPublicKeys((current) => ({
@@ -1194,7 +1201,7 @@ export default function Chat() {
       if (friendsLoading) return;
       if (!requestedFriend) {
         setRequestedFriendHandled(true);
-        setTimelineError("Requested friend is not in your chat-ready contacts.");
+        setTimelineError("Requested contact is not in your chat-ready contacts.");
         return;
       }
 
@@ -1324,7 +1331,7 @@ export default function Chat() {
     }
 
     if (!activeThread?.id || !activeFriend?.peerUserId || !identity?.publicKeyJwk) {
-      setTimelineError("Select a friend and wait for encrypted chat setup.");
+      setTimelineError("Select a contact and wait for encrypted chat setup.");
       return false;
     }
 
@@ -1530,7 +1537,7 @@ export default function Chat() {
     }
 
     if (!activeThread?.id || !activeFriend?.peerUserId) {
-      setTimelineError("Select a friend before sending funds.");
+      setTimelineError("Select a contact before sending funds.");
       return null;
     }
 
@@ -1628,7 +1635,7 @@ export default function Chat() {
 
   async function handleReportChat() {
     if (!activeThread?.id || !activeFriend?.peerUserId) return;
-    const reason = window.prompt("Report reason:");
+    const reason = reportReason.trim();
     if (!reason) return;
     const token = requireAuthToken();
     if (!token) return;
@@ -1643,6 +1650,8 @@ export default function Chat() {
         revealedMessages: [],
       });
       setTimelineInfo("Chat report submitted.");
+      setModerationAction("");
+      setReportReason("");
       showTransactionNotification("Report submitted", { variant: "success" });
     } catch (err) {
       const message = getUserErrorMessage(err, "Failed to submit report.");
@@ -1651,6 +1660,20 @@ export default function Chat() {
     } finally {
       setReporting(false);
     }
+  }
+
+  async function handleBlockChatUser() {
+    if (!activeFriend?.peerUserId) return;
+    try {
+      setReporting(true);
+      const token = requireAuthToken();
+      if (!token) return;
+      await blockUser({ token, userId: activeFriend.peerUserId });
+      setFriends((current) => current.filter((item) => String(item.peerUserId) !== String(activeFriend.peerUserId)));
+      setModerationAction("");
+      handleCloseActiveChat();
+    } catch (err) { setTimelineError(getUserErrorMessage(err, "Failed to block account.")); }
+    finally { setReporting(false); }
   }
 
   function handleCloseActiveChat() {
@@ -1840,8 +1863,8 @@ export default function Chat() {
                   ) : (
                     searchResults.slice(0, 6).map((friend) => {
                       const active = String(activeFriendId) === String(friend.peerUserId);
-                      const displayName = friend.label || friend.peerDisplayName || "Friend";
-                      const username = friend.peerUsername || friend.username || "friend";
+                      const displayName = friend.label || friend.peerDisplayName || "Contact";
+                      const username = friend.peerUsername || friend.username || "contact";
                       return (
                         <button
                           key={`search-${String(friend.peerUserId)}`}
@@ -1849,8 +1872,8 @@ export default function Chat() {
                           onClick={() => openFriendThread(friend)}
                           className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
                             active
-                              ? "border-purple-300 bg-purple-50"
-                              : "border-gray-200 bg-white hover:border-gray-300"
+                              ? "border-purple-500 bg-purple-100 shadow-sm"
+                              : "border-gray-200 bg-white hover:border-purple-300 active:bg-purple-100"
                           }`}
                         >
                           <div className="flex items-center gap-3">
@@ -1888,7 +1911,7 @@ export default function Chat() {
                 ) : (
                   circleFriends.map((friend) => {
                     const active = String(activeFriendId) === String(friend.peerUserId);
-                    const displayName = friend.label || friend.peerDisplayName || "Friend";
+                    const displayName = friend.label || friend.peerDisplayName || "Contact";
                     const peerId = String(friend.peerUserId || "");
                     const unreadCount = Number(friendUnreadByPeer[peerId] || 0);
                     return (
@@ -1896,7 +1919,7 @@ export default function Chat() {
                         key={`circle-${String(friend.peerUserId)}`}
                         type="button"
                         onClick={() => openFriendThread(friend)}
-                        className="group flex w-16 shrink-0 flex-col items-center"
+                        className={`group flex w-16 shrink-0 flex-col items-center rounded-xl p-1.5 transition active:bg-purple-100 ${active ? "bg-purple-100 ring-1 ring-purple-300" : "hover:bg-purple-50"}`}
                       >
                         <span
                           className={`inline-flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold text-white transition ${
@@ -1938,8 +1961,8 @@ export default function Chat() {
                 ) : (
                   latestFriends.map((friend) => {
                     const active = String(activeFriendId) === String(friend.peerUserId);
-                    const displayName = friend.label || friend.peerDisplayName || "Friend";
-                    const username = friend.peerUsername || friend.username || "friend";
+                    const displayName = friend.label || friend.peerDisplayName || "Contact";
+                    const username = friend.peerUsername || friend.username || "contact";
                     const peerId = String(friend.peerUserId || "");
                     const unreadCount = Number(friendUnreadByPeer[peerId] || 0);
                     const latestPreview = String(friendPreviewByPeer[peerId] || "").trim();
@@ -1958,8 +1981,8 @@ export default function Chat() {
                         onClick={() => openFriendThread(friend)}
                         className={`w-full rounded-xl border px-3 py-3 text-left transition ${
                           active
-                            ? "border-purple-300 bg-purple-50"
-                            : "border-gray-200 bg-white hover:border-gray-300"
+                            ? "border-purple-500 bg-purple-100 shadow-sm"
+                            : "border-gray-200 bg-white hover:border-purple-300 active:bg-purple-100"
                         }`}
                       >
                         <div className="flex items-start gap-3">
@@ -2017,7 +2040,14 @@ export default function Chat() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={handleReportChat}
+                        onClick={() => setModerationAction("block")}
+                        className="rounded-full border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                      >
+                        Block
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setModerationAction("report")}
                         disabled={reporting}
                         className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-60"
                       >
@@ -2131,7 +2161,7 @@ export default function Chat() {
                         requestMeta?.requesterUserId || message.senderUserId;
                       const requesterIsMe = String(requesterUserId) === String(me?.id);
                       const friendName =
-                        activeFriend?.peerDisplayName || activeFriend?.label || "Friend";
+                        activeFriend?.peerDisplayName || activeFriend?.label || "Contact";
                       const hasRequestActions = Boolean(requestMeta?.id);
                       const showRequestActionButton =
                         decoded.kind === "request" &&
@@ -2333,7 +2363,7 @@ export default function Chat() {
                   >
                     {composerActionsOpen ? (
                       <div className="absolute bottom-full left-0 z-20 mb-2 w-52 rounded-2xl border border-gray-200 bg-white p-2 shadow-lg">
-                        <button
+                        {hasLinkedWallet && peerWalletReady ? <button
                           type="button"
                           onClick={() => {
                             setSendTransferStep("details");
@@ -2348,8 +2378,8 @@ export default function Chat() {
                         >
                           {requestGlyph()}
                           Request
-                        </button>
-                        <button
+                        </button> : null}
+                        {hasLinkedWallet && peerWalletReady ? <button
                           type="button"
                           onClick={() => {
                             setSendTransferStep("details");
@@ -2364,7 +2394,7 @@ export default function Chat() {
                         >
                           {sendGlyph()}
                           Send
-                        </button>
+                        </button> : null}
                       </div>
                     ) : null}
 
@@ -2497,12 +2527,12 @@ export default function Chat() {
             </div>
 
             <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-              <p className="text-xs uppercase tracking-[0.12em] text-gray-500">Friend</p>
+              <p className="text-xs uppercase tracking-[0.12em] text-gray-500">Contact</p>
               <p className="mt-1 text-sm font-semibold text-gray-900">
-                {activeFriend?.peerDisplayName || activeFriend?.label || "Friend"}
+                {activeFriend?.peerDisplayName || activeFriend?.label || "Contact"}
               </p>
               <p className="text-xs text-gray-500">
-                @{activeFriend?.peerUsername || activeFriend?.username || "friend"}
+                @{activeFriend?.peerUsername || activeFriend?.username || "contact"}
               </p>
             </div>
 
@@ -2551,11 +2581,9 @@ export default function Chat() {
                       <div>
                         <p className="text-xs text-gray-500">Receiver</p>
                         <p className="font-semibold text-gray-900">
-                          {activeFriend?.peerDisplayName || activeFriend?.label || "Friend"}
+                          {activeFriend?.peerDisplayName || activeFriend?.label || "Contact"}
                         </p>
-                        <p className="break-all font-mono text-xs text-gray-600">
-                          {peerWalletAddress}
-                        </p>
+                        <CopyableWalletAddress address={peerWalletAddress} label="" className="p-1 text-xs text-gray-600" />
                       </div>
                       <div>
                         <p className="text-xs text-gray-500">Total amount</p>
@@ -2706,7 +2734,7 @@ export default function Chat() {
                 {!requestModal.isRequester &&
                 String(requestModal.status || "").trim().toLowerCase() === "pending"
                   ? "Receiver"
-                  : "Friend"}
+                  : "Contact"}
               </p>
               <p className="mt-1 text-sm font-semibold text-gray-900">
                 {requestModal.friendName || activeFriend?.peerDisplayName || activeFriend?.label}
@@ -2801,6 +2829,11 @@ export default function Chat() {
           </div>
         </div>
       ) : null}
+      <ActionDialog open={moderationAction === "block"} title={`Block ${activeFriend?.peerDisplayName || activeFriend?.label || "account"}?`} description="This conversation will be hidden and the account will no longer be able to find or contact you. You can unblock it later from Settings → Blocked." confirmLabel="Block" danger busy={reporting} onCancel={() => setModerationAction("")} onConfirm={handleBlockChatUser} />
+      <ActionDialog open={moderationAction === "report"} title="Report conversation" description="Tell the administrators what happened. Your report is sent privately through the system." confirmLabel="Send report" busy={reporting} onCancel={() => { setModerationAction(""); setReportReason(""); }} onConfirm={handleReportChat}>
+        <label className="block text-sm font-medium text-gray-700" htmlFor="report-reason">Reason</label>
+        <textarea id="report-reason" rows={4} maxLength={500} value={reportReason} onChange={(event) => setReportReason(event.target.value)} placeholder="Describe the issue..." className="app-control-surface mt-2 w-full rounded-xl px-3 py-2.5 text-sm" />
+      </ActionDialog>
       </PageContainer>
     </>
   );
