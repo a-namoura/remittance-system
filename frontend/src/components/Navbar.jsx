@@ -299,17 +299,20 @@ export default function Navbar({
 
   const navGroups = useMemo(
     () => {
-      const hasWallet = Boolean(me?.wallet?.linked && me?.wallet?.address);
+      const hideSend = ["/chat", "/contacts"].some(
+        (path) =>
+          location.pathname === path || location.pathname.startsWith(`${path}/`)
+      );
       const groups = BASE_NAV_GROUPS.map((group) => ({
         ...group,
-        items: hasWallet
-          ? group.items
-          : group.items.filter((item) => item.to !== "/send"),
+        items: hideSend
+          ? group.items.filter((item) => item.to !== "/send")
+          : group.items,
       }));
 
       return me?.role === "admin" ? [...groups, ADMIN_NAV_GROUP] : groups;
     },
-    [me?.role, me?.wallet?.linked, me?.wallet?.address]
+    [location.pathname, me?.role]
   );
 
   const mobileNavItems = useMemo(
