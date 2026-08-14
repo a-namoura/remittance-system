@@ -72,8 +72,16 @@ export function setAuthToken(token) {
   safeSetItem(TOKEN_STORAGE_KEY, normalized);
 }
 
-export function clearAuthToken() {
+export function clearAuthToken(expectedToken = null) {
+  if (expectedToken !== null) {
+    const normalizedExpectedToken = String(expectedToken || "").trim();
+    if (!normalizedExpectedToken || getAuthToken() !== normalizedExpectedToken) {
+      return false;
+    }
+  }
+
   safeRemoveItem(TOKEN_STORAGE_KEY);
+  return true;
 }
 
 export function getWalletStorageKeys(userId) {

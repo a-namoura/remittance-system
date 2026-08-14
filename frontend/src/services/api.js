@@ -124,7 +124,9 @@ export async function apiRequest(
 
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
-        clearAuthToken();
+        // A request made with an older token can finish after a new login has
+        // stored a fresh one. Only invalidate the token that was rejected.
+        clearAuthToken(finalToken);
       }
 
       const message = response.status === 401
