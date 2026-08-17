@@ -51,6 +51,37 @@ export function clearPaymentCode(user) {
   user.paymentCodeChannel = undefined;
 }
 
+async function persistPaymentCode(user, { code, expiresAt, channel } = {}) {
+  await user.constructor.updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        paymentCode: code,
+        paymentCodeExpiresAt: expiresAt,
+        paymentCodeChannel: channel,
+      },
+    }
+  );
+
+  user.paymentCode = code;
+  user.paymentCodeExpiresAt = expiresAt;
+  user.paymentCodeChannel = channel;
+}
+
+async function removePaymentCode(user) {
+  await user.constructor.updateOne(
+    { _id: user._id },
+    {
+      $unset: {
+        paymentCode: 1,
+        paymentCodeExpiresAt: 1,
+        paymentCodeChannel: 1,
+      },
+    }
+  );
+  clearPaymentCode(user);
+}
+
 export async function sendPaymentVerificationCode({
   user,
   verificationChannel,
@@ -73,10 +104,11 @@ export async function sendPaymentVerificationCode({
     }
 
     await sendPaymentCodePhone({ phoneNumber, code });
-    user.paymentCode = code;
-    user.paymentCodeExpiresAt = new Date(Date.now() + PAYMENT_CODE_TTL_MS);
-    user.paymentCodeChannel = channel;
-    await user.save();
+    await persistPaymentCode(user, {
+      code,
+      expiresAt: new Date(Date.now() + PAYMENT_CODE_TTL_MS),
+      channel,
+    });
 
     return {
       channel,
@@ -93,10 +125,11 @@ export async function sendPaymentVerificationCode({
   }
 
   await sendPaymentCodeEmail({ to: email, code });
-  user.paymentCode = code;
-  user.paymentCodeExpiresAt = new Date(Date.now() + PAYMENT_CODE_TTL_MS);
-  user.paymentCodeChannel = channel;
-  await user.save();
+  await persistPaymentCode(user, {
+    code,
+    expiresAt: new Date(Date.now() + PAYMENT_CODE_TTL_MS),
+    channel,
+  });
 
   return {
     channel,
@@ -126,8 +159,7 @@ export async function requireAndConsumePaymentCode({ user, code } = {}) {
   }
 
   if (Date.now() > user.paymentCodeExpiresAt.getTime()) {
-    clearPaymentCode(user);
-    await user.save();
+    await removePaymentCode(user);
     const err = new Error("Payment verification code expired.");
     err.statusCode = 400;
     throw err;
@@ -139,6 +171,5 @@ export async function requireAndConsumePaymentCode({ user, code } = {}) {
     throw err;
   }
 
-  clearPaymentCode(user);
-  await user.save();
+  await removePaymentCode(user);
 }

@@ -2,6 +2,28 @@ import jwt from "jsonwebtoken";
 import { User } from "../models/User.js";
 import { logAudit } from "../utils/audit.js";
 
+const inFlightUserReads = new Map();
+
+async function loadAuthenticatedUser(userId) {
+  const key = String(userId);
+  let pending = inFlightUserReads.get(key);
+  if (!pending) {
+    pending = Promise.resolve(
+      User.findById(userId).select(
+        "+loginCode +loginCodeExpiresAt +paymentCode +paymentCodeExpiresAt +paymentCodeChannel" +
+          " +pendingPhoneNumber +phoneChangeCode +phoneChangeCodeExpiresAt"
+      )
+    ).finally(() => inFlightUserReads.delete(key));
+    inFlightUserReads.set(key, pending);
+  }
+
+  const user = await pending;
+  // Do not share a mutable Mongoose document across concurrent requests.
+  return user?.toObject
+    ? User.hydrate(user.toObject({ depopulate: true }))
+    : user || null;
+}
+
 function auditRejectedAuthentication(req, reason) {
   void logAudit({
     action: "AUTH_TOKEN_FAILED",
@@ -26,10 +48,7 @@ export async function protect(req, res, next) {
 
     const decoded = jwt.verify(token, secret);
 
-    const user = await User.findById(decoded.userId).select(
-      "+loginCode +loginCodeExpiresAt +paymentCode +paymentCodeExpiresAt +paymentCodeChannel"
-      + " +pendingPhoneNumber +phoneChangeCode +phoneChangeCodeExpiresAt"
-    );
+    const user = await loadAuthenticatedUser(decoded.userId);
 
     if (!user) {
       auditRejectedAuthentication(req, "user_not_found");
