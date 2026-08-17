@@ -67,4 +67,6 @@ chatThreadSchema.path("participants").validate(
   "Chat thread must have exactly two participants."
 );
 
+chatThreadSchema.index({ participants: 1 });
+
 export const ChatThread = mongoose.model("ChatThread", chatThreadSchema);

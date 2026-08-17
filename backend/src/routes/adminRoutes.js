@@ -4,6 +4,7 @@ import { User } from "../models/User.js";
 import { Wallet } from "../models/Wallet.js";
 import { Transaction } from "../models/Transaction.js";
 import { AuditLog } from "../models/AuditLog.js";
+import { ChatThread } from "../models/ChatThread.js";
 import { logAudit } from "../utils/audit.js";
 import { allowBodyFields, allowQueryFields } from "../middleware/allowFields.js";
 
@@ -61,6 +62,50 @@ function nextAdminError(res, next, err) {
   }
   next(err);
 }
+
+// Admins can review only plaintext a participant deliberately disclosed in a report.
+// This endpoint never reads ChatMessage documents or encrypted conversation history.
+adminRouter.get(
+  "/chat-reports",
+  allowQueryFields(["limit"]),
+  allowBodyFields([]),
+  async (req, res, next) => {
+    try {
+      const limit = parseIntegerQuery(req.query.limit, {
+        name: "limit",
+        defaultValue: 50,
+        min: 1,
+        max: 100,
+      });
+      const threads = await ChatThread.find({ "reports.0": { $exists: true } })
+        .select("reports")
+        .lean();
+      const reports = threads
+        .flatMap((thread) =>
+          (thread.reports || []).map((report) => ({
+            threadId: thread._id,
+            reportedByUserId: report.reportedByUserId,
+            targetUserId: report.targetUserId,
+            reason: report.reason,
+            revealedMessages: report.revealedMessages || [],
+            createdAt: report.createdAt,
+          }))
+        )
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, limit);
+
+      await logAudit({
+        user: req.user,
+        action: "ADMIN_VIEW_CHAT_REPORTS",
+        metadata: { endpoint: "/api/admin/chat-reports", returned: reports.length },
+        req,
+      });
+      res.json({ ok: true, reports });
+    } catch (err) {
+      nextAdminError(res, next, err);
+    }
+  }
+);
 
 // GET /api/admin/summary
 adminRouter.get(

@@ -25,11 +25,6 @@ const chatRequestSchema = new mongoose.Schema(
       required: true,
       min: [Number.MIN_VALUE, "amount must be a positive number."],
     },
-    note: {
-      type: String,
-      trim: true,
-      maxlength: 280,
-    },
     status: {
       type: String,
       enum: ["pending", "processing", "paid", "cancelled"],

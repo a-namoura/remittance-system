@@ -128,6 +128,14 @@ function createConfirmationWaiter({ tx, wallet, normalizedReceiver, amountEth })
   };
 }
 
+export function getRemittanceSignerAddress() {
+  const privateKey = process.env.BSC_TESTNET_PRIVATE_KEY;
+  if (!privateKey) {
+    throw new Error("BSC_TESTNET_PRIVATE_KEY is not set in backend/.env");
+  }
+  return normalizeEvmAddress(new Wallet(privateKey).address);
+}
+
 /**
  * Broadcasts a remittance transaction and returns after the network accepts it.
  * Confirmation is intentionally left to the caller so API requests do not wait

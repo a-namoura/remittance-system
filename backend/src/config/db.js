@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import { ChatMessage } from "../models/ChatMessage.js";
+import { ChatRequest } from "../models/ChatRequest.js";
 
 export async function connectDB() {
   const uri = process.env.MONGODB_URI;
@@ -20,6 +22,15 @@ export async function connectDB() {
 
   try {
     await mongoose.connect(uri, { tls: process.env.NODE_ENV === "production" ? true : undefined });
+    // Purge plaintext cached by older releases before accepting requests.
+    await ChatMessage.collection.updateMany(
+      { plaintextFallback: { $exists: true } },
+      { $unset: { plaintextFallback: "" } }
+    );
+    await ChatRequest.collection.updateMany(
+      { note: { $exists: true } },
+      { $unset: { note: "" } }
+    );
     console.log("MongoDB connected");
   } catch (err) {
     console.error("MongoDB connection failed:", err.message);

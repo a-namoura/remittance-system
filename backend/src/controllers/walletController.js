@@ -9,6 +9,7 @@ import {
 } from "../utils/walletAddress.js";
 import { logAudit } from "../utils/audit.js";
 import { refreshWalletBalance } from "../utils/walletBalances.js";
+import { getRemittanceSignerAddress } from "../blockchain/remittanceClient.js";
 
 const WALLET_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
@@ -88,6 +89,17 @@ export async function createWalletChallenge(req, res) {
       reason: "invalid_address",
       status: 400,
       message: createInvalidWalletAddressMessage("address"),
+    });
+  }
+
+  if (address === getRemittanceSignerAddress()) {
+    return respondWalletConnectionFailure(res, {
+      req,
+      operation: "challenge",
+      walletAddress: address,
+      reason: "reserved_signer_address",
+      status: 400,
+      message: "The system blockchain signer cannot be linked to a user account.",
     });
   }
 

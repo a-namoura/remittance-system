@@ -11,7 +11,6 @@ import ActionDialog from "../components/ActionDialog.jsx";
 import CopyableWalletAddress from "../components/CopyableWalletAddress.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import {
-  cacheChatMessagePlaintext,
   cancelChatRequest,
   getChatHistory,
   getChatPublicKey,
@@ -363,7 +362,6 @@ export default function Chat() {
   const friendSyncBusyRef = useRef(false);
   const transferSubmittingRef = useRef(false);
   const friendPreviewByMessageRef = useRef({});
-  const plaintextCacheAttemptedRef = useRef(new Set());
   const timelineStickToBottomRef = useRef(true);
   const forceTimelineScrollRef = useRef(false);
   const unreadDividerSeedRef = useRef({
@@ -612,7 +610,6 @@ export default function Chat() {
 
   useEffect(() => {
     friendPreviewByMessageRef.current = {};
-    plaintextCacheAttemptedRef.current = new Set();
     unreadDividerSeedRef.current = {
       peerUserId: "",
       seenMessageId: "",
@@ -891,22 +888,6 @@ export default function Chat() {
               preview = String(decoded.text || "").trim() || "Message";
             }
           } catch {
-            const fallbackPlaintext = String(latestMessage?.plaintextFallback || "").trim();
-            if (fallbackPlaintext) {
-              const decoded = parseMessagePayload(
-                latestMessage.messageType,
-                fallbackPlaintext
-              );
-              if (decoded.kind === "request") {
-                const amount = String(decoded.amountEth || "").trim();
-                preview = amount ? `Request ${amount} ${nativeCurrency}` : "Payment request";
-              } else {
-                preview = String(decoded.text || "").trim() || "Message";
-              }
-              friendPreviewByMessageRef.current[latestMessageId] = preview;
-              updates[peerId] = preview;
-              continue;
-            }
             preview =
               latestMessage.messageType === "request"
                 ? "Payment request"
@@ -962,32 +943,6 @@ export default function Chat() {
     return key;
   }
 
-  const persistMessagePlaintextFallback = useCallback(
-    async ({ threadId, messageId, plaintext }) => {
-      const normalizedThreadId = String(threadId || "").trim();
-      const normalizedMessageId = String(messageId || "").trim();
-      const normalizedPlaintext = String(plaintext || "").trim();
-      const token = requireAuthToken();
-      if (!token || !normalizedThreadId || !normalizedMessageId || !normalizedPlaintext) return;
-      if (normalizedMessageId.startsWith("local-")) return;
-      if (plaintextCacheAttemptedRef.current.has(normalizedMessageId)) return;
-
-      plaintextCacheAttemptedRef.current.add(normalizedMessageId);
-      try {
-        await cacheChatMessagePlaintext({
-          token,
-          threadId: normalizedThreadId,
-          messageId: normalizedMessageId,
-          plaintextFallback: normalizedPlaintext,
-          trackRequest: false,
-        });
-      } catch {
-        plaintextCacheAttemptedRef.current.delete(normalizedMessageId);
-      }
-    },
-    []
-  );
-
   const loadHistory = useCallback(
     async ({
       threadId,
@@ -1025,27 +980,15 @@ export default function Chat() {
                 privateKeyJwk: identityValue?.privateKeyJwk,
                 privateKeyJwks: identityValue?.privateKeyJwks,
               });
-              void persistMessagePlaintextFallback({
-                threadId: normalizedThreadId,
-                messageId: message?.id,
-                plaintext,
-              });
-
               return {
                 ...message,
+                reportPlaintext: plaintext,
                 decoded: parseMessagePayload(message.messageType, plaintext),
               };
             } catch {
               const isSender =
                 viewerId &&
                 String(message?.senderUserId || "").trim() === viewerId;
-              const fallbackPlaintext = String(message?.plaintextFallback || "").trim();
-              if (fallbackPlaintext) {
-                return {
-                  ...message,
-                  decoded: parseMessagePayload(message.messageType, fallbackPlaintext),
-                };
-              }
               if (message?.messageType !== "request") {
                 return {
                   ...message,
@@ -1107,7 +1050,7 @@ export default function Chat() {
         }
       }
     },
-    [me?.id, persistMessagePlaintextFallback]
+    [me?.id]
   );
 
   const openFriendThread = useCallback(async (friend) => {
@@ -1353,7 +1296,6 @@ export default function Chat() {
         messageType,
         payloadForSender: encrypted.payloadForSender,
         payloadForRecipient: encrypted.payloadForRecipient,
-        plaintextFallback: plaintext,
         requestAmount: requestAmountValue,
         requestNote: requestNoteValue,
         trackRequest: false,
@@ -1647,7 +1589,17 @@ export default function Chat() {
         threadId: activeThread.id,
         targetUserId: activeFriend.peerUserId,
         reason,
-        revealedMessages: [],
+        revealedMessages: messages
+          .filter(
+            (message) =>
+              !String(message?.id || "").startsWith("local-") &&
+              String(message?.reportPlaintext || "").trim()
+          )
+          .slice(-30)
+          .map((message) => ({
+            messageId: message.id,
+            plaintext: message.reportPlaintext,
+          })),
       });
       setTimelineInfo("Chat report submitted.");
       setModerationAction("");
@@ -2830,7 +2782,7 @@ export default function Chat() {
         </div>
       ) : null}
       <ActionDialog open={moderationAction === "block"} title={`Block ${activeFriend?.peerDisplayName || activeFriend?.label || "account"}?`} description="This conversation will be hidden and the account will no longer be able to find or contact you. You can unblock it later from Settings → Blocked." confirmLabel="Block" danger busy={reporting} onCancel={() => setModerationAction("")} onConfirm={handleBlockChatUser} />
-      <ActionDialog open={moderationAction === "report"} title="Report conversation" description="Tell the administrators what happened. Your report is sent privately through the system." confirmLabel="Send report" busy={reporting} onCancel={() => { setModerationAction(""); setReportReason(""); }} onConfirm={handleReportChat}>
+      <ActionDialog open={moderationAction === "report"} title="Report conversation" description="Your reason and up to 30 recent messages will be disclosed to administrators. Other messages remain end-to-end encrypted." confirmLabel="Send report" busy={reporting} onCancel={() => { setModerationAction(""); setReportReason(""); }} onConfirm={handleReportChat}>
         <label className="block text-sm font-medium text-gray-700" htmlFor="report-reason">Reason</label>
         <textarea id="report-reason" rows={4} maxLength={500} value={reportReason} onChange={(event) => setReportReason(event.target.value)} placeholder="Describe the issue..." className="app-control-surface mt-2 w-full rounded-xl px-3 py-2.5 text-sm" />
       </ActionDialog>

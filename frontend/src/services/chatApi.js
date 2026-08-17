@@ -74,7 +74,6 @@ export async function sendChatMessage({
   messageType,
   payloadForSender,
   payloadForRecipient,
-  plaintextFallback,
   requestAmount,
   requestNote,
   trackRequest = true,
@@ -94,37 +93,9 @@ export async function sendChatMessage({
         messageType,
         payloadForSender,
         payloadForRecipient,
-        plaintextFallback,
         requestAmount,
         requestNote,
       },
-      trackRequest,
-    }
-  );
-}
-
-export async function cacheChatMessagePlaintext({
-  token,
-  threadId,
-  messageId,
-  plaintextFallback,
-  trackRequest = true,
-} = {}) {
-  const normalizedThreadId = String(threadId || "").trim();
-  const normalizedMessageId = String(messageId || "").trim();
-  const normalizedPlaintext = String(plaintextFallback || "").trim();
-  if (!normalizedThreadId || !normalizedMessageId || !normalizedPlaintext) {
-    throw new Error("threadId, messageId and plaintextFallback are required");
-  }
-
-  return apiRequest(
-    `/api/chats/threads/${encodeURIComponent(
-      normalizedThreadId
-    )}/messages/${encodeURIComponent(normalizedMessageId)}/plaintext`,
-    {
-      method: "POST",
-      token,
-      body: { plaintextFallback: normalizedPlaintext },
       trackRequest,
     }
   );

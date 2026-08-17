@@ -10,7 +10,10 @@ import { ChatThread } from "../models/ChatThread.js";
 import { ChatMessage } from "../models/ChatMessage.js";
 import { ChatRequest } from "../models/ChatRequest.js";
 import { Transaction } from "../models/Transaction.js";
-import { submitRemittance } from "../blockchain/remittanceClient.js";
+import {
+  getRemittanceSignerAddress,
+  submitRemittance,
+} from "../blockchain/remittanceClient.js";
 import {
   logAudit,
   logTransferAttempt,
@@ -37,7 +40,6 @@ import {
 
 export const chatRouter = express.Router();
 const DEFAULT_CHAT_ASSET_SYMBOL = getNativeAssetSymbol();
-const MAX_CHAT_PLAINTEXT_FALLBACK_LENGTH = 4000;
 
 function normalizeAddress(value) {
   return normalizeEvmAddress(value);
@@ -166,32 +168,19 @@ function uniquePayloads(payloads) {
 function resolveMessagePayloadCandidates(messageDoc, viewerId) {
   const isSender = String(messageDoc?.senderUserId || "") === String(viewerId || "");
 
-  const senderCandidates = [
-    messageDoc?.cipherForSender,
-    messageDoc?.payloadForSender,
-    messageDoc?.senderEncryptedPayload,
-  ];
-  const recipientCandidates = [
-    messageDoc?.cipherForRecipient,
-    messageDoc?.payloadForRecipient,
-    messageDoc?.recipientEncryptedPayload,
-  ];
-  const legacyCandidates = [
-    messageDoc?.encryptedPayload,
-    messageDoc?.payload,
-    messageDoc?.cipher,
-  ];
+  const senderCandidates = [messageDoc?.cipherForSender];
+  const recipientCandidates = [messageDoc?.cipherForRecipient];
 
   return uniquePayloads(
     isSender
-      ? [...senderCandidates, ...legacyCandidates, ...recipientCandidates]
-      : [...recipientCandidates, ...legacyCandidates, ...senderCandidates]
+      ? senderCandidates
+      : recipientCandidates
   );
 }
 
 async function resolveFriendContacts(userId) {
   const friendDocs = await Friend.find({ userId })
-    .select("label username walletAddress notes createdAt")
+    .select("targetUserId label username walletAddress notes createdAt")
     .sort({ createdAt: -1 })
     .lean();
 
@@ -213,29 +202,44 @@ async function resolveFriendContacts(userId) {
     ),
   ];
 
+  const targetUserIds = [
+    ...new Set(friendDocs.map((friend) => String(friend.targetUserId || "")).filter(Boolean)),
+  ];
+
   const [usersByUsername, walletDocs] = await Promise.all([
-    usernames.length
+    usernames.length || targetUserIds.length
       ? User.find({
           isDisabled: { $ne: true },
-          $or: usernames.map((username) => ({
-            username: new RegExp(`^${escapeRegex(username)}$`, "i"),
-          })),
+          $or: [
+            ...(targetUserIds.length ? [{ _id: { $in: targetUserIds } }] : []),
+            ...usernames.map((username) => ({
+              username: new RegExp(`^${escapeRegex(username)}$`, "i"),
+            })),
+          ],
         })
           .select("_id username firstName lastName")
           .lean()
       : [],
-    wallets.length
+    wallets.length || targetUserIds.length
       ? Wallet.find({
-          address: { $in: wallets },
           isVerified: true,
+          $or: [
+            ...(wallets.length ? [{ address: { $in: wallets } }] : []),
+            ...(targetUserIds.length ? [{ userId: { $in: targetUserIds } }] : []),
+          ],
         })
           .select("userId address")
           .lean()
       : [],
   ]);
 
+  const directUserIdSet = new Set(targetUserIds);
   const walletUserIds = [
-    ...new Set(walletDocs.map((walletDoc) => String(walletDoc.userId))),
+    ...new Set(
+      walletDocs
+        .map((walletDoc) => String(walletDoc.userId))
+        .filter((walletUserId) => !directUserIdSet.has(walletUserId))
+    ),
   ];
 
   const usersByWallet = walletUserIds.length
@@ -252,6 +256,10 @@ async function resolveFriendContacts(userId) {
       String(userDoc.username || "").toLowerCase(),
       userDoc,
     ])
+  );
+
+  const directUserById = new Map(
+    usersByUsername.map((userDoc) => [String(userDoc._id), userDoc])
   );
 
   const userById = new Map(
@@ -281,7 +289,10 @@ async function resolveFriendContacts(userId) {
     const usernameKey = String(friend.username || "").trim().toLowerCase();
     const walletKey = normalizeAddress(friend.walletAddress);
 
-    let peerUser = usernameKey ? userByUsername.get(usernameKey) : null;
+    let peerUser = friend.targetUserId
+      ? directUserById.get(String(friend.targetUserId)) || null
+      : null;
+    if (!peerUser && usernameKey) peerUser = userByUsername.get(usernameKey) || null;
     if (!peerUser && walletKey) {
       const ownerId = userIdByWallet.get(walletKey);
       if (ownerId) {
@@ -311,40 +322,15 @@ async function resolveFriendContacts(userId) {
     });
   }
 
-  if (!contacts.length) return contacts;
+  return contacts;
+}
 
-  const peerUserIds = [
-    ...new Set(
-      contacts
-        .map((contact) => String(contact.peerUserId || "").trim())
-        .filter(Boolean)
-    ),
-  ];
-
-  const peerWalletDocs = peerUserIds.length
-    ? await Wallet.find({
-        userId: { $in: peerUserIds },
-        isVerified: true,
-      })
-        .select("userId address")
-        .lean()
-    : [];
-
-  const verifiedWalletByUserId = new Map();
-  for (const walletDoc of peerWalletDocs) {
-    const key = String(walletDoc.userId || "");
-    if (!key || verifiedWalletByUserId.has(key)) continue;
-    verifiedWalletByUserId.set(key, normalizeAddress(walletDoc.address));
-  }
-
-  return contacts.map((contact) => {
-    const peerUserId = String(contact.peerUserId || "").trim();
-    return {
-      ...contact,
-      peerWalletAddress:
-        verifiedWalletByUserId.get(peerUserId) || contact.peerWalletAddress || null,
-    };
-  });
+function rejectChatSignerReceiver(res, receiverWallet) {
+  if (normalizeAddress(receiverWallet) !== getRemittanceSignerAddress()) return;
+  res.status(400);
+  throw new Error(
+    "The recipient is linked to the system blockchain signer. They must link a personal wallet before receiving payments."
+  );
 }
 
 async function resolveFriendContactByPeer(userId, peerUserId) {
@@ -354,7 +340,7 @@ async function resolveFriendContactByPeer(userId, peerUserId) {
   );
 }
 
-async function attachLatestThreadMetadata({ contacts, viewerUserId }) {
+async function attachLatestThreadMetadata({ contacts, viewerUserId, threadDocs: suppliedThreadDocs }) {
   const safeContacts = Array.isArray(contacts) ? contacts : [];
   if (!safeContacts.length) return [];
 
@@ -374,11 +360,13 @@ async function attachLatestThreadMetadata({ contacts, viewerUserId }) {
     }));
   }
 
-  const threadDocs = await ChatThread.find({
-    participantKey: { $in: participantKeys },
-  })
-    .select("_id participantKey participants lastMessageAt createdAt updatedAt")
-    .lean();
+  const threadDocs = Array.isArray(suppliedThreadDocs)
+    ? suppliedThreadDocs.filter((thread) =>
+        participantKeys.includes(String(thread.participantKey || ""))
+      )
+    : await ChatThread.find({ participantKey: { $in: participantKeys } })
+        .select("_id participantKey participants lastMessageAt createdAt updatedAt")
+        .lean();
 
   const threadByKey = new Map(
     threadDocs.map((threadDoc) => [String(threadDoc.participantKey), threadDoc])
@@ -465,7 +453,6 @@ async function attachLatestThreadMetadata({ contacts, viewerUserId }) {
                   requesterUserId: latestRequest.requesterUserId,
                   targetUserId: latestRequest.targetUserId,
                   amount: latestRequest.amount,
-                  note: latestRequest.note || "",
                   status: latestRequest.status,
                   paidAt: latestRequest.paidAt || null,
                   paidByUserId: latestRequest.paidByUserId || null,
@@ -478,7 +465,6 @@ async function attachLatestThreadMetadata({ contacts, viewerUserId }) {
               : null,
             encryptedPayload: payloadCandidates[0] || null,
             encryptedPayloadCandidates: payloadCandidates,
-            plaintextFallback: latestRaw.plaintextFallback || "",
             createdAt: latestRaw.createdAt,
           }
         : null,
@@ -516,19 +502,33 @@ async function rejectBlockedChat(res, userId, peerUserId) {
 
 chatRouter.get("/friends", protect, async (req, res, next) => {
   try {
-    const savedContacts = await resolveFriendContacts(req.user._id);
+    const routeStartedAt = performance.now();
+    const [savedContacts, threads] = await Promise.all([
+      resolveFriendContacts(req.user._id),
+      ChatThread.find({ participants: req.user._id })
+        .select("_id participantKey participants lastMessageAt createdAt updatedAt")
+        .lean(),
+    ]);
+    const contactsLoadedAt = performance.now();
     const existingPeerIds = new Set(savedContacts.map((contact) => String(contact.peerUserId)));
-    const threads = await ChatThread.find({ participants: req.user._id }).select("participants").lean();
     const threadPeerIds = threads.map((thread) => otherParticipantId(thread, req.user._id)).filter(Boolean);
-    const owner = await User.findById(req.user._id).select("blockedUserIds").lean();
-    const blockedIds = new Set((owner?.blockedUserIds || []).map(String));
+    const blockedIds = new Set((req.user.blockedUserIds || []).map(String));
     const incomingPeers = threadPeerIds.filter((id) => !existingPeerIds.has(id) && !blockedIds.has(id));
-    const peerUsers = incomingPeers.length ? await User.find({
-      _id: { $in: incomingPeers },
-      isDisabled: { $ne: true },
-      blockedUserIds: { $ne: req.user._id },
-    }).select("_id username firstName lastName").lean() : [];
-    const peerWallets = incomingPeers.length ? await Wallet.find({ userId: { $in: incomingPeers }, isVerified: true }).select("userId address").lean() : [];
+    const [peerUsers, peerWallets] = incomingPeers.length
+      ? await Promise.all([
+          User.find({
+            _id: { $in: incomingPeers },
+            isDisabled: { $ne: true },
+            blockedUserIds: { $ne: req.user._id },
+          })
+            .select("_id username firstName lastName")
+            .lean(),
+          Wallet.find({ userId: { $in: incomingPeers }, isVerified: true })
+            .select("userId address")
+            .lean(),
+        ])
+      : [[], []];
+    const peersLoadedAt = performance.now();
     const walletByPeer = new Map(peerWallets.map((wallet) => [String(wallet.userId), normalizeAddress(wallet.address)]));
     const conversationContacts = peerUsers.map((peer) => ({
       friendId: null,
@@ -547,7 +547,17 @@ chatRouter.get("/friends", protect, async (req, res, next) => {
     const contactsWithThreads = await attachLatestThreadMetadata({
       contacts,
       viewerUserId: req.user._id,
+      threadDocs: threads,
     });
+    const metadataLoadedAt = performance.now();
+    res.setHeader(
+      "Server-Timing",
+      [
+        `contacts;dur=${(contactsLoadedAt - routeStartedAt).toFixed(1)}`,
+        `peers;dur=${(peersLoadedAt - contactsLoadedAt).toFixed(1)}`,
+        `metadata;dur=${(metadataLoadedAt - peersLoadedAt).toFixed(1)}`,
+      ].join(", ")
+    );
     res.json({
       ok: true,
       friends: contactsWithThreads,
@@ -760,7 +770,6 @@ chatRouter.get("/threads/:threadId/history", protect, async (req, res, next) => 
                 requesterUserId: attachedRequest.requesterUserId,
                 targetUserId: attachedRequest.targetUserId,
                 amount: attachedRequest.amount,
-                note: attachedRequest.note || "",
                 status: attachedRequest.status,
                 paidAt: attachedRequest.paidAt || null,
                 paidByUserId: attachedRequest.paidByUserId || null,
@@ -773,7 +782,6 @@ chatRouter.get("/threads/:threadId/history", protect, async (req, res, next) => 
             : null,
           encryptedPayload: payloadCandidates[0] || null,
           encryptedPayloadCandidates: payloadCandidates,
-          plaintextFallback: messageDoc.plaintextFallback || "",
           createdAt: messageDoc.createdAt,
         };
       });
@@ -875,19 +883,11 @@ chatRouter.post("/threads/:threadId/messages", protect, async (req, res, next) =
 
     const senderPayload = req.body?.payloadForSender;
     const recipientPayload = req.body?.payloadForRecipient;
-    const plaintextFallbackRaw = String(req.body?.plaintextFallback || "");
-    const plaintextFallback = plaintextFallbackRaw.trim();
-
     if (!validEncryptedPayload(senderPayload) || !validEncryptedPayload(recipientPayload)) {
       res.status(400);
       throw new Error(
         "payloadForSender and payloadForRecipient must include ciphertext, iv, and wrappedKey."
       );
-    }
-
-    if (plaintextFallback.length > MAX_CHAT_PLAINTEXT_FALLBACK_LENGTH) {
-      res.status(400);
-      throw new Error("plaintextFallback cannot exceed 4000 characters.");
     }
 
     let createdRequest = null;
@@ -939,7 +939,6 @@ chatRouter.post("/threads/:threadId/messages", protect, async (req, res, next) =
           requesterUserId: senderUserId,
           targetUserId: recipientUserId,
         amount: requestAmount,
-        note: requestNote || undefined,
         status: "pending",
       });
     }
@@ -962,7 +961,6 @@ chatRouter.post("/threads/:threadId/messages", protect, async (req, res, next) =
           iv: String(recipientPayload.iv).trim(),
           wrappedKey: String(recipientPayload.wrappedKey).trim(),
         },
-        plaintextFallback: plaintextFallback || undefined,
       });
     } catch (createMessageErr) {
       if (createdRequest?._id) {
@@ -987,7 +985,6 @@ chatRouter.post("/threads/:threadId/messages", protect, async (req, res, next) =
               requesterUserId: createdRequest.requesterUserId,
               targetUserId: createdRequest.targetUserId,
               amount: createdRequest.amount,
-              note: createdRequest.note || "",
               status: createdRequest.status,
               createdAt: createdRequest.createdAt,
             }
@@ -1088,73 +1085,6 @@ chatRouter.delete(
   }
 );
 
-chatRouter.post(
-  "/threads/:threadId/messages/:messageId/plaintext",
-  protect,
-  async (req, res, next) => {
-    try {
-      const threadId = asObjectId(req.params.threadId);
-      const messageId = asObjectId(req.params.messageId);
-      if (!threadId || !messageId) {
-        res.status(400);
-        throw new Error("Invalid thread id or message id.");
-      }
-
-      const thread = await ChatThread.findById(threadId);
-      if (!thread) {
-        res.status(404);
-        throw new Error("Chat thread not found.");
-      }
-
-      if (!threadContainsUser(thread, req.user._id)) {
-        res.status(403);
-        throw new Error("You do not have access to this chat thread.");
-      }
-
-      const plaintextFallback = String(req.body?.plaintextFallback || "").trim();
-      if (!plaintextFallback) {
-        res.status(400);
-        throw new Error("plaintextFallback is required.");
-      }
-
-      if (plaintextFallback.length > MAX_CHAT_PLAINTEXT_FALLBACK_LENGTH) {
-        res.status(400);
-        throw new Error("plaintextFallback cannot exceed 4000 characters.");
-      }
-
-      const messageDoc = await ChatMessage.findOne({
-        _id: messageId,
-        threadId: thread._id,
-      });
-      if (!messageDoc) {
-        res.status(404);
-        throw new Error("Message not found.");
-      }
-
-      const existingFallback = String(messageDoc.plaintextFallback || "").trim();
-      if (existingFallback) {
-        res.json({
-          ok: true,
-          cached: false,
-          reason: "already_cached",
-        });
-        return;
-      }
-
-      messageDoc.plaintextFallback = plaintextFallback;
-      await messageDoc.save();
-
-      res.json({
-        ok: true,
-        cached: true,
-        messageId: messageDoc._id,
-      });
-    } catch (err) {
-      next(err);
-    }
-  }
-);
-
 chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
   let txDoc = null;
   let transferResultLogged = false;
@@ -1244,6 +1174,7 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
       "receiverWallet"
     );
     rejectChatSelfTransfer(res, senderWallet, recipientWallet);
+    rejectChatSignerReceiver(res, recipientWallet);
 
     const transferRequestKey = createTransferRequestKey({
       senderUserId,
@@ -1464,6 +1395,7 @@ chatRouter.post(
         "receiverWallet"
       );
       rejectChatSelfTransfer(res, payerWallet, requesterWallet);
+      rejectChatSignerReceiver(res, requesterWallet);
 
       lockedRequest = await ChatRequest.findOneAndUpdate(
         {
@@ -1580,7 +1512,6 @@ chatRouter.post(
           id: lockedRequest._id,
           status: lockedRequest.status,
           amount: lockedRequest.amount,
-          note: lockedRequest.note || "",
           requesterUserId: lockedRequest.requesterUserId,
           targetUserId: lockedRequest.targetUserId,
           paidAt: lockedRequest.paidAt || null,
@@ -1688,7 +1619,6 @@ chatRouter.post(
             id: requestDoc._id,
             status: requestDoc.status,
             amount: requestDoc.amount,
-            note: requestDoc.note || "",
             requesterUserId: requestDoc.requesterUserId,
             targetUserId: requestDoc.targetUserId,
             paidAt: requestDoc.paidAt || null,
@@ -1748,7 +1678,6 @@ chatRouter.post(
           id: cancelledRequest._id,
           status: cancelledRequest.status,
           amount: cancelledRequest.amount,
-          note: cancelledRequest.note || "",
           requesterUserId: cancelledRequest.requesterUserId,
           targetUserId: cancelledRequest.targetUserId,
           paidAt: cancelledRequest.paidAt || null,
@@ -1814,7 +1743,7 @@ chatRouter.post("/threads/:threadId/report", protect, async (req, res, next) => 
       throw new Error("revealedMessages cannot exceed 30 items.");
     }
 
-    const revealedMessages = rawRevealedMessages
+    const candidateRevealedMessages = rawRevealedMessages
       .map((entry) => {
         const messageId = asObjectId(entry?.messageId);
         const plaintext = String(entry?.plaintext || "").trim();
@@ -1823,6 +1752,20 @@ chatRouter.post("/threads/:threadId/report", protect, async (req, res, next) => 
         return { messageId, plaintext };
       })
       .filter(Boolean);
+
+    const validMessageIds = new Set(
+      (
+        await ChatMessage.find({
+          _id: { $in: candidateRevealedMessages.map((entry) => entry.messageId) },
+          threadId: thread._id,
+        })
+          .select("_id")
+          .lean()
+      ).map((message) => String(message._id))
+    );
+    const revealedMessages = candidateRevealedMessages.filter((entry) =>
+      validMessageIds.has(String(entry.messageId))
+    );
 
     thread.reports.push({
       reportedByUserId: req.user._id,

@@ -37,6 +37,7 @@ export default function Admin() {
   const [summary, setSummary] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [users, setUsers] = useState([]);
+  const [chatReports, setChatReports] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -65,16 +66,18 @@ export default function Admin() {
         setLoading(true);
         setError("");
 
-        const [summaryRes, txRes, usersRes] = await Promise.all([
+        const [summaryRes, txRes, usersRes, chatReportsRes] = await Promise.all([
           apiRequest("/api/admin/summary", { token }),
           apiRequest("/api/admin/transactions?limit=10&page=1", { token }),
           apiRequest("/api/admin/users?limit=20&page=1", { token }),
+          apiRequest("/api/admin/chat-reports?limit=20", { token }),
         ]);
 
         if (isCancelled) return;
         setSummary(summaryRes.summary || null);
         setTransactions(txRes.transactions || []);
         setUsers(usersRes.users || []);
+        setChatReports(chatReportsRes.reports || []);
       } catch (err) {
         if (isCancelled) return;
         setError(getUserErrorMessage(err, "Failed to load admin dashboard."));
@@ -161,6 +164,49 @@ export default function Admin() {
       />
 
       <PageError>{error}</PageError>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-800">Reported conversations</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Only messages deliberately disclosed by a participant while reporting are visible.
+          </p>
+        </div>
+        {chatReports.length === 0 ? (
+          <div className="text-xs text-gray-500">No conversations have been reported.</div>
+        ) : (
+          <div className="space-y-3">
+            {chatReports.map((report, reportIndex) => (
+              <article
+                key={`${report.threadId}-${report.createdAt}-${reportIndex}`}
+                className="rounded-2xl border bg-white p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-gray-900">{report.reason}</p>
+                  <time className="text-xs text-gray-500">{formatDateTime(report.createdAt)}</time>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Reporter: {report.reportedByUserId} · Reported account: {report.targetUserId}
+                </p>
+                <div className="mt-3 space-y-2">
+                  {(report.revealedMessages || []).length === 0 ? (
+                    <p className="text-xs text-gray-500">No message content was disclosed.</p>
+                  ) : (
+                    report.revealedMessages.map((message) => (
+                      <pre
+                        key={message.messageId}
+                        className="whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-2 text-xs text-gray-700"
+                      >
+                        {message.plaintext}
+                      </pre>
+                    ))
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="space-y-4">
         <h2 className="text-sm font-semibold text-gray-800">Overview</h2>
