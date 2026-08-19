@@ -79,3 +79,21 @@ test("transfer limits reject amounts above the configured maximum", () => {
       : (process.env.MAX_TRANSFER_ETH = previousMax);
   }
 });
+
+test("transfer limits reject amounts with more than four decimal places", () => {
+  const res = createResponse();
+
+  assert.throws(
+    () => rejectOutOfRangeTransferAmount(res, 0.00001),
+    /amountEth cannot have more than 4 decimal places\./
+  );
+  assert.equal(res.statusCode, 400);
+});
+
+test("transfer limits allow amounts with up to four decimal places", () => {
+  for (const amount of [0.0001, 0.1234, 1, 10.5]) {
+    const res = createResponse();
+    assert.doesNotThrow(() => rejectOutOfRangeTransferAmount(res, amount));
+    assert.equal(res.statusCode, undefined);
+  }
+});
