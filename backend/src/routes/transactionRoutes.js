@@ -4,6 +4,7 @@ import { protect } from "../middleware/authMiddleware.js";
 import { allowBodyFields, allowQueryFields } from "../middleware/allowFields.js";
 import {
   getEthBalance,
+  getUserRemittanceSubmission,
   submitRemittance,
 } from "../blockchain/remittanceClient.js";
 import { Transaction } from "../models/Transaction.js";
@@ -714,6 +715,7 @@ export function createSendTransactionRouter({
   protectMiddleware = protect,
   verifyPaymentCode = requireAndConsumePaymentCode,
   submitRemittanceRpc = submitRemittance,
+  adoptUserSubmission = getUserRemittanceSubmission,
   getNativeBalance = getEthBalance,
   updateWalletBalance = updateStoredWalletBalance,
   walletModel = Wallet,
@@ -742,13 +744,13 @@ export function createSendTransactionRouter({
   "/send",
   protectMiddleware,
   allowQueryFields([]),
-  allowBodyFields(["receiverWallet", "amountEth", "verificationCode", "assetSymbol"]),
+  allowBodyFields(["receiverWallet", "amountEth", "verificationCode", "assetSymbol", "txHash"]),
   async (req, res, next) => {
   let txDoc;
   let transferResultLogged = false;
 
   try {
-    const { receiverWallet, amountEth, verificationCode } = req.body;
+    const { receiverWallet, amountEth, verificationCode, txHash } = req.body;
     const assetSymbol = normalizeTransferAssetSymbol(req.body?.assetSymbol);
 
     await logAttempt({
@@ -814,6 +816,11 @@ export function createSendTransactionRouter({
       throw codeErr;
     }
 
+    if (!txHash && submitRemittanceRpc === submitRemittance) {
+      res.status(400);
+      throw new Error("Sign and submit this payment with your linked wallet first.");
+    }
+
     let receiverUserId = null;
     if (normalizedReceiverWallet) {
       const receiverWalletDoc = await walletModel.findOne({
@@ -839,14 +846,16 @@ export function createSendTransactionRouter({
       transferRequestKey,
     });
 
-    const submission = await submitRemittanceRpc(
-      normalizedReceiverWallet,
-      amountNumber,
-      {
-        onSubmitted: (submission) =>
-          recordSubmission(txDoc, submission),
-      }
-    );
+    const submission = txHash
+      ? await adoptUserSubmission(txHash, {
+          sender: senderWallet,
+          receiver: normalizedReceiverWallet,
+          amountEth: amountNumber,
+        })
+      : await submitRemittanceRpc(normalizedReceiverWallet, amountNumber, {
+          onSubmitted: (submission) => recordSubmission(txDoc, submission),
+        });
+    if (txHash) await recordSubmission(txDoc, submission);
 
     settleSubmission({
       txDoc,

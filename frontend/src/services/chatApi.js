@@ -130,6 +130,7 @@ export async function sendChatTransfer({
   threadId,
   amountEth,
   note,
+  txHash,
   trackRequest = true,
 } = {}) {
   const normalizedThreadId = String(threadId || "").trim();
@@ -145,6 +146,7 @@ export async function sendChatTransfer({
       body: {
         amountEth,
         note,
+        txHash,
       },
       trackRequest,
     }
@@ -155,6 +157,8 @@ export async function payChatRequest({
   token,
   threadId,
   requestId,
+  txHash,
+  prepare = false,
 } = {}) {
   const normalizedThreadId = String(threadId || "").trim();
   const normalizedRequestId = String(requestId || "").trim();
@@ -169,6 +173,7 @@ export async function payChatRequest({
     {
       method: "POST",
       token,
+      body: prepare ? { prepare: true } : { txHash },
     }
   );
 }

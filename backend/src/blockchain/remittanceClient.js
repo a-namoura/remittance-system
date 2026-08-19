@@ -29,6 +29,23 @@ let readContractInstance;
 let readContractAddress;
 
 const DEFAULT_RPC_TIMEOUT_MS = 30_000;
+const USER_TRANSACTION_LOOKUP_ATTEMPTS = 5;
+const USER_TRANSACTION_LOOKUP_DELAY_MS = 200;
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getTransactionWithPropagationRetry(provider, txHash) {
+  for (let attempt = 1; attempt <= USER_TRANSACTION_LOOKUP_ATTEMPTS; attempt += 1) {
+    const tx = await provider.getTransaction(txHash);
+    if (tx) return tx;
+    if (attempt < USER_TRANSACTION_LOOKUP_ATTEMPTS) {
+      await delay(USER_TRANSACTION_LOOKUP_DELAY_MS);
+    }
+  }
+  return null;
+}
 
 function getRpcTimeoutMs() {
   const configured = Number(process.env.BSC_RPC_TIMEOUT_MS);
@@ -190,6 +207,74 @@ export async function submitRemittance(
       normalizedReceiver,
       amountEth,
     }),
+  };
+}
+
+/**
+ * Adopts a transaction broadcast by a user's injected wallet. The transaction
+ * is validated before it is attached to an application payment record.
+ */
+export async function getUserRemittanceSubmission(
+  txHash,
+  { sender, receiver, amountEth } = {}
+) {
+  const normalizedSender = normalizeEvmAddress(sender);
+  const normalizedReceiver = normalizeEvmAddress(receiver);
+  const normalizedHash = String(txHash || "").trim();
+  if (!/^0x[0-9a-fA-F]{64}$/.test(normalizedHash)) {
+    throw new Error("A valid wallet transaction hash is required.");
+  }
+  if (!normalizedSender || !normalizedReceiver) {
+    throw new Error("Sender and receiver must be valid addresses.");
+  }
+
+  const provider = getRemittanceProvider();
+  const tx = await getTransactionWithPropagationRetry(provider, normalizedHash);
+  if (!tx) throw new Error("The wallet transaction was not found on the configured network.");
+
+  const contractAddress = getRemittanceContractAddress();
+  if (normalizeEvmAddress(tx.from) !== normalizedSender) {
+    throw new Error("The wallet transaction was not signed by your linked wallet.");
+  }
+  if (normalizeEvmAddress(tx.to) !== contractAddress) {
+    throw new Error("The wallet transaction was not sent to the remittance contract.");
+  }
+  if (tx.value !== parseEther(String(amountEth))) {
+    throw new Error("The wallet transaction amount does not match the payment amount.");
+  }
+
+  let parsed;
+  try {
+    parsed = new Contract(contractAddress, REMITTANCE_ABI).interface.parseTransaction({
+      data: tx.data,
+      value: tx.value,
+    });
+  } catch {
+    throw new Error("The wallet transaction does not contain a valid remittance transfer.");
+  }
+  if (parsed?.name !== "transfer" || normalizeEvmAddress(parsed.args?.[0]) !== normalizedReceiver) {
+    throw new Error("The wallet transaction receiver does not match the payment receiver.");
+  }
+
+  const submittedAt = new Date();
+  return {
+    from: normalizedSender,
+    to: normalizedReceiver,
+    value: amountEth,
+    txHash: tx.hash,
+    submittedAt,
+    status: "pending",
+    waitForConfirmation: async () => {
+      const receipt = await tx.wait();
+      return {
+        from: normalizedSender,
+        to: normalizedReceiver,
+        value: amountEth,
+        txHash: tx.hash,
+        blockNumber: receipt?.blockNumber,
+        status: receipt?.status,
+      };
+    },
   };
 }
 

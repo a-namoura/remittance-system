@@ -27,6 +27,7 @@ import { requireAuthToken } from "../services/session.js";
 import { blockUser } from "../services/userApi.js";
 import {
   getWalletBalance,
+  submitConnectedWalletTransfer,
 } from "../services/transactionApi.js";
 import {
   FORM_FIELD_LABEL_CLASS,
@@ -1538,16 +1539,24 @@ export default function Chat() {
       return;
     }
 
+    let walletTxHash = "";
     try {
       transferSubmittingRef.current = true;
       setSendingTransfer(true);
       setTimelineError("");
       setTimelineInfo("");
+      const txHash = await submitConnectedWalletTransfer({
+        senderWallet: me?.wallet?.address,
+        receiverWallet: activeFriend?.walletAddress,
+        amountEth: draft.amount,
+      });
+      walletTxHash = txHash;
       await sendChatTransfer({
         token,
         threadId: activeThread.id,
         amountEth: draft.amount,
         note: draft.normalizedNote || undefined,
+        txHash,
         trackRequest: false,
       });
 
@@ -1566,7 +1575,9 @@ export default function Chat() {
       });
       await refreshWalletBalance();
     } catch (err) {
-      const message = getUserErrorMessage(err, "Failed to send payment.");
+      const message = walletTxHash
+        ? `Payment succeeded on-chain (${walletTxHash}), but chat synchronization is still pending.`
+        : getUserErrorMessage(err, "Failed to send payment.");
       setTimelineError(message);
       showTransactionNotification(message, { variant: "error" });
     } finally {
@@ -1685,14 +1696,28 @@ export default function Chat() {
       return;
     }
 
+    let walletTxHash = "";
     try {
       setRequestModalLoading(true);
       setRequestModalError("");
       setRequestModalInfo("");
+      const prepared = await payChatRequest({
+        token,
+        threadId: activeThread.id,
+        requestId: requestModal.id,
+        prepare: true,
+      });
+      const txHash = await submitConnectedWalletTransfer({
+        senderWallet: prepared?.payment?.senderWallet,
+        receiverWallet: prepared?.payment?.receiverWallet,
+        amountEth: prepared?.payment?.amount,
+      });
+      walletTxHash = txHash;
       const response = await payChatRequest({
         token,
         threadId: activeThread.id,
         requestId: requestModal.id,
+        txHash,
       });
       setRequestModal((current) =>
         current
@@ -1711,7 +1736,9 @@ export default function Chat() {
       });
       await refreshWalletBalance();
     } catch (err) {
-      const message = getUserErrorMessage(err, "Failed to send payment for request.");
+      const message = walletTxHash
+        ? `Payment succeeded on-chain (${walletTxHash}), but chat synchronization is still pending.`
+        : getUserErrorMessage(err, "Failed to send payment for request.");
       setRequestModalError(message);
       showTransactionNotification(message, { variant: "error" });
     } finally {

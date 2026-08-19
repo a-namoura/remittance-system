@@ -1,9 +1,61 @@
 import { apiRequest } from "./api.js";
+import { ethers } from "ethers";
 
 const FALLBACK_NATIVE_CURRENCY = "BNB";
+const REMITTANCE_ABI = ["function transfer(address payable receiver) payable"];
+
+function getInjectedWalletProvider() {
+  const injected = globalThis?.window?.ethereum;
+  if (!injected) return null;
+  if (injected.isMetaMask) return injected;
+  if (Array.isArray(injected.providers)) {
+    return injected.providers.find((candidate) => candidate?.isMetaMask) || injected;
+  }
+  return injected;
+}
+
+function configuredChainId() {
+  return BigInt(import.meta.env.VITE_CHAIN_ID || import.meta.env.VITE_REM_CHAIN_ID || 97);
+}
+
+export async function submitConnectedWalletTransfer({ senderWallet, receiverWallet, amountEth }) {
+  const ethereum = getInjectedWalletProvider();
+  if (!ethereum?.request) throw new Error("Wallet provider not found. Connect MetaMask and try again.");
+
+  const expectedChainId = configuredChainId();
+  const currentChainId = BigInt(await ethereum.request({ method: "eth_chainId" }));
+  if (currentChainId !== expectedChainId) {
+    try {
+      await ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: ethers.toBeHex(expectedChainId) }],
+      });
+    } catch (error) {
+      if (String(error?.code) === "4001") {
+        throw new Error("Network switch was cancelled in MetaMask.");
+      }
+      throw new Error(`Switch your wallet to chain ${expectedChainId.toString()} and try again.`);
+    }
+  }
+
+  const provider = new ethers.BrowserProvider(ethereum, "any");
+  const signer = await provider.getSigner();
+  const signerAddress = await signer.getAddress();
+  if (signerAddress.toLowerCase() !== String(senderWallet || "").toLowerCase()) {
+    throw new Error("The active wallet account does not match your linked wallet.");
+  }
+
+  const contractAddress = String(import.meta.env.VITE_REM_CONTRACT_ADDRESS || "").trim();
+  if (!ethers.isAddress(contractAddress)) {
+    throw new Error("The remittance contract is not configured in the frontend.");
+  }
+  const contract = new ethers.Contract(contractAddress, REMITTANCE_ABI, signer);
+  const tx = await contract.transfer(receiverWallet, { value: ethers.parseEther(String(amountEth)) });
+  return tx.hash;
+}
 
 async function getInjectedNativeBalance(wallet) {
-  const ethereum = globalThis?.window?.ethereum;
+  const ethereum = getInjectedWalletProvider();
   if (!ethereum?.request) return null;
 
   const expectedChainId = Number(import.meta.env.VITE_CHAIN_ID || import.meta.env.VITE_REM_CHAIN_ID || 97);
@@ -91,6 +143,7 @@ export async function sendTransaction({
   amountEth,
   verificationCode,
   assetSymbol,
+  txHash,
 } = {}) {
   return apiRequest("/api/transactions/send", {
     method: "POST",
@@ -100,6 +153,7 @@ export async function sendTransaction({
       amountEth,
       verificationCode,
       assetSymbol,
+      txHash,
     },
   });
 }

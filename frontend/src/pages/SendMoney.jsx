@@ -17,6 +17,7 @@ import {
   pollTransactionUntilSettled,
   sendPaymentVerificationCode,
   sendTransaction,
+  submitConnectedWalletTransfer,
 } from "../services/transactionApi.js";
 import { readWalletState, requireAuthToken, writeWalletState } from "../services/session.js";
 import { searchUsers } from "../services/userApi.js";
@@ -903,22 +904,32 @@ export default function SendMoney() {
       return;
     }
 
+    let walletTxHash = "";
     try {
       transferSubmittingRef.current = true;
       setSending(true);
+      const txHash = await submitConnectedWalletTransfer({
+        senderWallet: me?.wallet?.address,
+        receiverWallet: details.wallet,
+        amountEth: details.amount,
+      });
+      walletTxHash = txHash;
       const result = await sendTransaction({
         token,
         receiverWallet: details.wallet,
         amountEth: details.amount,
         verificationCode: normalizedCode,
         assetSymbol: nativeCurrency,
+        txHash,
       });
 
       handleTransactionResult(result, token);
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
-      const message = getUserErrorMessage(err, "Failed to send transaction.");
+      const message = walletTxHash
+        ? `Transaction succeeded on-chain (${walletTxHash}), but the app could not synchronize it yet.`
+        : getUserErrorMessage(err, "Failed to send transaction.");
       setMethodError(message);
       showTransactionNotification(message, { variant: "error" });
     } finally {
@@ -958,22 +969,32 @@ export default function SendMoney() {
       return;
     }
 
+    let walletTxHash = "";
     try {
       transferSubmittingRef.current = true;
       setSending(true);
+      const txHash = await submitConnectedWalletTransfer({
+        senderWallet: me?.wallet?.address,
+        receiverWallet: details.destination,
+        amountEth: details.amount,
+      });
+      walletTxHash = txHash;
       const result = await sendTransaction({
         token,
         receiverWallet: details.destination,
         amountEth: details.amount,
         verificationCode: normalizedCode,
         assetSymbol: nativeCurrency,
+        txHash,
       });
 
       handleTransactionResult(result, token);
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
-      const message = getUserErrorMessage(err, "Failed to send transaction.");
+      const message = walletTxHash
+        ? `Transaction succeeded on-chain (${walletTxHash}), but the app could not synchronize it yet.`
+        : getUserErrorMessage(err, "Failed to send transaction.");
       setMethodError(message);
       showTransactionNotification(message, { variant: "error" });
     } finally {

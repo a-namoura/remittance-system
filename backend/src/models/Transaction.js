@@ -105,8 +105,8 @@ const transactionSchema = new mongoose.Schema(
       trim: true,
     },
     // The wallet that actually signed and funded the blockchain transaction.
-    // This differs from senderWallet while transfers are submitted by the
-    // custodial service signer on a user's behalf.
+    // The wallet proven from the blockchain transaction. New user transfers
+    // require this to match senderWallet; legacy custodial records may differ.
     onChainSenderWallet: {
       type: String,
       set: formatWalletAddressForStorage,

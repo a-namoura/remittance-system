@@ -11,6 +11,7 @@ import { ChatMessage } from "../models/ChatMessage.js";
 import { ChatRequest } from "../models/ChatRequest.js";
 import { Transaction } from "../models/Transaction.js";
 import {
+  getUserRemittanceSubmission,
   getRemittanceSignerAddress,
   submitRemittance,
 } from "../blockchain/remittanceClient.js";
@@ -1185,23 +1186,38 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
     });
     await rejectInFlightDuplicateTransfer(res, transferRequestKey, req);
 
-    txDoc = await Transaction.create({
-      senderUserId,
-      receiverUserId: recipientUserId,
-      senderWallet,
-      receiverWallet: recipientWallet,
-      amount: amountNumber,
-      note: note || undefined,
-      assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
-      status: "pending",
-      type: "sent",
-      transferRequestKey,
+    if (!req.body?.txHash) {
+      res.status(400);
+      throw new Error("Sign and submit this payment with your linked wallet first.");
+    }
+    const submission = await getUserRemittanceSubmission(req.body.txHash, {
+      sender: senderWallet,
+      receiver: recipientWallet,
+      amountEth: amountNumber,
     });
-
-    const submission = await submitRemittance(recipientWallet, amountNumber, {
-      onSubmitted: (submission) =>
-        recordTransactionSubmission(txDoc, submission),
-    });
+    txDoc = await Transaction.findOne({ txHash: submission.txHash });
+    if (txDoc) {
+      txDoc.senderUserId = senderUserId;
+      txDoc.receiverUserId = recipientUserId;
+      txDoc.note = note || undefined;
+      txDoc.transferRequestKey = transferRequestKey;
+      txDoc.recordSource = "application";
+      await txDoc.save();
+    } else {
+      txDoc = await Transaction.create({
+        senderUserId,
+        receiverUserId: recipientUserId,
+        senderWallet,
+        receiverWallet: recipientWallet,
+        amount: amountNumber,
+        note: note || undefined,
+        assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
+        status: "pending",
+        type: "sent",
+        transferRequestKey,
+      });
+      await recordTransactionSubmission(txDoc, submission);
+    }
 
     settleTransactionAfterSubmission({
       txDoc,
@@ -1397,6 +1413,18 @@ chatRouter.post(
       rejectChatSelfTransfer(res, payerWallet, requesterWallet);
       rejectChatSignerReceiver(res, requesterWallet);
 
+      if (req.body?.prepare === true) {
+        return res.json({
+          ok: true,
+          payment: {
+            senderWallet: payerWallet,
+            receiverWallet: requesterWallet,
+            amount: requestAmountNumber,
+            assetSymbol: DEFAULT_CHAT_ASSET_SYMBOL,
+          },
+        });
+      }
+
       lockedRequest = await ChatRequest.findOneAndUpdate(
         {
           _id: requestId,
@@ -1418,25 +1446,35 @@ chatRouter.post(
         throw new Error("Request is no longer pending.");
       }
 
-      txDoc = await Transaction.create({
-        senderUserId: req.user._id,
-        receiverUserId: lockedRequest.requesterUserId,
-        senderWallet: payerWallet,
-        receiverWallet: requesterWallet,
-        amount: requestAmountNumber,
-        status: "pending",
-        type: "sent",
-        chatRequestId: lockedRequest._id,
+      if (!req.body?.txHash) {
+        res.status(400);
+        throw new Error("Sign and submit this payment with your linked wallet first.");
+      }
+      const submission = await getUserRemittanceSubmission(req.body.txHash, {
+        sender: payerWallet,
+        receiver: requesterWallet,
+        amountEth: requestAmountNumber,
       });
-
-      const submission = await submitRemittance(
-        requesterWallet,
-        requestAmountNumber,
-        {
-          onSubmitted: (submission) =>
-            recordTransactionSubmission(txDoc, submission),
-        }
-      );
+      txDoc = await Transaction.findOne({ txHash: submission.txHash });
+      if (txDoc) {
+        txDoc.senderUserId = req.user._id;
+        txDoc.receiverUserId = lockedRequest.requesterUserId;
+        txDoc.chatRequestId = lockedRequest._id;
+        txDoc.recordSource = "application";
+        await txDoc.save();
+      } else {
+        txDoc = await Transaction.create({
+          senderUserId: req.user._id,
+          receiverUserId: lockedRequest.requesterUserId,
+          senderWallet: payerWallet,
+          receiverWallet: requesterWallet,
+          amount: requestAmountNumber,
+          status: "pending",
+          type: "sent",
+          chatRequestId: lockedRequest._id,
+        });
+        await recordTransactionSubmission(txDoc, submission);
+      }
 
       settleTransactionAfterSubmission({
         txDoc,
