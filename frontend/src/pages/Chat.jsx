@@ -4,6 +4,7 @@ import {
   PageContainer,
   PageError,
   PageHeader,
+  PageLoading,
   PageNotice,
 } from "../components/PageLayout.jsx";
 import SuccessTransition from "../components/SuccessTransition.jsx";
@@ -1832,9 +1833,7 @@ export default function Chat() {
                 </p>
                 <div className="space-y-2">
                   {friendsLoading ? (
-                    <p className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-500">
-                      Searching...
-                    </p>
+                    <PageLoading>Searching contacts</PageLoading>
                   ) : searchResults.length === 0 ? (
                     <p className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-500">
                       No contacts found.
@@ -1880,9 +1879,7 @@ export default function Chat() {
               </p>
               <div className="mt-2 flex gap-3 overflow-x-auto py-1">
                 {friendsLoading ? (
-                  <p className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500">
-                    Loading contacts...
-                  </p>
+                  <PageLoading>Loading contacts</PageLoading>
                 ) : circleFriends.length === 0 ? (
                   <p className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500">
                     No contacts yet.
@@ -1930,9 +1927,7 @@ export default function Chat() {
               </p>
               <div className="h-full space-y-2 overflow-y-auto pr-1">
                 {friendsLoading ? (
-                  <p className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-500">
-                    Loading messages...
-                  </p>
+                  <PageLoading>Loading messages</PageLoading>
                 ) : latestFriends.length === 0 ? (
                   <p className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-500">
                     You have no messages yet.
@@ -2055,7 +2050,7 @@ export default function Chat() {
                   className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-white px-4 py-4 sm:px-6"
                 >
                   {timelineLoading && timeline.length === 0 ? (
-                    <p className="text-sm text-gray-500">Loading messages...</p>
+                    <PageLoading>Loading messages</PageLoading>
                   ) : timeline.length === 0 ? (
                     <p className="text-sm text-gray-500">No messages yet in this conversation.</p>
                   ) : (
@@ -2518,7 +2513,7 @@ export default function Chat() {
             {isSendComposer ? (
               <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                 {walletBalanceLoading ? (
-                  <p className="text-xs text-gray-500">Checking balance...</p>
+                  <PageLoading>Checking balance</PageLoading>
                 ) : Number.isFinite(walletBalance) ? (
                   <p className="text-xs text-gray-600">
                     Available balance:{" "}
@@ -2742,7 +2737,7 @@ export default function Chat() {
               <div className="mt-3 space-y-2">
                 <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                   {walletBalanceLoading ? (
-                    <p className="text-xs text-gray-500">Checking balance...</p>
+                    <PageLoading>Checking balance</PageLoading>
                   ) : Number.isFinite(walletBalance) ? (
                     <p className="text-xs text-gray-600">
                       Available balance:{" "}

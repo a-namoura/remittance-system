@@ -881,11 +881,7 @@ export default function Register() {
                 </div>
               </div>
 
-              {countryLoading && (
-                <p className="mt-1 text-xs text-gray-500">
-                  Loading countries...
-                </p>
-              )}
+              {countryLoading && <PageLoading>Loading countries</PageLoading>}
             </div>
 
             <div>

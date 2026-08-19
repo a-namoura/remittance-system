@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import ConnectWalletButton from "../components/ConnectWalletButton.jsx";
-import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
+import { LoadingIcon, PageContainer, PageError, PageHeader, PageLoading } from "../components/PageLayout.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import { getWalletBalance } from "../services/transactionApi.js";
 import {
@@ -256,7 +256,7 @@ export default function Account() {
 
   if (loading) {
     return (
-      <PageContainer className="text-sm text-gray-600">Loading account...</PageContainer>
+      <PageContainer><PageLoading>Loading account</PageLoading></PageContainer>
     );
   }
 
@@ -298,7 +298,7 @@ export default function Account() {
               <div>
                 Balance:{" "}
                 {balanceLoading
-                  ? "Loading..."
+                  ? <LoadingIcon label="Loading balance" />
                   : hasBalanceValue
                     ? balanceValue.toFixed(4)
                     : "-"}

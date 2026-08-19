@@ -1264,7 +1264,7 @@ export default function SendMoney() {
           {isSearchOpen && (
             <div className="relative z-30 mt-2 max-h-80 overflow-y-auto rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
               {(loadingFriends || loadingAccounts) && (
-                <div className="rounded-xl px-3 py-2 text-xs text-gray-500">Searching...</div>
+                <PageLoading>Searching recipients</PageLoading>
               )}
 
               {!(loadingFriends || loadingAccounts) && searchResults.length === 0 && (
@@ -1403,11 +1403,7 @@ export default function SendMoney() {
           </div>
 
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {loadingFriends && (
-              <div className="rounded-xl bg-white px-3 py-2 text-xs text-gray-500">
-                Loading contacts...
-              </div>
-            )}
+            {loadingFriends && <PageLoading>Loading contacts</PageLoading>}
 
             {!loadingFriends && quickFriends.length === 0 && (
               <div className="rounded-xl bg-white px-3 py-2 text-xs text-gray-500">
@@ -1511,7 +1507,7 @@ export default function SendMoney() {
             {!isAddressVerificationStep ? (
               <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
                 {balanceLoading ? (
-                  <p className="text-xs text-gray-500">Checking balance...</p>
+                  <PageLoading>Checking balance</PageLoading>
                 ) : Number.isFinite(availableBalance) ? (
                   <p className="text-xs text-gray-600">
                     Available balance:{" "}

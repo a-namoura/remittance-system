@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
+import { PageLoading } from "./PageLayout.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import { requireAuthToken } from "../services/session.js";
 
@@ -60,9 +61,7 @@ export default function AdminRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-10 text-sm text-gray-600">
-        Checking admin permissions...
-      </div>
+      <PageLoading className="px-6 py-10">Checking admin permissions</PageLoading>
     );
   }
 

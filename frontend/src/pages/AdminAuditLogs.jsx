@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
+import { PageContainer, PageError, PageHeader, PageLoading } from "../components/PageLayout.jsx";
 import { apiRequest } from "../services/api.js";
 import { requireAuthToken } from "../services/session.js";
 import { formatDateTime } from "../utils/datetime.js";
@@ -61,7 +61,7 @@ export default function AdminAuditLogs() {
 
       <div className="bg-white border rounded-xl divide-y">
         {loading && !error && (
-          <div className="p-3 text-sm text-gray-600">Loading audit logs...</div>
+          <PageLoading>Loading audit logs</PageLoading>
         )}
 
         {!loading && logs.length === 0 && !error && (

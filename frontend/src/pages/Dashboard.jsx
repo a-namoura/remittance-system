@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  LoadingIcon,
   PageContainer,
   PageError,
   PageHeader,
@@ -399,7 +400,7 @@ export default function Dashboard() {
                 <div>
                   {nativeCurrency || FALLBACK_NATIVE_CURRENCY} balance:{" "}
                   {showBalanceLoading
-                    ? "Loading..."
+                    ? <LoadingIcon label="Loading balance" />
                     : hasDisplayBalance
                       ? `${displayBalance.toFixed(4)} ${nativeCurrency}`
                       : "-"}
@@ -407,7 +408,7 @@ export default function Dashboard() {
                 <div>
                   Fiat equivalent:{" "}
                   {showFiatLoading
-                    ? "Loading..."
+                    ? <LoadingIcon label="Loading fiat balance" />
                     : hasFiatBalance
                       ? `~ ${fiatBalanceUsd.toFixed(2)} USD`
                       : "-"}

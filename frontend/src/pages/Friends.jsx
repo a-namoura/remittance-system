@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
+import { PageContainer, PageError, PageHeader, PageLoading } from "../components/PageLayout.jsx";
 import { createFriend, deleteFriend, listFriends } from "../services/friendApi.js";
 import { getCurrentUser } from "../services/authApi.js";
 import { requireAuthToken } from "../services/session.js";
@@ -334,9 +334,7 @@ export default function Friends() {
       </div>
 
       {loading ? (
-        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-600">
-          Loading contacts...
-        </div>
+        <PageLoading>Loading contacts</PageLoading>
       ) : filteredFriends.length === 0 ? (
         <div className="rounded-2xl border bg-white p-8 text-center">
           <p className="text-base font-medium text-gray-900">
@@ -441,9 +439,7 @@ export default function Friends() {
                 />
 
                 <div className="mt-2 max-h-32 space-y-1 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-2">
-                  {accountLoading && (
-                    <p className="px-1 py-1 text-xs text-gray-500">Searching...</p>
-                  )}
+                  {accountLoading && <PageLoading>Searching accounts</PageLoading>}
 
                   {!accountLoading && accountResults.length === 0 && (
                     <p className="px-1 py-1 text-xs text-gray-500">

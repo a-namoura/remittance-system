@@ -111,7 +111,15 @@ export function PageLoading({ children = "Loading...", className = "" }) {
       role="status"
       aria-label={label}
     >
-      <span className="app-page-spinner" aria-hidden="true" />
+      <LoadingIcon label={label} />
     </div>
+  );
+}
+
+export function LoadingIcon({ label = "Loading", className = "" }) {
+  return (
+    <span role="status" aria-label={label} className={joinClasses("inline-flex", className)}>
+      <span className="app-page-spinner" aria-hidden="true" />
+    </span>
   );
 }

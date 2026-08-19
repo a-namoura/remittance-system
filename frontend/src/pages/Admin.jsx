@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { PageContainer, PageError, PageHeader } from "../components/PageLayout.jsx";
+import { PageContainer, PageError, PageHeader, PageLoading } from "../components/PageLayout.jsx";
 import { apiRequest } from "../services/api.js";
 import { requireAuthToken } from "../services/session.js";
 import { formatDateOnly, formatDateTime } from "../utils/datetime.js";
@@ -212,7 +212,7 @@ export default function Admin() {
         <h2 className="text-sm font-semibold text-gray-800">Overview</h2>
 
         {loading && !summary && (
-          <div className="text-xs text-gray-500">Loading summary...</div>
+          <PageLoading>Loading summary</PageLoading>
         )}
 
         {summary && (
@@ -248,7 +248,7 @@ export default function Admin() {
         {usersError && <div className="text-xs text-red-600">{usersError}</div>}
 
         {loading && users.length === 0 ? (
-          <div className="text-xs text-gray-500">Loading users...</div>
+          <PageLoading>Loading users</PageLoading>
         ) : users.length === 0 ? (
           <div className="text-xs text-gray-500">No users found yet.</div>
         ) : (
@@ -330,7 +330,7 @@ export default function Admin() {
         </div>
 
         {loading && transactions.length === 0 ? (
-          <div className="text-xs text-gray-500">Loading transactions...</div>
+          <PageLoading>Loading transactions</PageLoading>
         ) : transactions.length === 0 ? (
           <div className="text-xs text-gray-500">
             No transactions recorded yet.
