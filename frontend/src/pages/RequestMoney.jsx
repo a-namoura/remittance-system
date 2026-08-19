@@ -18,26 +18,18 @@ import {
 import { copyText, getQrImageUrl } from "../utils/paylink.js";
 import { useSuccessTransitionMessage } from "../utils/successTransition.js";
 import { CopyIcon, ShareIcon } from "../components/ActionIcons.jsx";
+import AmountInput from "../components/AmountInput.jsx";
+import { createPaymentRequestLink, revokePaymentRequestLink } from "../services/transactionApi.js";
+import { createPaymentCommitment, encryptRequestPayload } from "../utils/requestLinkCrypto.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
-function buildRequestLink({ walletAddress, amountEth, note, username }) {
-  const params = new URLSearchParams();
-  params.set("request", "1");
-  params.set("to", walletAddress);
-  params.set("amount", amountEth);
-
-  const normalizedNote = String(note || "").trim();
-  if (normalizedNote) params.set("note", normalizedNote);
-
-  const normalizedUsername = String(username || "").trim();
-  if (normalizedUsername) params.set("from", normalizedUsername);
-
+function buildRequestLink(requestToken, encryptionKey) {
   const origin =
     typeof window !== "undefined" && window.location?.origin
       ? window.location.origin
       : "";
 
-  return `${origin}/send?${params.toString()}`;
+  return `${origin}/send/${encodeURIComponent(requestToken)}#${encryptionKey}`;
 }
 
 export default function RequestMoney() {
@@ -48,6 +40,7 @@ export default function RequestMoney() {
   const [linkAmount, setLinkAmount] = useState("");
   const [linkNote, setLinkNote] = useState("");
   const [generatedLink, setGeneratedLink] = useState("");
+  const [generatedRequestToken, setGeneratedRequestToken] = useState("");
   const [linkError, setLinkError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({ amount: "" });
   const [linkCopied, setLinkCopied] = useState(false);
@@ -110,7 +103,7 @@ export default function RequestMoney() {
     Number.isFinite(requestAmountValue) && requestAmountValue > 0;
   const canSubmitRequestLink = Boolean(canGenerateLink && hasPositiveRequestAmount);
 
-  function handleGenerateLink() {
+  async function handleGenerateLink() {
     const amount = requestAmountValue;
     const nextFieldErrors = { amount: "" };
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -131,15 +124,41 @@ export default function RequestMoney() {
     setLinkError("");
     setLinkCopied(false);
 
-    const link = buildRequestLink({
-      walletAddress: walletState.address,
-      amountEth: String(amount),
-      note: linkNote,
-      username: me?.username || "",
-    });
+    const token = requireAuthToken();
+    if (!token) {
+      setLinkError("You must be logged in.");
+      return;
+    }
 
-    setGeneratedLink(link);
-    showLinkSuccess("Link created");
+    try {
+      const payment = {
+        walletAddress: walletState.address,
+        amount: String(amount),
+        assetSymbol: String(me?.wallet?.balanceSymbol || "BNB").toUpperCase(),
+      };
+      const { commitmentKey, paymentCommitment } = await createPaymentCommitment(payment);
+      const { encryptedPayload, encryptionKey } = await encryptRequestPayload({
+        ...payment,
+        username: String(me?.username || ""),
+        note: String(linkNote || "").trim(),
+        commitmentKey,
+      });
+      const response = await createPaymentRequestLink({
+        token,
+        encryptedPayload,
+        paymentCommitment,
+        assetSymbol: String(me?.wallet?.balanceSymbol || "BNB").toUpperCase(),
+      });
+      const requestToken = String(response.requestToken || "").trim();
+      if (!requestToken) throw new Error("Could not create request link.");
+      setGeneratedLink(buildRequestLink(requestToken, encryptionKey));
+      setGeneratedRequestToken(requestToken);
+      showLinkSuccess("Link created");
+    } catch (err) {
+      setGeneratedLink("");
+      setGeneratedRequestToken("");
+      setLinkError(getUserErrorMessage(err, "Failed to generate request link."));
+    }
   }
 
   async function handleCopyLink() {
@@ -168,6 +187,19 @@ export default function RequestMoney() {
       }
     }
     await handleCopyLink();
+  }
+
+  async function handleRevokeLink() {
+    const authToken = requireAuthToken();
+    if (!authToken || !generatedRequestToken) return;
+    try {
+      await revokePaymentRequestLink({ token: generatedRequestToken, authToken });
+      setGeneratedLink("");
+      setGeneratedRequestToken("");
+      showLinkSuccess("Link revoked");
+    } catch (err) {
+      setLinkError(getUserErrorMessage(err, "Failed to revoke request link."));
+    }
   }
 
   return (
@@ -202,13 +234,10 @@ export default function RequestMoney() {
               <label className={FORM_FIELD_LABEL_CLASS}>
                 Amount (required)
               </label>
-              <input
-                type="number"
-                min="0"
-                step="0.0001"
+              <AmountInput
                 value={linkAmount}
-                onChange={(event) => {
-                  setLinkAmount(event.target.value);
+                onValueChange={(value) => {
+                  setLinkAmount(value);
                   setFieldErrors((current) => ({ ...current, amount: "" }));
                 }}
                 placeholder="0.00"
@@ -269,6 +298,13 @@ export default function RequestMoney() {
                 >
                   <ShareIcon />
                   Share
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRevokeLink}
+                  className={`inline-flex h-10 min-w-28 items-center justify-center ${FORM_INLINE_SECONDARY_BUTTON_CLASS}`}
+                >
+                  Revoke
                 </button>
               </div>
 

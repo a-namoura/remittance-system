@@ -49,6 +49,7 @@ const PROTECTED_ROUTES = [
   { path: "/request-money", element: <Navigate to="/request" replace /> },
   { path: "/chat", element: <Chat /> },
   { path: "/send", element: <SendMoney /> },
+  { path: "/send/:requestToken", element: <SendMoney /> },
   { path: "/send-money", element: <Navigate to="/send" replace /> },
   { path: "/transactions", element: <Transactions /> },
   { path: "/transactions/:id", element: <TransactionDetails /> },

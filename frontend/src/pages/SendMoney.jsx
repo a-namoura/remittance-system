@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   FieldError,
   PageContainer,
@@ -15,6 +15,9 @@ import { createFriend, listFriends } from "../services/friendApi.js";
 import {
   createTransferLink,
   pollTransactionUntilSettled,
+  resolvePaymentRequestLink,
+  reservePaymentRequestLink,
+  releasePaymentRequestLink,
   sendPaymentVerificationCode,
   sendTransaction,
   submitConnectedWalletTransfer,
@@ -38,8 +41,16 @@ import { copyText, getQrImageUrl, shortWallet } from "../utils/paylink.js";
 import { FALLBACK_NATIVE_CURRENCY, nativeCurrencyFrom } from "../utils/currency.js";
 import { useTransitionNotification } from "../utils/successTransition.js";
 import { CopyIcon, ShareIcon } from "../components/ActionIcons.jsx";
+import VerificationCodeButton from "../components/VerificationCodeButton.jsx";
+import WalletApprovalStatus from "../components/WalletApprovalStatus.jsx";
+import AmountInput from "../components/AmountInput.jsx";
+import { isAllowedAmountValue } from "../utils/amount.js";
+import useCountdown from "../hooks/useCountdown.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
+import { decryptRequestPayload } from "../utils/requestLinkCrypto.js";
+const RESEND_DELAY = 30;
+
 const PAYMENT_OPTIONS = [
   { id: "bank", label: "Bank" },
   { id: "card", label: "Card" },
@@ -272,6 +283,7 @@ function initialsFromLabel(label) {
 
 export default function SendMoney() {
   const navigate = useNavigate();
+  const { requestToken: pathRequestToken } = useParams();
   const [searchParams] = useSearchParams();
   const [me, setMe] = useState(null);
 
@@ -297,6 +309,7 @@ export default function SendMoney() {
   const [manualAddress, setManualAddress] = useState("");
   const [amountEth, setAmountEth] = useState("");
   const [sending, setSending] = useState(false);
+  const [awaitingWalletApproval, setAwaitingWalletApproval] = useState(false);
   const [pendingTransaction, setPendingTransaction] = useState(null);
   const [methodError, setMethodError] = useState("");
   const [methodSuccess, setMethodSuccess] = useState("");
@@ -312,10 +325,16 @@ export default function SendMoney() {
   const [generatedLink, setGeneratedLink] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
   const [requestPrefillDone, setRequestPrefillDone] = useState(false);
+  const [requestCommitmentKey, setRequestCommitmentKey] = useState("");
+  const [requestDetails, setRequestDetails] = useState(null);
+  const [requestEncryptionKey] = useState(() =>
+    typeof window !== "undefined" ? window.location.hash.replace(/^#/, "").trim() : ""
+  );
   const [verificationCode, setVerificationCode] = useState("");
   const [verificationChannel, setVerificationChannel] = useState("email");
   const [verificationDestination, setVerificationDestination] = useState("");
   const [codeSending, setCodeSending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useCountdown();
   const [fieldErrors, setFieldErrors] = useState({
     destination: "",
     amount: "",
@@ -325,9 +344,16 @@ export default function SendMoney() {
   const pendingPollRef = useRef(null);
 
   const friendParam = searchParams.get("friend");
-  const requestToParam = String(searchParams.get("to") || "").trim();
-  const requestAmountParam = String(searchParams.get("amount") || "").trim();
-  const requestFromParam = String(searchParams.get("from") || "").trim();
+  const requestTokenParam = String(pathRequestToken || searchParams.get("requestToken") || "").trim();
+  // Temporary reader for links generated before encrypted request links shipped.
+  const legacyRequestTo = String(searchParams.get("to") || "").trim();
+  const legacyRequestAmount = String(searchParams.get("amount") || "").trim();
+  const legacyRequestFrom = String(searchParams.get("from") || "").trim();
+
+  useEffect(() => {
+    if (!requestEncryptionKey || typeof window === "undefined") return;
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}`);
+  }, [requestEncryptionKey]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -443,27 +469,78 @@ export default function SendMoney() {
   }, [friendParam, friends, selectedRecipient]);
 
   useEffect(() => {
-    if (requestPrefillDone) return;
-    if (!requestToParam || !isValidEvmAddress(requestToParam)) return;
+    if (requestPrefillDone || !requestTokenParam) return;
+    let isCancelled = false;
 
+    async function loadRequestLink() {
+      const authToken = requireAuthToken();
+      if (!authToken) return;
+      try {
+        const requestLink = await resolvePaymentRequestLink({
+          token: requestTokenParam,
+          authToken,
+        });
+        if (isCancelled) return;
+        if (requestLink.status !== "active") {
+          throw new Error(`This payment request is ${requestLink.status || "unavailable"}.`);
+        }
+        if (!requestEncryptionKey) throw new Error("The request decryption key is missing.");
+        const payload = await decryptRequestPayload(
+          requestLink.encryptedPayload,
+          requestEncryptionKey
+        );
+        if (isCancelled) return;
+        setRequestPrefillDone(true);
+        const walletAddress = String(payload.walletAddress || "").trim();
+        const requestedAmount = String(payload.amount || "").trim();
+        if (!isValidEvmAddress(walletAddress)) {
+          throw new Error("The request link contains an invalid destination.");
+        }
+        setActiveMethod("address");
+        setManualAddress(walletAddress);
+        if (isAllowedAmountValue(requestedAmount) && Number(requestedAmount) > 0) {
+          setAmountEth(requestedAmount);
+        }
+        setLinkNote(String(payload.note || ""));
+        setRequestCommitmentKey(String(payload.commitmentKey || ""));
+        setRequestDetails({
+          username: String(payload.username || "").trim(),
+          note: String(payload.note || "").trim(),
+          assetSymbol: String(payload.assetSymbol || requestLink.assetSymbol || "").toUpperCase(),
+        });
+        setMethodSuccess("Request link loaded. Confirm method details and send when ready.");
+        setMethodError("");
+      } catch (err) {
+        if (!isCancelled) {
+          setRequestPrefillDone(true);
+          setActiveMethod("address");
+          setMethodSuccess("");
+          setMethodError(getUserErrorMessage(err, "Unable to load request link."));
+        }
+      }
+    }
+
+    loadRequestLink();
+    return () => {
+      isCancelled = true;
+    };
+  }, [requestEncryptionKey, requestPrefillDone, requestTokenParam]);
+
+  useEffect(() => {
+    if (requestTokenParam || requestPrefillDone || !isValidEvmAddress(legacyRequestTo)) return;
     const prefillId = window.setTimeout(() => {
       setRequestPrefillDone(true);
       setActiveMethod("address");
-      setManualAddress(requestToParam);
-
-      const parsedRequestedAmount = Number(requestAmountParam);
-      if (Number.isFinite(parsedRequestedAmount) && parsedRequestedAmount > 0) {
-        setAmountEth(String(parsedRequestedAmount));
+      setManualAddress(legacyRequestTo);
+      if (isAllowedAmountValue(legacyRequestAmount) && Number(legacyRequestAmount) > 0) {
+        setAmountEth(legacyRequestAmount);
       }
-
-      const requestedBy = requestFromParam ? ` from @${requestFromParam}` : "";
-      setMethodSuccess(
-        `Request link loaded${requestedBy}. Confirm method details and send when ready.`
-      );
+      const requestedBy = legacyRequestFrom ? ` from @${legacyRequestFrom}` : "";
+      setMethodSuccess(`Legacy request link loaded${requestedBy}. Confirm details before paying.`);
       setMethodError("");
     }, 0);
     return () => window.clearTimeout(prefillId);
-  }, [requestPrefillDone, requestToParam, requestAmountParam, requestFromParam]);
+  }, [legacyRequestAmount, legacyRequestFrom, legacyRequestTo, requestPrefillDone, requestTokenParam]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -611,6 +688,7 @@ export default function SendMoney() {
     setMethodSuccess("");
     setVerificationCode("");
     setVerificationDestination("");
+    setResendCooldown(0);
     setFieldErrors({ destination: "", amount: "", code: "" });
     setIsSearchOpen(false);
   }
@@ -620,6 +698,7 @@ export default function SendMoney() {
     setSearch("");
     setVerificationCode("");
     setVerificationDestination("");
+    setResendCooldown(0);
     setMethodError("");
     setMethodSuccess("");
     setFieldErrors({ destination: "", amount: "", code: "" });
@@ -634,6 +713,7 @@ export default function SendMoney() {
     setLinkCopied(false);
     setVerificationCode("");
     setVerificationDestination("");
+    setResendCooldown(0);
     setVerificationChannel("email");
     setMethodError("");
     setMethodSuccess("");
@@ -658,6 +738,15 @@ export default function SendMoney() {
 
   function cancelTransferSummary() {
     closeMethod();
+  }
+
+  function handleVerificationChannelChange(event) {
+    setVerificationChannel(event.target.value);
+    setVerificationCode("");
+    setVerificationDestination("");
+    setResendCooldown(0);
+    setMethodError("");
+    setFieldErrors((current) => ({ ...current, code: "" }));
   }
 
   function selectedRecipientWallet() {
@@ -817,8 +906,9 @@ export default function SendMoney() {
 
     if (String(status).toLowerCase() === "success") {
       const message = appendTransactionHash("Transfer confirmed.", transaction);
-      setMethodSuccess(message);
+      setMethodSuccess("");
       showTransactionNotification(message, { variant: "success" });
+      closeMethod();
     }
   }
 
@@ -831,7 +921,7 @@ export default function SendMoney() {
     pendingPollRef.current = controller;
 
     setPendingTransaction(transaction);
-    setMethodSuccess("Transfer submitted. Waiting for confirmation...");
+    setMethodSuccess("");
 
     try {
       const settledTransaction = await pollTransactionUntilSettled({
@@ -905,14 +995,24 @@ export default function SendMoney() {
     }
 
     let walletTxHash = "";
+    let requestReserved = false;
     try {
       transferSubmittingRef.current = true;
       setSending(true);
+      if (requestTokenParam) {
+        await reservePaymentRequestLink({
+          token: requestTokenParam, authToken: token, commitmentKey: requestCommitmentKey,
+          receiverWallet: details.wallet, amountEth: details.amount, assetSymbol: nativeCurrency,
+        });
+        requestReserved = true;
+      }
+      setAwaitingWalletApproval(true);
       const txHash = await submitConnectedWalletTransfer({
         senderWallet: me?.wallet?.address,
         receiverWallet: details.wallet,
         amountEth: details.amount,
       });
+      setAwaitingWalletApproval(false);
       walletTxHash = txHash;
       const result = await sendTransaction({
         token,
@@ -921,12 +1021,18 @@ export default function SendMoney() {
         verificationCode: normalizedCode,
         assetSymbol: nativeCurrency,
         txHash,
+        requestToken: requestTokenParam || undefined,
+        commitmentKey: requestCommitmentKey || undefined,
       });
+      requestReserved = false;
 
       handleTransactionResult(result, token);
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
+      if (requestReserved && !walletTxHash) {
+        await releasePaymentRequestLink({ token: requestTokenParam, authToken: token }).catch(() => {});
+      }
       const message = walletTxHash
         ? `Transaction succeeded on-chain (${walletTxHash}), but the app could not synchronize it yet.`
         : getUserErrorMessage(err, "Failed to send transaction.");
@@ -934,6 +1040,7 @@ export default function SendMoney() {
       showTransactionNotification(message, { variant: "error" });
     } finally {
       transferSubmittingRef.current = false;
+      setAwaitingWalletApproval(false);
       setSending(false);
     }
   }
@@ -970,14 +1077,24 @@ export default function SendMoney() {
     }
 
     let walletTxHash = "";
+    let requestReserved = false;
     try {
       transferSubmittingRef.current = true;
       setSending(true);
+      if (requestTokenParam) {
+        await reservePaymentRequestLink({
+          token: requestTokenParam, authToken: token, commitmentKey: requestCommitmentKey,
+          receiverWallet: details.destination, amountEth: details.amount, assetSymbol: nativeCurrency,
+        });
+        requestReserved = true;
+      }
+      setAwaitingWalletApproval(true);
       const txHash = await submitConnectedWalletTransfer({
         senderWallet: me?.wallet?.address,
         receiverWallet: details.destination,
         amountEth: details.amount,
       });
+      setAwaitingWalletApproval(false);
       walletTxHash = txHash;
       const result = await sendTransaction({
         token,
@@ -986,12 +1103,18 @@ export default function SendMoney() {
         verificationCode: normalizedCode,
         assetSymbol: nativeCurrency,
         txHash,
+        requestToken: requestTokenParam || undefined,
+        commitmentKey: requestCommitmentKey || undefined,
       });
+      requestReserved = false;
 
       handleTransactionResult(result, token);
       setVerificationCode("");
       setVerificationDestination("");
     } catch (err) {
+      if (requestReserved && !walletTxHash) {
+        await releasePaymentRequestLink({ token: requestTokenParam, authToken: token }).catch(() => {});
+      }
       const message = walletTxHash
         ? `Transaction succeeded on-chain (${walletTxHash}), but the app could not synchronize it yet.`
         : getUserErrorMessage(err, "Failed to send transaction.");
@@ -999,6 +1122,7 @@ export default function SendMoney() {
       showTransactionNotification(message, { variant: "error" });
     } finally {
       transferSubmittingRef.current = false;
+      setAwaitingWalletApproval(false);
       setSending(false);
     }
   }
@@ -1066,7 +1190,7 @@ export default function SendMoney() {
         typeof window !== "undefined" && window.location?.origin
           ? window.location.origin
           : "";
-      const url = `${origin}/claim-transfer?token=${encodeURIComponent(claimToken)}`;
+      const url = `${origin}/claim-transfer#token=${encodeURIComponent(claimToken)}`;
       setGeneratedLink(url);
       setMethodSuccess("Link created. Share it with the receiver to claim funds.");
       showTransactionNotification("Link created", { variant: "success" });
@@ -1131,7 +1255,9 @@ export default function SendMoney() {
         token,
         verificationChannel,
       });
+      setVerificationCode("");
       setVerificationDestination(String(response?.destination || "").trim());
+      setResendCooldown(RESEND_DELAY);
       if (activeMethod === "address") {
         setMethodSuccess("");
       } else {
@@ -1204,8 +1330,6 @@ export default function SendMoney() {
     amountWithinBalance &&
     !isSelectedWalletSelf;
   const verificationCodeReady = String(verificationCode || "").trim().length >= 6;
-  const canSendAddressCode = addressFieldsReady && !codeSending;
-  const canSendDirectCode = directFieldsReady && !codeSending;
   const canSubmitAddressTransfer =
     addressFieldsReady && Boolean(verificationDestination) && verificationCodeReady;
   const canSubmitDirectTransfer =
@@ -1403,7 +1527,7 @@ export default function SendMoney() {
           </div>
 
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {loadingFriends && <PageLoading>Loading contacts</PageLoading>}
+            {loadingFriends && !isSearchOpen && <PageLoading>Loading contacts</PageLoading>}
 
             {!loadingFriends && quickFriends.length === 0 && (
               <div className="rounded-xl bg-white px-3 py-2 text-xs text-gray-500">
@@ -1573,6 +1697,7 @@ export default function SendMoney() {
                         <input
                           type="text"
                           value={manualAddress}
+                          readOnly={Boolean(requestTokenParam)}
                           onChange={(event) => {
                             setManualAddress(event.target.value);
                             setVerificationCode("");
@@ -1594,13 +1719,11 @@ export default function SendMoney() {
                       <label className={FORM_FIELD_LABEL_CLASS}>
                         Amount
                       </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.0001"
+                      <AmountInput
                         value={amountEth}
-                        onChange={(event) => {
-                          setAmountEth(event.target.value);
+                        disabled={Boolean(requestTokenParam)}
+                        onValueChange={(value) => {
+                          setAmountEth(value);
                           setVerificationCode("");
                           setVerificationDestination("");
                           setFieldErrors((current) => ({
@@ -1640,6 +1763,15 @@ export default function SendMoney() {
                           Transaction summary
                         </p>
                         <div className="mt-2 grid gap-2 text-xs">
+                          {requestTokenParam ? (
+                            <div>
+                              <p className="text-gray-500">Requested by</p>
+                              <p className="font-semibold text-gray-900">
+                                {requestDetails?.username ? `@${requestDetails.username}` : "Verified request-link holder"}
+                              </p>
+                              {requestDetails?.note ? <p className="text-gray-600">{requestDetails.note}</p> : null}
+                            </div>
+                          ) : null}
                           <div>
                             <p className="text-gray-500">Receiver</p>
                             <p className="font-semibold text-gray-900">
@@ -1679,21 +1811,21 @@ export default function SendMoney() {
                         </label>
                         <select
                           value={verificationChannel}
-                          onChange={(event) => setVerificationChannel(event.target.value)}
+                          onChange={handleVerificationChannelChange}
                           className={FORM_SELECT_BASE_CLASS}
                         >
                           <option value="email">Email</option>
                           {canUsePhoneVerification ? <option value="phone">Phone</option> : null}
                         </select>
                       </div>
-                      <button
-                        type="button"
+                      <VerificationCodeButton
                         onClick={handleSendCode}
-                        disabled={!canSendAddressCode}
+                        busy={codeSending}
+                        cooldown={resendCooldown}
+                        disabled={!addressFieldsReady}
+                        hasSent={Boolean(verificationDestination)}
                         className={`inline-flex h-10 min-w-28 items-center justify-center gap-2 ${FORM_INLINE_SECONDARY_BUTTON_CLASS}`}
-                      >
-                        {codeSending ? "Sending code..." : "Send code"}
-                      </button>
+                      />
                     </div>
 
                     {verificationDestination ? (
@@ -1731,10 +1863,16 @@ export default function SendMoney() {
                           disabled={sending || !canSubmitAddressTransfer}
                           className={FORM_INLINE_PRIMARY_BUTTON_CLASS}
                         >
-                          {sending ? "Sending..." : "Confirm and send"}
+                          {awaitingWalletApproval
+                            ? "Check your wallet provider"
+                            : sending
+                              ? "Finalizing transaction..."
+                              : "Confirm and send"}
                         </button>
                       </div>
                     ) : null}
+
+                    <WalletApprovalStatus visible={awaitingWalletApproval} />
 
                     <button
                       type="button"
@@ -1753,13 +1891,10 @@ export default function SendMoney() {
               <form onSubmit={handleSendDirect} className="mt-4 space-y-3">
                 <div>
                   <label className={FORM_FIELD_LABEL_CLASS}>Amount</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.0001"
+                  <AmountInput
                     value={amountEth}
-                    onChange={(event) => {
-                      setAmountEth(event.target.value);
+                    onValueChange={(value) => {
+                      setAmountEth(value);
                       setFieldErrors((current) => ({
                         ...current,
                         amount: "",
@@ -1779,21 +1914,21 @@ export default function SendMoney() {
                     </label>
                     <select
                       value={verificationChannel}
-                      onChange={(event) => setVerificationChannel(event.target.value)}
+                      onChange={handleVerificationChannelChange}
                       className={FORM_SELECT_BASE_CLASS}
                     >
                       <option value="email">Email</option>
                       {canUsePhoneVerification ? <option value="phone">Phone</option> : null}
                     </select>
                   </div>
-                  <button
-                    type="button"
+                  <VerificationCodeButton
                     onClick={handleSendCode}
-                    disabled={!canSendDirectCode}
+                    busy={codeSending}
+                    cooldown={resendCooldown}
+                    disabled={!directFieldsReady}
+                    hasSent={Boolean(verificationDestination)}
                     className={FORM_INLINE_SECONDARY_BUTTON_CLASS}
-                  >
-                    {codeSending ? "Sending code..." : "Send code"}
-                  </button>
+                  />
                 </div>
 
                 {verificationDestination ? (
@@ -1832,8 +1967,13 @@ export default function SendMoney() {
                       disabled={sending || !canSubmitDirectTransfer}
                       className={`w-full ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                     >
-                      {sending ? "Sending..." : "Send now"}
+                      {awaitingWalletApproval
+                        ? "Check your wallet provider"
+                        : sending
+                          ? "Finalizing transaction..."
+                          : "Send now"}
                     </button>
+                    <WalletApprovalStatus visible={awaitingWalletApproval} />
                   </>
                 ) : null}
               </form>
@@ -1843,13 +1983,10 @@ export default function SendMoney() {
               <form onSubmit={handleGenerateClaimLink} className="mt-4 space-y-3">
                 <div>
                   <label className={FORM_FIELD_LABEL_CLASS}>Amount</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.0001"
+                  <AmountInput
                     value={amountEth}
-                    onChange={(event) => {
-                      setAmountEth(event.target.value);
+                    onValueChange={(value) => {
+                      setAmountEth(value);
                       setFieldErrors((current) => ({
                         ...current,
                         amount: "",

@@ -22,7 +22,11 @@ import { isValidEvmAddress } from "../utils/security.js";
 import { getUserErrorMessage } from "../utils/userError.js";
 export default function ClaimTransfer() {
   const [searchParams] = useSearchParams();
-  const token = String(searchParams.get("token") || "").trim();
+  const token = String(
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("token")
+      : "") || searchParams.get("token") || ""
+  ).trim();
 
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");

@@ -11,6 +11,11 @@ test("redact removes credentials and sensitive fields", () => {
   assert.match(value.message, /token=\[REDACTED\]/);
 });
 
+test("redact removes payment-link tokens embedded in URL paths", () => {
+  const token = `req_${"a".repeat(64)}`;
+  assert.equal(redact(`/send/${token}`), "/send/[REDACTED_LINK_TOKEN]");
+});
+
 test("production external URLs must use HTTPS", () => {
   const saved = { node: process.env.NODE_ENV, frontend: process.env.FRONTEND_URL, api: process.env.API_URL };
   process.env.NODE_ENV = "production";

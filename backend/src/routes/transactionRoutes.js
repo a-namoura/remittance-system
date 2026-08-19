@@ -10,6 +10,7 @@ import {
 import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
 import { PaymentLink } from "../models/PaymentLink.js";
+import { PaymentRequestLink } from "../models/PaymentRequestLink.js";
 import { User } from "../models/User.js";
 import {
   logAudit,
@@ -46,11 +47,14 @@ import {
   rejectOutOfRangeTransferAmount,
 } from "../utils/transferLimits.js";
 import { updateStoredWalletBalance } from "../utils/walletBalances.js";
+import { sensitiveRateLimit } from "../middleware/sensitiveRateLimit.js";
 
 export const transactionRouter = express.Router();
 
 const DEFAULT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_ASSET_SYMBOL = getNativeAssetSymbol();
+const requestLinkReadLimit = sensitiveRateLimit({ windowMs: 5 * 60_000, max: 30 });
+const requestLinkWriteLimit = sensitiveRateLimit({ windowMs: 5 * 60_000, max: 12 });
 export const MY_TRANSACTION_STATUSES = Object.freeze([
   "pending",
   "success",
@@ -264,6 +268,38 @@ function hashLinkToken(token) {
   return crypto.createHash("sha256").update(String(token)).digest("hex");
 }
 
+function hashPurposeBoundLinkToken(purpose, token) {
+  return crypto
+    .createHash("sha256")
+    .update(`${purpose}:${String(token)}`)
+    .digest("hex");
+}
+
+function canonicalRequestPayment({ receiverWallet, amount, assetSymbol }) {
+  return [
+    String(receiverWallet || "").trim().toLowerCase(),
+    String(Number(amount)),
+    String(assetSymbol || "").trim().toUpperCase(),
+  ].join("|");
+}
+
+function hashRequestPayment(payment) {
+  return crypto.createHash("sha256").update(canonicalRequestPayment(payment)).digest("hex");
+}
+
+function verifyRequestPaymentCommitment(commitment, commitmentKey, payment) {
+  try {
+    const expected = Buffer.from(String(commitment || ""), "base64url");
+    const actual = crypto
+      .createHmac("sha256", Buffer.from(String(commitmentKey || ""), "base64url"))
+      .update(canonicalRequestPayment(payment))
+      .digest();
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  } catch {
+    return false;
+  }
+}
+
 function isLinkExpired(linkDoc) {
   return new Date(linkDoc.expiresAt).getTime() <= Date.now();
 }
@@ -314,6 +350,208 @@ transactionRouter.post(
   }
 );
 
+// Request links use their own purpose-bound token namespace and collection.
+// They never put a username or wallet address in the shared URL.
+transactionRouter.post(
+  "/request-link",
+  protect,
+  requestLinkWriteLimit,
+  allowQueryFields([]),
+  allowBodyFields(["encryptedPayload", "paymentCommitment", "assetSymbol"]),
+  async (req, res, next) => {
+    try {
+      const encryptedPayload = String(req.body?.encryptedPayload || "").trim();
+      const paymentCommitment = String(req.body?.paymentCommitment || "").trim();
+      const assetSymbol = normalizeTransferAssetSymbol(req.body?.assetSymbol);
+      if (!encryptedPayload || encryptedPayload.length > 8192) {
+        res.status(400);
+        throw new Error("A valid encrypted request payload is required.");
+      }
+      if (!/^[A-Za-z0-9_-]{43}$/.test(paymentCommitment)) {
+        res.status(400);
+        throw new Error("A valid payment commitment is required.");
+      }
+
+      const walletDoc = await Wallet.findOne({
+        userId: req.user._id,
+        isVerified: true,
+      })
+        .select("address")
+        .lean();
+      if (!walletDoc?.address) {
+        res.status(400);
+        throw new Error("You must link and verify a wallet before creating a request link.");
+      }
+
+      const token = `req_${crypto.randomBytes(32).toString("hex")}`;
+      const expiresAt = new Date(Date.now() + DEFAULT_LINK_TTL_MS);
+      await PaymentRequestLink.create({
+        requesterUserId: req.user._id,
+        tokenHash: hashPurposeBoundLinkToken("request", token),
+        encryptedPayload,
+        paymentCommitment,
+        assetSymbol,
+        expiresAt,
+      });
+
+      res.status(201).json({ ok: true, requestToken: token, expiresAt });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+transactionRouter.post(
+  "/request-link/resolve",
+  protect,
+  requestLinkReadLimit,
+  allowQueryFields([]),
+  allowBodyFields(["token", "commitmentKey", "receiverWallet", "amountEth", "assetSymbol"]),
+  async (req, res, next) => {
+    try {
+      const token = String(req.body?.token || "").trim();
+      const commitmentKey = String(req.body?.commitmentKey || "").trim();
+      const payment = {
+        receiverWallet: requireRouteEvmAddress(res, req.body?.receiverWallet, "receiverWallet"),
+        amount: Number(req.body?.amountEth),
+        assetSymbol: normalizeTransferAssetSymbol(req.body?.assetSymbol),
+      };
+      rejectInvalidTransferAmount(res, payment.amount);
+      rejectOutOfRangeTransferAmount(res, payment.amount);
+      if (!token || !token.startsWith("req_")) {
+        res.status(400);
+        throw new Error("A valid request token is required.");
+      }
+
+      const linkDoc = await PaymentRequestLink.findOne({
+        tokenHash: hashPurposeBoundLinkToken("request", token),
+      }).lean();
+      if (!linkDoc || linkDoc.status === "expired" || isLinkExpired(linkDoc)) {
+        if (linkDoc && linkDoc.status === "active") {
+          await PaymentRequestLink.updateOne({ _id: linkDoc._id, status: "active" }, { $set: { status: "expired" } });
+        }
+        res.status(410);
+        throw new Error("Payment request link is invalid or expired.");
+      }
+      if (linkDoc.status !== "active") {
+        return res.json({ ok: true, status: linkDoc.status, expiresAt: linkDoc.expiresAt });
+      }
+
+      res.json({
+        ok: true,
+        status: linkDoc.status,
+        encryptedPayload: linkDoc.encryptedPayload,
+        assetSymbol: linkDoc.assetSymbol || DEFAULT_ASSET_SYMBOL,
+        expiresAt: linkDoc.expiresAt,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+transactionRouter.post(
+  "/request-link/revoke",
+  protect,
+  requestLinkWriteLimit,
+  allowQueryFields([]),
+  allowBodyFields(["token"]),
+  async (req, res, next) => {
+    try {
+      const token = String(req.body?.token || "").trim();
+      if (!token.startsWith("req_")) {
+        res.status(400);
+        throw new Error("A valid request token is required.");
+      }
+      const linkDoc = await PaymentRequestLink.findOneAndUpdate(
+        {
+          requesterUserId: req.user._id,
+          tokenHash: hashPurposeBoundLinkToken("request", token),
+          status: "active",
+        },
+        { $set: { status: "revoked", revokedAt: new Date() } },
+        { returnDocument: "after" }
+      );
+      if (!linkDoc) {
+        res.status(404);
+        throw new Error("Active payment request link not found.");
+      }
+      res.json({ ok: true, status: "revoked" });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+transactionRouter.post(
+  "/request-link/reserve",
+  protect,
+  requestLinkWriteLimit,
+  allowQueryFields([]),
+  allowBodyFields(["token"]),
+  async (req, res, next) => {
+    try {
+      const token = String(req.body?.token || "").trim();
+      if (!token.startsWith("req_")) {
+        res.status(400);
+        throw new Error("A valid request token is required.");
+      }
+      const tokenHash = hashPurposeBoundLinkToken("request", token);
+      const candidate = await PaymentRequestLink.findOne({ tokenHash }).select("paymentCommitment").lean();
+      if (!candidate || (candidate.paymentCommitment && !verifyRequestPaymentCommitment(candidate.paymentCommitment, commitmentKey, payment))) {
+        res.status(400);
+        throw new Error("Payment details do not match the encrypted request.");
+      }
+      const staleBefore = new Date(Date.now() - 5 * 60 * 1000);
+      const linkDoc = await PaymentRequestLink.findOneAndUpdate(
+        {
+          tokenHash,
+          expiresAt: { $gt: new Date() },
+          $or: [
+            { status: "active" },
+            { status: "claiming", claimingAt: { $lte: staleBefore } },
+            { status: "claiming", paidByUserId: req.user._id },
+          ],
+        },
+        { $set: { status: "claiming", claimingAt: new Date(), paidByUserId: req.user._id, reservedPaymentHash: hashRequestPayment(payment) } },
+        { returnDocument: "after" }
+      );
+      if (!linkDoc) {
+        res.status(409);
+        throw new Error("Payment request is expired, revoked, paid, or reserved by another payer.");
+      }
+      res.json({ ok: true, status: "claiming" });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+transactionRouter.post(
+  "/request-link/release",
+  protect,
+  requestLinkWriteLimit,
+  allowQueryFields([]),
+  allowBodyFields(["token"]),
+  async (req, res, next) => {
+    try {
+      const token = String(req.body?.token || "").trim();
+      await PaymentRequestLink.updateOne(
+        {
+          tokenHash: hashPurposeBoundLinkToken("request", token),
+          status: "claiming",
+          paidByUserId: req.user._id,
+          transactionId: { $exists: false },
+        },
+        { $set: { status: "active" }, $unset: { paidByUserId: 1, claimingAt: 1, reservedPaymentHash: 1 } }
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // POST /api/transactions/link
 transactionRouter.post(
   "/link",
@@ -360,8 +598,8 @@ transactionRouter.post(
     );
     await rejectInsufficientNativeBalance(res, senderWallet, amountNumber);
 
-    const token = crypto.randomBytes(32).toString("hex");
-    const tokenHash = hashLinkToken(token);
+    const token = `snd_${crypto.randomBytes(32).toString("hex")}`;
+    const tokenHash = hashPurposeBoundLinkToken("send", token);
     const expiresAt = new Date(Date.now() + DEFAULT_LINK_TTL_MS);
 
     await PaymentLink.create({
@@ -400,7 +638,9 @@ transactionRouter.get(
       throw new Error("token is required.");
     }
 
-    const tokenHash = hashLinkToken(token);
+    const tokenHash = token.startsWith("snd_")
+      ? hashPurposeBoundLinkToken("send", token)
+      : hashLinkToken(token);
     const linkDoc = await PaymentLink.findOne({ tokenHash }).lean();
     if (!linkDoc) {
       res.status(404);
@@ -511,7 +751,9 @@ transactionRouter.post(
       "receiverWallet"
     );
 
-    const tokenHash = hashLinkToken(token);
+    const tokenHash = token.startsWith("snd_")
+      ? hashPurposeBoundLinkToken("send", token)
+      : hashLinkToken(token);
 
     linkDoc = await PaymentLink.findOneAndUpdate(
       { tokenHash, status: "active" },
@@ -720,6 +962,7 @@ export function createSendTransactionRouter({
   updateWalletBalance = updateStoredWalletBalance,
   walletModel = Wallet,
   transactionModel = Transaction,
+  requestLinkModel = PaymentRequestLink,
   logAttempt = logTransferAttempt,
   logResult = logTransferResult,
   createRequestKey = createTransferRequestKey,
@@ -744,13 +987,15 @@ export function createSendTransactionRouter({
   "/send",
   protectMiddleware,
   allowQueryFields([]),
-  allowBodyFields(["receiverWallet", "amountEth", "verificationCode", "assetSymbol", "txHash"]),
+  allowBodyFields(["receiverWallet", "amountEth", "verificationCode", "assetSymbol", "txHash", "requestToken", "commitmentKey"]),
   async (req, res, next) => {
   let txDoc;
+  let requestLinkDoc;
   let transferResultLogged = false;
 
   try {
     const { receiverWallet, amountEth, verificationCode, txHash } = req.body;
+    const requestToken = String(req.body?.requestToken || "").trim();
     const assetSymbol = normalizeTransferAssetSymbol(req.body?.assetSymbol);
 
     await logAttempt({
@@ -821,6 +1066,28 @@ export function createSendTransactionRouter({
       throw new Error("Sign and submit this payment with your linked wallet first.");
     }
 
+    if (requestToken) {
+      if (!requestToken.startsWith("req_")) {
+        res.status(400);
+        throw new Error("Invalid payment request token.");
+      }
+      requestLinkDoc = await requestLinkModel.findOneAndUpdate(
+        {
+          tokenHash: hashPurposeBoundLinkToken("request", requestToken),
+          status: "claiming",
+          paidByUserId: req.user._id,
+          reservedPaymentHash: hashRequestPayment({ receiverWallet: normalizedReceiverWallet, amount: amountNumber, assetSymbol }),
+          expiresAt: { $gt: new Date() },
+        },
+        { $set: { claimingAt: new Date() } },
+        { returnDocument: "after" }
+      );
+      if (!requestLinkDoc) {
+        res.status(409);
+        throw new Error("Payment request is expired, revoked, or already being paid.");
+      }
+    }
+
     let receiverUserId = null;
     if (normalizedReceiverWallet) {
       const receiverWalletDoc = await walletModel.findOne({
@@ -845,6 +1112,10 @@ export function createSendTransactionRouter({
       type: "sent",
       transferRequestKey,
     });
+    if (requestLinkDoc) {
+      requestLinkDoc.transactionId = txDoc._id;
+      await requestLinkDoc.save();
+    }
 
     const submission = txHash
       ? await adoptUserSubmission(txHash, {
@@ -861,6 +1132,12 @@ export function createSendTransactionRouter({
       txDoc,
       submission,
       onSuccess: async () => {
+        if (requestLinkDoc) {
+          await requestLinkModel.updateOne(
+            { _id: requestLinkDoc._id, status: "claiming" },
+            { $set: { status: "paid", paidAt: new Date(), transactionId: txDoc._id } }
+          );
+        }
         await logResult({
           user: req.user,
           req,
@@ -875,6 +1152,15 @@ export function createSendTransactionRouter({
         });
       },
       onFailure: async ({ error }) => {
+        if (requestLinkDoc) {
+          await requestLinkModel.updateOne(
+            { _id: requestLinkDoc._id, status: "claiming" },
+            {
+              $set: { status: isLinkExpired(requestLinkDoc) ? "expired" : "active" },
+              $unset: { paidByUserId: 1, transactionId: 1, claimingAt: 1, reservedPaymentHash: 1 },
+            }
+          );
+        }
         await logResult({
           user: req.user,
           req,
@@ -908,6 +1194,15 @@ export function createSendTransactionRouter({
       },
     });
   } catch (err) {
+    if (requestLinkDoc && !transferResultLogged) {
+      await requestLinkModel.updateOne(
+        { _id: requestLinkDoc._id, status: "claiming" },
+        {
+          $set: { status: isLinkExpired(requestLinkDoc) ? "expired" : "active" },
+          $unset: { paidByUserId: 1, transactionId: 1, claimingAt: 1, reservedPaymentHash: 1 },
+        }
+      ).catch(() => {});
+    }
     if (isDuplicateTransferRequestKeyError(err)) {
       if (!transferResultLogged) {
         await logResult({

@@ -103,6 +103,44 @@ export async function createTransferLink({
   });
 }
 
+export async function createPaymentRequestLink({ token, encryptedPayload, paymentCommitment, assetSymbol } = {}) {
+  return apiRequest("/api/transactions/request-link", {
+    method: "POST",
+    token,
+    body: { encryptedPayload, paymentCommitment, assetSymbol },
+  });
+}
+
+export async function resolvePaymentRequestLink({ token, authToken } = {}) {
+  const normalizedToken = String(token || "").trim();
+  if (!normalizedToken) throw new Error("request token is required");
+  return apiRequest("/api/transactions/request-link/resolve", {
+    method: "POST",
+    token: authToken,
+    body: { token: normalizedToken },
+  });
+}
+
+export async function revokePaymentRequestLink({ token, authToken } = {}) {
+  return apiRequest("/api/transactions/request-link/revoke", {
+    method: "POST",
+    token: authToken,
+    body: { token },
+  });
+}
+
+export async function reservePaymentRequestLink({ token, authToken, commitmentKey, receiverWallet, amountEth, assetSymbol } = {}) {
+  return apiRequest("/api/transactions/request-link/reserve", {
+    method: "POST", token: authToken, body: { token, commitmentKey, receiverWallet, amountEth, assetSymbol },
+  });
+}
+
+export async function releasePaymentRequestLink({ token, authToken } = {}) {
+  return apiRequest("/api/transactions/request-link/release", {
+    method: "POST", token: authToken, body: { token },
+  });
+}
+
 export async function resolveTransferLink({ token } = {}) {
   const normalizedToken = String(token || "").trim();
   if (!normalizedToken) {
@@ -144,6 +182,8 @@ export async function sendTransaction({
   verificationCode,
   assetSymbol,
   txHash,
+  requestToken,
+  commitmentKey,
 } = {}) {
   return apiRequest("/api/transactions/send", {
     method: "POST",
@@ -154,6 +194,8 @@ export async function sendTransaction({
       verificationCode,
       assetSymbol,
       txHash,
+      requestToken,
+      commitmentKey,
     },
   });
 }
