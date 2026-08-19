@@ -19,8 +19,10 @@ async function loadAuthenticatedUser(userId) {
 
   const user = await pending;
   // Do not share a mutable Mongoose document across concurrent requests.
-  return user?.toObject
-    ? User.hydrate(user.toObject({ depopulate: true }))
+  // `$clone()` retains the query projection, so required fields excluded with
+  // `select: false` (such as passwordHash) do not fail validation on save.
+  return user?.$clone
+    ? user.$clone()
     : user || null;
 }
 

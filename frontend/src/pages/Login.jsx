@@ -313,6 +313,7 @@ export default function Login() {
   async function resendCode() {
     if (cooldown > 0 || !pendingToken) return;
     resetMessages();
+    setCode("");
 
     try {
       setLoading(true);
