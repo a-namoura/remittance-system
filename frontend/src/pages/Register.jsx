@@ -19,6 +19,7 @@ import {
   FORM_SELECT_BASE_CLASS,
 } from "../styles/formClasses.js";
 import FormSubmitButton from "../components/FormSubmitButton.jsx";
+import useCountdown from "../hooks/useCountdown.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 const STEPS = {
@@ -166,17 +167,11 @@ export default function Register() {
   const [fieldErrors, setFieldErrors] = useState(EMPTY_FIELD_ERRORS);
   const [loading, setLoading] = useState(false);
 
-  const [cooldown, setCooldown] = useState(0);
+  const [cooldown, setCooldown] = useCountdown();
 
   useEffect(() => {
     clearAuthToken();
   }, []);
-
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [cooldown]);
 
   useEffect(() => {
     let isCancelled = false;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AuthCard from "../components/AuthCard.jsx";
 import { FieldError, PageLoading, PageNotice } from "../components/PageLayout.jsx";
@@ -18,6 +18,7 @@ import {
   formChannelButtonClass,
 } from "../styles/formClasses.js";
 import FormSubmitButton from "../components/FormSubmitButton.jsx";
+import useCountdown from "../hooks/useCountdown.js";
 
 import { getEmailIdentifierError } from "../utils/emailValidation.js";
 import { getUserErrorMessage } from "../utils/userError.js";
@@ -80,7 +81,7 @@ export default function ForgotPassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
+  const [cooldown, setCooldown] = useCountdown();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -96,12 +97,6 @@ export default function ForgotPassword() {
 
   const subtitle = useMemo(() => getStepSubtitle(step), [step]);
   const phoneDisabled = !availableChannels.phone;
-
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const timer = setTimeout(() => setCooldown((value) => value - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [cooldown]);
 
   function resetMessages() {
     setError("");

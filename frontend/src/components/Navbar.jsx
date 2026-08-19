@@ -8,7 +8,6 @@ import {
 } from "../services/chatUnread.js";
 import { clearSessionStorage, requireAuthToken } from "../services/session.js";
 import ThemeToggle from "./ThemeToggle.jsx";
-import { LoadingIcon } from "./PageLayout.jsx";
 
 const NAVBAR_CHAT_SYNC_MS = 3000;
 const NAVBAR_BADGE_PULSE_MS = 700;
@@ -593,7 +592,7 @@ export default function Navbar({
             </button>
 
             <p className="hidden truncate text-sm text-gray-600 lg:block">
-              {loadingMe ? <LoadingIcon label="Loading workspace" /> : `${displayName}`}
+              {loadingMe ? null : `${displayName}`}
             </p>
           </div>
 

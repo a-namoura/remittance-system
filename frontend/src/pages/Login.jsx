@@ -16,6 +16,7 @@ import {
   formChannelButtonClass,
 } from "../styles/formClasses.js";
 import FormSubmitButton from "../components/FormSubmitButton.jsx";
+import useCountdown from "../hooks/useCountdown.js";
 
 import { getEmailIdentifierError } from "../utils/emailValidation.js";
 import { getUserErrorMessage } from "../utils/userError.js";
@@ -70,7 +71,7 @@ export default function Login() {
 
   const [pendingToken, setPendingToken] = useState("");
   const [deliveryHint, setDeliveryHint] = useState("");
-  const [cooldown, setCooldown] = useState(0);
+  const [cooldown, setCooldown] = useCountdown();
 
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -89,12 +90,6 @@ export default function Login() {
   useEffect(() => {
     clearAuthToken();
   }, []);
-
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [cooldown]);
 
   function resetVerificationState() {
     setCode("");

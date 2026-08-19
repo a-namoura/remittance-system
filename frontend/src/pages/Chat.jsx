@@ -10,6 +10,8 @@ import {
 import SuccessTransition from "../components/SuccessTransition.jsx";
 import ActionDialog from "../components/ActionDialog.jsx";
 import CopyableWalletAddress from "../components/CopyableWalletAddress.jsx";
+import WalletApprovalStatus from "../components/WalletApprovalStatus.jsx";
+import AmountInput from "../components/AmountInput.jsx";
 import { getCurrentUser } from "../services/authApi.js";
 import {
   cancelChatRequest,
@@ -286,7 +288,7 @@ function isNearTimelineBottom(node) {
 }
 
 export default function Chat() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedPeerUserId = String(searchParams.get("friend") || "").trim();
   const requestedFriendContactId = String(searchParams.get("friendId") || "").trim();
   const requestedFriendUsername = normalizeLookupValue(searchParams.get("friendUsername"));
@@ -332,6 +334,7 @@ export default function Chat() {
   const [requestNote, setRequestNote] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
   const [sendingTransfer, setSendingTransfer] = useState(false);
+  const [awaitingWalletApproval, setAwaitingWalletApproval] = useState(false);
   const [sendingRequest, setSendingRequest] = useState(false);
   const [composerMode, setComposerMode] = useState("message");
   const [sendTransferStep, setSendTransferStep] = useState("details");
@@ -1523,8 +1526,23 @@ export default function Chat() {
     setSendAmount("");
     setSendNote("");
     setComposerMode("message");
+    clearRequestedComposer();
     setTimelineError("");
     setTimelineInfo("");
+  }
+
+  function clearRequestedComposer() {
+    if (!searchParams.has("compose")) return;
+
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("compose");
+    setSearchParams(nextSearchParams, { replace: true });
+  }
+
+  function closeComposer() {
+    setSendTransferStep("details");
+    setComposerMode("message");
+    clearRequestedComposer();
   }
 
   async function handleSendTransfer(event) {
@@ -1546,11 +1564,13 @@ export default function Chat() {
       setSendingTransfer(true);
       setTimelineError("");
       setTimelineInfo("");
+      setAwaitingWalletApproval(true);
       const txHash = await submitConnectedWalletTransfer({
         senderWallet: me?.wallet?.address,
         receiverWallet: activeFriend?.walletAddress,
         amountEth: draft.amount,
       });
+      setAwaitingWalletApproval(false);
       walletTxHash = txHash;
       await sendChatTransfer({
         token,
@@ -1583,6 +1603,7 @@ export default function Chat() {
       showTransactionNotification(message, { variant: "error" });
     } finally {
       transferSubmittingRef.current = false;
+      setAwaitingWalletApproval(false);
       setSendingTransfer(false);
     }
   }
@@ -1708,11 +1729,13 @@ export default function Chat() {
         requestId: requestModal.id,
         prepare: true,
       });
+      setAwaitingWalletApproval(true);
       const txHash = await submitConnectedWalletTransfer({
         senderWallet: prepared?.payment?.senderWallet,
         receiverWallet: prepared?.payment?.receiverWallet,
         amountEth: prepared?.payment?.amount,
       });
+      setAwaitingWalletApproval(false);
       walletTxHash = txHash;
       const response = await payChatRequest({
         token,
@@ -1743,6 +1766,7 @@ export default function Chat() {
       setRequestModalError(message);
       showTransactionNotification(message, { variant: "error" });
     } finally {
+      setAwaitingWalletApproval(false);
       setRequestModalLoading(false);
     }
   }
@@ -1879,7 +1903,7 @@ export default function Chat() {
               </p>
               <div className="mt-2 flex gap-3 overflow-x-auto py-1">
                 {friendsLoading ? (
-                  <PageLoading>Loading contacts</PageLoading>
+                  friendSearch.trim() ? null : <PageLoading>Loading chat contacts</PageLoading>
                 ) : circleFriends.length === 0 ? (
                   <p className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500">
                     No contacts yet.
@@ -1927,7 +1951,7 @@ export default function Chat() {
               </p>
               <div className="h-full space-y-2 overflow-y-auto pr-1">
                 {friendsLoading ? (
-                  <PageLoading>Loading messages</PageLoading>
+                  null
                 ) : latestFriends.length === 0 ? (
                   <p className="rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-500">
                     You have no messages yet.
@@ -2490,10 +2514,7 @@ export default function Chat() {
               </h3>
               <button
                 type="button"
-                onClick={() => {
-                  setSendTransferStep("details");
-                  setComposerMode("message");
-                }}
+                onClick={closeComposer}
                 className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
               >
                 Close
@@ -2576,6 +2597,8 @@ export default function Chat() {
                     </div>
                   </div>
 
+                  <WalletApprovalStatus visible={awaitingWalletApproval} />
+
                   <div className="grid gap-2 sm:grid-cols-2">
                     <button
                       type="button"
@@ -2593,7 +2616,11 @@ export default function Chat() {
                       }
                       className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-400"
                     >
-                      {sendingTransfer ? "Sending..." : "Confirm and send"}
+                      {awaitingWalletApproval
+                        ? "Check your wallet provider"
+                        : sendingTransfer
+                          ? "Finalizing transaction..."
+                          : "Confirm and send"}
                     </button>
                   </div>
                 </>
@@ -2606,19 +2633,16 @@ export default function Chat() {
                     >
                       {isSendComposer ? "Send amount" : "Request amount"}
                     </label>
-                    <input
+                    <AmountInput
                       id={isSendComposer ? "chat-send-amount" : "chat-request-amount"}
-                      type="number"
-                      min="0"
-                      step="0.0001"
                       required
                       value={isSendComposer ? sendAmount : requestAmount}
-                      onChange={(event) => {
+                      onValueChange={(value) => {
                         if (isSendComposer) {
-                          setSendAmount(event.target.value);
+                          setSendAmount(value);
                           return;
                         }
-                        setRequestAmount(event.target.value);
+                        setRequestAmount(value);
                       }}
                       placeholder={`Amount ${nativeCurrency}`}
                       className={FORM_INPUT_BASE_CLASS}
@@ -2662,10 +2686,7 @@ export default function Chat() {
                   <div className="grid gap-2 sm:grid-cols-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        setSendTransferStep("details");
-                        setComposerMode("message");
-                      }}
+                      onClick={closeComposer}
                       className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                     >
                       Cancel
@@ -2761,6 +2782,11 @@ export default function Chat() {
               </div>
             ) : null}
 
+            <WalletApprovalStatus
+              visible={requestModalLoading && awaitingWalletApproval}
+              className="mt-4"
+            />
+
             <div className="mt-4 flex items-center justify-end gap-2">
               {requestModal.isRequester &&
               String(requestModal.status || "").trim().toLowerCase() === "pending" ? (
@@ -2788,7 +2814,11 @@ export default function Chat() {
                   }
                   className="rounded-full bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
                 >
-                  {requestModalLoading ? "Sending..." : "Confirm and send"}
+                  {awaitingWalletApproval
+                    ? "Check your wallet provider"
+                    : requestModalLoading
+                      ? "Finalizing transaction..."
+                      : "Confirm and send"}
                 </button>
               ) : null}
 

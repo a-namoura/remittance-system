@@ -408,7 +408,7 @@ export default function Dashboard() {
                 <div>
                   Fiat equivalent:{" "}
                   {showFiatLoading
-                    ? <LoadingIcon label="Loading fiat balance" />
+                    ? null
                     : hasFiatBalance
                       ? `~ ${fiatBalanceUsd.toFixed(2)} USD`
                       : "-"}

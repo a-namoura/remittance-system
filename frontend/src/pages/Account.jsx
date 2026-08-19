@@ -256,7 +256,9 @@ export default function Account() {
 
   if (loading) {
     return (
-      <PageContainer><PageLoading>Loading account</PageLoading></PageContainer>
+      <PageContainer fillViewport className="flex items-center justify-center">
+        <PageLoading large>Loading account</PageLoading>
+      </PageContainer>
     );
   }
 

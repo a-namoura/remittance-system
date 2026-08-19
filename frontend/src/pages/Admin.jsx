@@ -211,8 +211,8 @@ export default function Admin() {
       <section className="space-y-4">
         <h2 className="text-sm font-semibold text-gray-800">Overview</h2>
 
-        {loading && !summary && (
-          <PageLoading>Loading summary</PageLoading>
+        {loading && !summary && users.length === 0 && transactions.length === 0 && (
+          <PageLoading>Loading administration data</PageLoading>
         )}
 
         {summary && (
@@ -247,9 +247,7 @@ export default function Admin() {
 
         {usersError && <div className="text-xs text-red-600">{usersError}</div>}
 
-        {loading && users.length === 0 ? (
-          <PageLoading>Loading users</PageLoading>
-        ) : users.length === 0 ? (
+        {loading && users.length === 0 ? null : users.length === 0 ? (
           <div className="text-xs text-gray-500">No users found yet.</div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border bg-white">
@@ -329,9 +327,7 @@ export default function Admin() {
           </p>
         </div>
 
-        {loading && transactions.length === 0 ? (
-          <PageLoading>Loading transactions</PageLoading>
-        ) : transactions.length === 0 ? (
+        {loading && transactions.length === 0 ? null : transactions.length === 0 ? (
           <div className="text-xs text-gray-500">
             No transactions recorded yet.
           </div>

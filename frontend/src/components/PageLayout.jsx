@@ -102,7 +102,7 @@ export function PageNotice({ children, className = "", variant = "info" }) {
   return <div className={joinClasses(toneClass, className)}>{children}</div>;
 }
 
-export function PageLoading({ children = "Loading...", className = "" }) {
+export function PageLoading({ children = "Loading...", className = "", large = false }) {
   const label = typeof children === "string" ? children : "Loading...";
 
   return (
@@ -111,15 +111,18 @@ export function PageLoading({ children = "Loading...", className = "" }) {
       role="status"
       aria-label={label}
     >
-      <LoadingIcon label={label} />
+      <LoadingIcon label={label} large={large} />
     </div>
   );
 }
 
-export function LoadingIcon({ label = "Loading", className = "" }) {
+export function LoadingIcon({ label = "Loading", className = "", large = false }) {
   return (
     <span role="status" aria-label={label} className={joinClasses("inline-flex", className)}>
-      <span className="app-page-spinner" aria-hidden="true" />
+      <span
+        className={joinClasses("app-page-spinner", large ? "app-page-spinner-large" : "")}
+        aria-hidden="true"
+      />
     </span>
   );
 }
