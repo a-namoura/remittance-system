@@ -348,7 +348,9 @@ export default function Dashboard() {
 
   if (!me && !error) {
     return (
-      <PageContainer className="text-gray-600">Loading dashboard...</PageContainer>
+      <PageContainer>
+        <PageLoading>Loading dashboard...</PageLoading>
+      </PageContainer>
     );
   }
 

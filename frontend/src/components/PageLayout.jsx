@@ -97,10 +97,15 @@ export function PageNotice({ children, className = "", variant = "info" }) {
 }
 
 export function PageLoading({ children = "Loading...", className = "" }) {
+  const label = typeof children === "string" ? children : "Loading...";
+
   return (
-    <div className={joinClasses("app-page-loading", className)}>
-      <span className="app-page-spinner" />
-      <span>{children}</span>
+    <div
+      className={joinClasses("app-page-loading", className)}
+      role="status"
+      aria-label={label}
+    >
+      <span className="app-page-spinner" aria-hidden="true" />
     </div>
   );
 }
