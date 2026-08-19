@@ -1791,11 +1791,14 @@ export default function Chat() {
         variant={transactionNotification.variant}
       />
 
-      <PageContainer stack className="gap-3">
-      <PageHeader
-        title="Chat"
-        description="Message your contacts, track requests, and send payments in one place."
-      />
+      <PageContainer
+        stack
+        className="gap-3 md:h-[calc(100dvh-4rem)] md:pt-4 md:pb-4"
+      >
+        <PageHeader
+          title="Chat"
+          description="Message your contacts, track requests, and send payments in one place."
+        />
 
       {(friendsError || identityError || timelineError) && (
         <div className="space-y-2">
@@ -1805,7 +1808,7 @@ export default function Chat() {
         </div>
       )}
 
-      <section className="rounded-[2rem] border border-gray-200 bg-white p-3 shadow-sm sm:p-4 md:h-[calc(100vh-12.5rem)]">
+      <section className="rounded-[2rem] border border-gray-200 bg-white p-3 shadow-sm sm:p-4 md:min-h-0 md:flex-1">
         <div className="grid gap-3 md:h-full md:grid-cols-[minmax(300px,_0.85fr)_minmax(0,_1.45fr)]">
           <aside className="flex min-h-[36rem] flex-col rounded-3xl border border-gray-200 bg-gray-50 p-4 md:h-full md:min-h-0">
             <div>
