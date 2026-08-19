@@ -298,21 +298,11 @@ export default function Navbar({
   const previousUnreadCountRef = useRef(null);
 
   const navGroups = useMemo(
-    () => {
-      const hideSend = ["/chat", "/contacts"].some(
-        (path) =>
-          location.pathname === path || location.pathname.startsWith(`${path}/`)
-      );
-      const groups = BASE_NAV_GROUPS.map((group) => ({
-        ...group,
-        items: hideSend
-          ? group.items.filter((item) => item.to !== "/send")
-          : group.items,
-      }));
-
-      return me?.role === "admin" ? [...groups, ADMIN_NAV_GROUP] : groups;
-    },
-    [location.pathname, me?.role]
+    () =>
+      me?.role === "admin"
+        ? [...BASE_NAV_GROUPS, ADMIN_NAV_GROUP]
+        : BASE_NAV_GROUPS,
+    [me?.role]
   );
 
   const mobileNavItems = useMemo(
