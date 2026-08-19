@@ -1791,10 +1791,7 @@ export default function Chat() {
         variant={transactionNotification.variant}
       />
 
-      <PageContainer
-        stack
-        className="gap-3 md:h-[calc(100dvh-4rem)] md:pt-4 md:pb-4"
-      >
+      <PageContainer stack fillViewport className="gap-3">
         <PageHeader
           title="Chat"
           description="Message your contacts, track requests, and send payments in one place."

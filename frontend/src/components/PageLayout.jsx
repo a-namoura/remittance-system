@@ -22,12 +22,18 @@ const NOTICE_CLASS_BY_VARIANT = {
   warning: "app-page-warning",
 };
 
-export function PageContainer({ children, className = "", stack = false }) {
+export function PageContainer({
+  children,
+  className = "",
+  stack = false,
+  fillViewport = false,
+}) {
   return (
     <div
       className={joinClasses(
-        "app-page px-4 pt-6 pb-10 sm:px-6 sm:pt-10 sm:pb-10",
+        "app-page px-4 pt-4 pb-6 sm:px-6 sm:pt-4 sm:pb-6",
         stack ? "flex flex-col gap-6" : "",
+        fillViewport ? "md:h-[calc(100dvh-4rem)]" : "",
         className
       )}
     >
