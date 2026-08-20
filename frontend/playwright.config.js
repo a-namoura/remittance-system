@@ -13,6 +13,7 @@ export default defineConfig({
     env: {
       VITE_API_BASE_URL: "https://api.test",
       VITE_API_URL: "https://api.test",
+      VITE_REM_CONTRACT_ADDRESS: "0x3333333333333333333333333333333333333333",
     },
     port: 4174,
     reuseExistingServer: false,

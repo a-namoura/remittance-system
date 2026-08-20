@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 
 const SLA_MS = 2_000;
-const WALLET = "0x1111111111111111111111111111111111111111";
+const WALLET = "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A";
+const WALLET_SIGNATURE = "0x860f6caf16159797010558f9260ad542ad8588b9b707a2afc3bd8acebc43459753ea53a400a7552fe158a4c956e27ac0dea594ae1cf499c49169cde3d5475fe61b";
 
 async function expectNotificationWithinSla(page, responseAt, text) {
   await expect(page.locator(".app-success-transition").getByText(text, { exact: false })).toBeVisible({ timeout: SLA_MS });
@@ -115,20 +116,20 @@ async function resetPassword(page, routeResponse) {
 }
 
 async function mockWalletProvider(page) {
-  await page.addInitScript(({ wallet }) => {
+  await page.addInitScript(({ wallet, signature }) => {
     window.ethereum = {
       isMetaMask: true,
       request: async ({ method }) => {
         if (["eth_accounts", "eth_requestAccounts"].includes(method)) return [wallet];
         if (method === "eth_chainId") return "0x1";
-        if (method === "personal_sign") return `0x${"11".repeat(65)}`;
+        if (method === "personal_sign") return signature;
         throw new Error(`Unsupported wallet method: ${method}`);
       },
       on: () => {},
       removeListener: () => {},
     };
     window.localStorage.setItem("token", "notification-test-token");
-  }, { wallet: WALLET });
+  }, { wallet: WALLET, signature: WALLET_SIGNATURE });
 }
 
 async function connectWallet(page, routeResponse) {
@@ -154,8 +155,8 @@ test.describe("backend-result notification SLA", () => {
     await submitLogin(page, { status: 200, body: {} }, "Login successful");
   });
 
-  test("login failure notification includes the backend reason within 2 seconds", async ({ page }) => {
-    await submitLogin(page, { status: 401, body: { message: "Invalid credentials" } }, "Invalid credentials");
+  test("login failure notification shows a safe error within 2 seconds", async ({ page }) => {
+    await submitLogin(page, { status: 401, body: { message: "Invalid credentials" } }, "Authentication failed. Please check your details and try again.");
   });
 
   test("registration success notification appears within 2 seconds", async ({ page }) => {
@@ -163,9 +164,9 @@ test.describe("backend-result notification SLA", () => {
     await expectNotificationWithinSla(page, responseAt, "Registration successful");
   });
 
-  test("registration failure notification includes the backend reason within 2 seconds", async ({ page }) => {
+  test("registration failure notification shows a safe error within 2 seconds", async ({ page }) => {
     const responseAt = await completeRegistration(page, { status: 409, body: { message: "Email address is already registered" } });
-    await expectNotificationWithinSla(page, responseAt, "Email address is already registered");
+    await expectNotificationWithinSla(page, responseAt, "Registration failed.");
   });
 
   test("password reset success notification appears within 2 seconds", async ({ page }) => {
@@ -183,8 +184,8 @@ test.describe("backend-result notification SLA", () => {
     await expectNotificationWithinSla(page, responseAt, "Wallet connected successfully");
   });
 
-  test("wallet connection failure notification includes the backend reason within 2 seconds", async ({ page }) => {
+  test("wallet connection failure notification shows a safe error within 2 seconds", async ({ page }) => {
     const responseAt = await connectWallet(page, { status: 409, body: { message: "Wallet is linked to another account" } });
-    await expectNotificationWithinSla(page, responseAt, "Wallet is linked to another account");
+    await expectNotificationWithinSla(page, responseAt, "Wallet ownership verification failed.");
   });
 });

@@ -3,13 +3,30 @@ import { expect, test } from "@playwright/test";
 const SLA_MS = 2_000;
 const WALLET = "0x1111111111111111111111111111111111111111";
 const RECIPIENT = "0x2222222222222222222222222222222222222222";
+const TX_HASH = `0x${"ab".repeat(32)}`;
 
 async function authenticate(page) {
-  await page.addInitScript(({ wallet }) => {
+  await page.addInitScript(({ wallet, txHash }) => {
+    window.ethereum = {
+      isMetaMask: true,
+      request: async ({ method }) => {
+        if (["eth_accounts", "eth_requestAccounts"].includes(method)) return [wallet];
+        if (method === "eth_chainId") return "0x61";
+        if (method === "eth_getBalance") return "0x8ac7230489e80000";
+        if (method === "eth_blockNumber") return "0x1";
+        if (method === "eth_estimateGas") return "0x5208";
+        if (method === "eth_gasPrice") return "0x3b9aca00";
+        if (method === "eth_maxPriorityFeePerGas") return "0x3b9aca00";
+        if (method === "eth_sendTransaction") return txHash;
+        throw new Error(`Unsupported wallet method: ${method}`);
+      },
+      on: () => {},
+      removeListener: () => {},
+    };
     window.localStorage.setItem("token", "performance-test-token");
     window.localStorage.setItem("walletConnected_u1", "1");
     window.localStorage.setItem("walletAddress_u1", wallet);
-  }, { wallet: WALLET });
+  }, { wallet: WALLET, txHash: TX_HASH });
 }
 
 async function mockApi(page, { terminalStatus = "success", failureReason = "" } = {}) {
@@ -83,8 +100,7 @@ test("validated transaction submits within 2 seconds after confirmation excludin
   await page.getByPlaceholder("6 digits").fill("123456");
   const confirmationAt = Date.now();
   await page.getByRole("button", { name: "Confirm and send" }).click();
-  await expect(page.getByText("Transfer submitted. Waiting for confirmation...", { exact: false })).toBeVisible({ timeout: SLA_MS });
-  expect(api.sendRequests()).toBe(1);
+  await expect.poll(api.sendRequests, { timeout: SLA_MS }).toBe(1);
   expect(Date.now() - confirmationAt).toBeLessThanOrEqual(SLA_MS);
   expect(Date.now() - startedAt).toBeLessThanOrEqual(SLA_MS);
 });

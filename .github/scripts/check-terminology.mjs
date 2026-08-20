@@ -9,7 +9,7 @@ const forbiddenTerms = /\beth(?:ereum)?\b|etherscan/gi;
 
 // Compatibility-sensitive API, configuration, and EIP-1193 identifiers only.
 // These exact tokens are allowed globally; their component words are never allowed.
-const compatibilityIdentifiers = /\b(?:amountEth|getEthBalance|convertEthToUsd|eth_accounts|eth_requestAccounts|eth_chainId|REM_RATE_USD_PER_ETH|MIN_TRANSFER_ETH|MAX_TRANSFER_ETH)\b|\bwindow\.ethereum\b/gi;
+const compatibilityIdentifiers = /\b(?:amountEth|getEthBalance|convertEthToUsd|eth_accounts|eth_requestAccounts|eth_chainId|eth_getBalance|eth_sendTransaction|REM_RATE_USD_PER_ETH|MIN_TRANSFER_ETH|MAX_TRANSFER_ETH)\b|\b(?:window|globalThis\?\.window\?)\??\.ethereum\b/gi;
 const terminologyOccurrences = new RegExp(
   `${compatibilityIdentifiers.source}|${forbiddenTerms.source}`,
   "gi",
