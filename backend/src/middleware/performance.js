@@ -1,3 +1,5 @@
+import { incrementMetric, observeMetric } from "../utils/metrics.js";
+
 const DEFAULT_API_RESPONSE_SLA_MS = 2000;
 
 export function getApiResponseSlaMs() {
@@ -17,6 +19,11 @@ export function responseSlaMonitor(req, res, next) {
 
   res.on("finish", () => {
     const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    const route = req.route?.path || req.baseUrl || "unmatched";
+    const labels = { method: req.method, route, status: res.statusCode };
+    incrementMetric("http_requests_total", labels);
+    observeMetric("http_request_duration_ms", elapsedMs, labels);
+    console.info({ event: "http_request_completed", method: req.method, route, statusCode: res.statusCode, durationMs: Math.round(elapsedMs) });
     if (elapsedMs <= slaMs) return;
 
     console.warn(

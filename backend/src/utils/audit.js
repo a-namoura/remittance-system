@@ -77,6 +77,8 @@ export async function logAudit({ user, userId, action, metadata = {}, req }) {
       metadata: safeMetadata,
       ip,
       userAgent: req?.headers?.["user-agent"],
+      requestId: req?.requestId,
+      correlationId: req?.correlationId,
     });
     if (fields.outcome === "failure") {
       await alertRepeatedFailure({ category: fields.category, metadata: safeMetadata, ip });

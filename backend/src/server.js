@@ -9,7 +9,7 @@ import { notFound, errorHandler } from "./middleware/errorHandler.js";
 import { responseSlaMonitor } from "./middleware/performance.js";
 import { startTransactionReconciliation } from "./blockchain/transactionReconciliation.js";
 import { assertProductionExternalUrls, getFrontendOrigin } from "./config/security.js";
-import { installRedactedConsole } from "./utils/logging.js";
+import { createRequestContext, installRedactedConsole } from "./utils/logging.js";
 import { apiRateLimit } from "./middleware/rateLimit.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -25,6 +25,7 @@ assertProductionExternalUrls();
 
 const app = express();
 app.disable("x-powered-by");
+app.use(createRequestContext);
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");

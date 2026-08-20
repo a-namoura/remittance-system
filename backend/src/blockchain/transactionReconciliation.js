@@ -1,4 +1,5 @@
 import { formatEther } from "ethers";
+import crypto from "node:crypto";
 import {
   getRemittanceContractAddress,
   getRemittanceProvider,
@@ -16,6 +17,7 @@ import {
   syncTransactionWithBlockchainResult,
 } from "../utils/transactionRequests.js";
 import { refreshTransactionWalletBalances } from "../utils/walletBalances.js";
+import { incrementMetric, observeMetric } from "../utils/metrics.js";
 
 const DEFAULT_INTERVAL_MS = 15_000;
 const DEFAULT_BATCH_SIZE = 100;
@@ -665,6 +667,9 @@ export async function reconcileTransactions({ force = false, forceBefore, skipEv
   }
 
   reconciliationRunning = true;
+  const runStartedAt = Date.now();
+  const correlationId = crypto.randomUUID();
+  console.info({ event: "reconciliation_started", correlationId, force, skipEventSync });
   try {
     // Fold records written by older releases into the single non-terminal
     // state before applying the current schema validation.
@@ -729,7 +734,15 @@ export async function reconcileTransactions({ force = false, forceBefore, skipEv
       }
     }
 
-    return { checked: txs.length, corrected, errors, events };
+    const result = { checked: txs.length, corrected, errors, events };
+    incrementMetric("reconciliation_runs_total", { outcome: errors ? "error" : "success" });
+    incrementMetric("reconciliation_transactions_checked_total", {}, txs.length);
+    incrementMetric("reconciliation_transactions_corrected_total", {}, corrected);
+    incrementMetric("reconciliation_errors_total", {}, errors);
+    incrementMetric("reconciliation_events_ingested_total", {}, events.ingested || 0);
+    observeMetric("reconciliation_run_duration_ms", Date.now() - runStartedAt, { outcome: errors ? "error" : "success" });
+    console.info({ event: "reconciliation_completed", correlationId, durationMs: Date.now() - runStartedAt, ...result });
+    return result;
   } finally {
     reconciliationRunning = false;
   }

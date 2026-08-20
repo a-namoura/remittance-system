@@ -55,6 +55,8 @@ import {
   readIdempotencyKey,
   releaseIdempotency,
 } from "../utils/idempotency.js";
+import { addLogContext } from "../utils/logging.js";
+import { incrementMetric } from "../utils/metrics.js";
 
 export const transactionRouter = express.Router();
 
@@ -851,6 +853,8 @@ transactionRouter.post(
       type: "sent",
       paymentLinkId: linkDoc._id,
     });
+    addLogContext({ transactionId: String(txDoc._id) });
+    incrementMetric("transactions_created_total", { flow: "transfer_link_claim", asset: txDoc.assetSymbol });
 
     const submission = await submitRemittance(receiverWallet, linkDoc.amount, {
       onSubmitted: (submission) =>
@@ -1161,6 +1165,8 @@ export function createSendTransactionRouter({
       type: "sent",
       transferRequestKey,
     });
+    addLogContext({ transactionId: String(txDoc._id) });
+    incrementMetric("transactions_created_total", { flow: "direct_send", asset: txDoc.assetSymbol });
     if (requestLinkDoc) {
       requestLinkDoc.transactionId = txDoc._id;
       await requestLinkDoc.save();

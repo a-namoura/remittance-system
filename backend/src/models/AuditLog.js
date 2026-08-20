@@ -44,6 +44,8 @@ const auditLogSchema = new mongoose.Schema(
       type: String,
       immutable: true,
     },
+    requestId: { type: String, immutable: true, maxlength: 128 },
+    correlationId: { type: String, immutable: true, maxlength: 128 },
   },
   { timestamps: true }
 );

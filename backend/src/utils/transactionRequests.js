@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { refreshTransactionWalletBalances } from "./walletBalances.js";
 import { logAudit } from "./audit.js";
+import { incrementMetric, observeMetric } from "./metrics.js";
 
 export const IN_FLIGHT_TRANSACTION_STATUSES = ["pending"];
 export const TERMINAL_TRANSACTION_STATUSES = ["success", "failed", "cancelled"];
@@ -215,6 +216,7 @@ export async function recordTransactionSubmission(txDoc, submission) {
   txDoc.blockchainSubmittedAt = asDate(submission?.submittedAt || new Date());
   txDoc.reconciliationMissCount = 0;
   txDoc.reconciliationError = undefined;
+  const submissionStartedAt = txDoc.createdAt ? new Date(txDoc.createdAt).getTime() : Date.now();
   try {
     await txDoc.save();
   } catch (err) {
@@ -240,6 +242,8 @@ export async function recordTransactionSubmission(txDoc, submission) {
     }
     throw err;
   }
+  incrementMetric("transaction_submissions_total", { asset: txDoc.assetSymbol || "unknown" });
+  observeMetric("transaction_submission_latency_ms", Math.max(0, Date.now() - submissionStartedAt), { asset: txDoc.assetSymbol || "unknown" });
   return txDoc;
 }
 
@@ -271,6 +275,8 @@ export async function syncTransactionWithBlockchainResult(
   txDoc.reconciliationError = undefined;
 
   await saveTransactionWithinSyncWindow(txDoc, resultReceivedAt);
+  incrementMetric("transaction_settlements_total", { status: txDoc.status, asset: txDoc.assetSymbol || "unknown" });
+  observeMetric("transaction_settlement_sync_ms", Math.max(0, Date.now() - resultReceivedAt.getTime()), { status: txDoc.status });
 
   if (executionSucceeded) {
     await refreshTransactionWalletBalances(txDoc, {
