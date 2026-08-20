@@ -8,6 +8,7 @@ import {
   submitRemittance,
 } from "../blockchain/remittanceClient.js";
 import { Transaction } from "../models/Transaction.js";
+import { IdempotencyRecord } from "../models/IdempotencyRecord.js";
 import { Wallet } from "../models/Wallet.js";
 import { PaymentLink } from "../models/PaymentLink.js";
 import { PaymentRequestLink } from "../models/PaymentRequestLink.js";
@@ -47,6 +48,13 @@ import {
   rejectOutOfRangeTransferAmount,
 } from "../utils/transferLimits.js";
 import { updateStoredWalletBalance } from "../utils/walletBalances.js";
+import {
+  acquireIdempotency,
+  completeIdempotency,
+  hashIdempotencyRequest,
+  readIdempotencyKey,
+  releaseIdempotency,
+} from "../utils/idempotency.js";
 
 export const transactionRouter = express.Router();
 
@@ -710,6 +718,7 @@ transactionRouter.post(
   let linkDoc;
   let txDoc;
   let transferResultLogged = false;
+  let idempotencyRecord;
 
   try {
     const token = String(req.body?.token || "").trim();
@@ -742,6 +751,19 @@ transactionRouter.post(
       receiverWalletDoc.address,
       "receiverWallet"
     );
+
+    const idempotency = await acquireIdempotency({
+      model: IdempotencyRecord,
+      userId: req.user._id,
+      endpoint: "POST /api/transactions/link/claim",
+      key: readIdempotencyKey(req),
+      requestHash: hashIdempotencyRequest({ token, receiverWallet }),
+    });
+    if (idempotency.replay) {
+      res.set("Idempotency-Replayed", "true");
+      return res.status(idempotency.replay.statusCode).json(idempotency.replay.body);
+    }
+    idempotencyRecord = idempotency.record;
 
     const tokenHash = token.startsWith("snd_")
       ? hashPurposeBoundLinkToken("send", token)
@@ -813,6 +835,7 @@ transactionRouter.post(
       creatorWalletDoc.address,
       "senderWallet"
     );
+
     rejectSelfTransfer(res, senderWallet, receiverWallet);
     rejectOutOfRangeTransferAmount(res, linkDoc.amount);
     await rejectInsufficientNativeBalance(res, senderWallet, linkDoc.amount);
@@ -893,7 +916,7 @@ transactionRouter.post(
     });
     transferResultLogged = true;
 
-    res.status(202).json({
+    const responseBody = {
       ok: true,
       status: "claiming",
       message: "Transfer claim submitted. Confirmation is processing.",
@@ -910,8 +933,20 @@ transactionRouter.post(
         assetSymbol: normalizeTransferAssetSymbol(txDoc.assetSymbol),
         receiverWallet: txDoc.receiverWallet,
       },
+    };
+    await completeIdempotency({
+      model: IdempotencyRecord,
+      record: idempotencyRecord,
+      statusCode: 202,
+      responseBody,
+      transactionId: txDoc._id,
     });
+    res.status(202).json(responseBody);
   } catch (err) {
+    if (idempotencyRecord && !txDoc) {
+      await releaseIdempotency({ model: IdempotencyRecord, record: idempotencyRecord }).catch(() => {});
+    }
+    if (err?.retryAfter) res.set("Retry-After", String(err.retryAfter));
     if (txDoc && !["success", "failed"].includes(txDoc.status)) {
       await markTransactionFailedAndLogSyncError(txDoc, err);
     }
@@ -962,6 +997,7 @@ export function createSendTransactionRouter({
   recordSubmission = recordTransactionSubmission,
   settleSubmission = settleTransactionAfterSubmission,
   markFailed = markTransactionFailedAndLogSyncError,
+  idempotencyModel = IdempotencyRecord,
 } = {}) {
   const router = express.Router();
   const rejectInsufficientBalance = async (res, walletAddress, amount) => {
@@ -984,11 +1020,13 @@ export function createSendTransactionRouter({
   let txDoc;
   let requestLinkDoc;
   let transferResultLogged = false;
+  let idempotencyRecord;
 
   try {
     const { receiverWallet, amountEth, verificationCode, txHash } = req.body;
     const requestToken = String(req.body?.requestToken || "").trim();
     const assetSymbol = normalizeTransferAssetSymbol(req.body?.assetSymbol);
+    const idempotencyKey = readIdempotencyKey(req);
 
     await logAttempt({
       user: req.user,
@@ -1032,6 +1070,25 @@ export function createSendTransactionRouter({
     const amountNumber = Number(amountEth);
     rejectInvalidTransferAmount(res, amountNumber);
     rejectOutOfRangeTransferAmount(res, amountNumber);
+    const idempotency = await acquireIdempotency({
+      model: idempotencyModel,
+      userId: req.user._id,
+      endpoint: "POST /api/transactions/send",
+      key: idempotencyKey,
+      requestHash: hashIdempotencyRequest({
+        senderWallet,
+        receiverWallet: normalizedReceiverWallet,
+        amount: amountNumber,
+        assetSymbol,
+        txHash: String(txHash || "").toLowerCase(),
+        requestToken,
+      }),
+    });
+    if (idempotency.replay) {
+      res.set("Idempotency-Replayed", "true");
+      return res.status(idempotency.replay.statusCode).json(idempotency.replay.body);
+    }
+    idempotencyRecord = idempotency.record;
     await rejectInsufficientBalance(res, senderWallet, amountNumber);
 
     const transferRequestKey = createRequestKey({
@@ -1170,7 +1227,7 @@ export function createSendTransactionRouter({
     });
     transferResultLogged = true;
 
-    res.status(202).json({
+    const responseBody = {
       ok: true,
       message: "Transaction submitted. Confirmation is processing.",
       transaction: {
@@ -1184,8 +1241,20 @@ export function createSendTransactionRouter({
         blockchainSubmittedAt: txDoc.blockchainSubmittedAt || submission.submittedAt,
         assetSymbol: normalizeTransferAssetSymbol(txDoc.assetSymbol),
       },
+    };
+    await completeIdempotency({
+      model: idempotencyModel,
+      record: idempotencyRecord,
+      statusCode: 202,
+      responseBody,
+      transactionId: txDoc._id,
     });
+    res.status(202).json(responseBody);
   } catch (err) {
+    if (idempotencyRecord && !txDoc) {
+      await releaseIdempotency({ model: idempotencyModel, record: idempotencyRecord }).catch(() => {});
+    }
+    if (err?.retryAfter) res.set("Retry-After", String(err.retryAfter));
     if (requestLinkDoc && !transferResultLogged) {
       await requestLinkModel.updateOne(
         { _id: requestLinkDoc._id, status: "claiming" },
