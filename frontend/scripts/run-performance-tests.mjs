@@ -12,7 +12,7 @@ const requirements = [
   { id: "UI-2.10", section: "User Interaction 2.10", threshold: "Notification displayed within 2000 ms of backend response", tests: [
     "login success notification appears within 2 seconds", "login failure notification shows a safe error within 2 seconds",
     "registration success notification appears within 2 seconds", "registration failure notification shows a safe error within 2 seconds",
-    "password reset success notification appears within 2 seconds", "password reset failure notification includes the backend reason within 2 seconds",
+    "password reset success notification appears within 2 seconds", "password reset failure notification appears within 2 seconds",
     "wallet connection success notification appears within 2 seconds", "wallet connection failure notification shows a safe error within 2 seconds",
   ] },
   { id: "DP-4.2", section: "Data Processing 4.2", threshold: "Blockchain result persisted to DB within 2000 ms", tests: [
