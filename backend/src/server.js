@@ -10,6 +10,7 @@ import { responseSlaMonitor } from "./middleware/performance.js";
 import { startTransactionReconciliation } from "./blockchain/transactionReconciliation.js";
 import { assertProductionExternalUrls, getFrontendOrigin } from "./config/security.js";
 import { installRedactedConsole } from "./utils/logging.js";
+import { apiRateLimit } from "./middleware/rateLimit.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -52,6 +53,7 @@ app.use(
 );
 app.use(express.json());
 app.use(responseSlaMonitor);
+app.use("/api", apiRateLimit());
 
 // Mount API routes
 app.use("/api", apiRouter);

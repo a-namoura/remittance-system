@@ -47,14 +47,11 @@ import {
   rejectOutOfRangeTransferAmount,
 } from "../utils/transferLimits.js";
 import { updateStoredWalletBalance } from "../utils/walletBalances.js";
-import { sensitiveRateLimit } from "../middleware/sensitiveRateLimit.js";
 
 export const transactionRouter = express.Router();
 
 const DEFAULT_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_ASSET_SYMBOL = getNativeAssetSymbol();
-const requestLinkReadLimit = sensitiveRateLimit({ windowMs: 5 * 60_000, max: 30 });
-const requestLinkWriteLimit = sensitiveRateLimit({ windowMs: 5 * 60_000, max: 12 });
 export const MY_TRANSACTION_STATUSES = Object.freeze([
   "pending",
   "success",
@@ -355,7 +352,6 @@ transactionRouter.post(
 transactionRouter.post(
   "/request-link",
   protect,
-  requestLinkWriteLimit,
   allowQueryFields([]),
   allowBodyFields(["encryptedPayload", "paymentCommitment", "assetSymbol"]),
   async (req, res, next) => {
@@ -404,7 +400,6 @@ transactionRouter.post(
 transactionRouter.post(
   "/request-link/resolve",
   protect,
-  requestLinkReadLimit,
   allowQueryFields([]),
   allowBodyFields(["token", "commitmentKey", "receiverWallet", "amountEth", "assetSymbol"]),
   async (req, res, next) => {
@@ -453,7 +448,6 @@ transactionRouter.post(
 transactionRouter.post(
   "/request-link/revoke",
   protect,
-  requestLinkWriteLimit,
   allowQueryFields([]),
   allowBodyFields(["token"]),
   async (req, res, next) => {
@@ -486,7 +480,6 @@ transactionRouter.post(
 transactionRouter.post(
   "/request-link/reserve",
   protect,
-  requestLinkWriteLimit,
   allowQueryFields([]),
   allowBodyFields(["token"]),
   async (req, res, next) => {
@@ -530,7 +523,6 @@ transactionRouter.post(
 transactionRouter.post(
   "/request-link/release",
   protect,
-  requestLinkWriteLimit,
   allowQueryFields([]),
   allowBodyFields(["token"]),
   async (req, res, next) => {
