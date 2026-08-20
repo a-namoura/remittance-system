@@ -6,7 +6,8 @@ const root = process.cwd();
 const projects = ["backend", "frontend", "contracts"];
 
 function sha256(path) {
-  return createHash("sha256").update(readFileSync(path)).digest("hex");
+  const canonicalContents = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+  return createHash("sha256").update(canonicalContents).digest("hex");
 }
 
 const inventory = {
