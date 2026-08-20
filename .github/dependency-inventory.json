@@ -7,7 +7,7 @@
       "packageManager": "npm",
       "manifest": "backend/package.json",
       "lockfile": "backend/package-lock.json",
-      "lockfileSha256": "a8480be607343f7da2e864be27e88cede568f10e515a6e59da66c6cc848dd25c",
+      "lockfileSha256": "244936bad6d429d9cd244167127c8ccb588b64298081d8e5ad23a07baaf92b32",
       "dependencies": [
         { "name": "bcryptjs", "version": "^3.0.3", "scope": "production" },
         { "name": "cors", "version": "^2.8.5", "scope": "production" },
@@ -16,7 +16,8 @@
         { "name": "express", "version": "^5.2.1", "scope": "production" },
         { "name": "jsonwebtoken", "version": "^9.0.3", "scope": "production" },
         { "name": "mongoose", "version": "^9.0.2", "scope": "production" },
-        { "name": "nodemon", "version": "^3.1.11", "scope": "development" }
+        { "name": "nodemon", "version": "^3.1.11", "scope": "development" },
+        { "name": "supertest", "version": "^7.2.2", "scope": "development" }
       ]
     },
     {
@@ -24,9 +25,10 @@
       "packageManager": "npm",
       "manifest": "frontend/package.json",
       "lockfile": "frontend/package-lock.json",
-      "lockfileSha256": "edca5630fb23adcf279315942cc0aff5327ba1ff194e54da52ef42310520805e",
+      "lockfileSha256": "9767e615590dff0521acef77b15c99dc0b10522b69645644b4c1b48b88c72418",
       "dependencies": [
         { "name": "@eslint/js", "version": "^9.39.1", "scope": "development" },
+        { "name": "@playwright/test", "version": "^1.55.0", "scope": "development" },
         { "name": "@tailwindcss/postcss", "version": "^4.1.18", "scope": "development" },
         { "name": "@types/react", "version": "^19.2.5", "scope": "development" },
         { "name": "@types/react-dom", "version": "^19.2.3", "scope": "development" },
@@ -38,10 +40,11 @@
         { "name": "eslint-plugin-react-refresh", "version": "^0.4.24", "scope": "development" },
         { "name": "ethers", "version": "^6.16.0", "scope": "production" },
         { "name": "globals", "version": "^16.5.0", "scope": "development" },
+        { "name": "jspdf", "version": "^4.2.1", "scope": "production" },
         { "name": "postcss", "version": "^8.5.6", "scope": "development" },
         { "name": "react", "version": "^19.2.0", "scope": "production" },
         { "name": "react-dom", "version": "^19.2.0", "scope": "production" },
-        { "name": "react-router-dom", "version": "^7.11.0", "scope": "production" },
+        { "name": "react-router-dom", "version": "7.18.2", "scope": "production" },
         { "name": "tailwindcss", "version": "^4.1.18", "scope": "development" },
         { "name": "vite", "version": "npm:rolldown-vite@7.2.5", "scope": "development" }
       ]
