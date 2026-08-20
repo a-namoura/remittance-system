@@ -38,6 +38,16 @@ npx hardhat keystore set BSC_TESTNET_PRIVATE_KEY
 
 Or provide them as environment variables in your shell.
 
+## Contract Flows
+
+- `transfer(receiver)` sends BNB immediately and retains the original API.
+- `createEscrow(receiver, expiresAt)` creates a numbered, time-limited escrow.
+- `claim(transactionId)` credits the receiver before expiry.
+- `cancel(transactionId)` credits the sender once the escrow expires.
+- `withdraw()` safely withdraws all credits using the pull-payment pattern.
+- The owner can pause new transfers and escrows and transfer ownership. Existing
+  escrow claims, cancellations, and withdrawals remain available while paused.
+
 ## Common Commands
 
 Compile:
