@@ -19,14 +19,14 @@ function configuredChainId() {
 }
 
 export async function submitConnectedWalletTransfer({ senderWallet, receiverWallet, amountEth }) {
-  const ethereum = getInjectedWalletProvider();
-  if (!ethereum?.request) throw new Error("Wallet provider not found. Connect MetaMask and try again.");
+  const walletProvider = getInjectedWalletProvider();
+  if (!walletProvider?.request) throw new Error("Wallet provider not found. Connect MetaMask and try again.");
 
   const expectedChainId = configuredChainId();
-  const currentChainId = BigInt(await ethereum.request({ method: "eth_chainId" }));
+  const currentChainId = BigInt(await walletProvider.request({ method: "eth_chainId" }));
   if (currentChainId !== expectedChainId) {
     try {
-      await ethereum.request({
+      await walletProvider.request({
         method: "wallet_switchEthereumChain",
         params: [{ chainId: ethers.toBeHex(expectedChainId) }],
       });
@@ -38,9 +38,8 @@ export async function submitConnectedWalletTransfer({ senderWallet, receiverWall
     }
   }
 
-  const provider = new ethers.BrowserProvider(ethereum, "any");
-  const signer = await provider.getSigner();
-  const signerAddress = await signer.getAddress();
+  const accounts = await walletProvider.request({ method: "eth_requestAccounts" });
+  const signerAddress = String(accounts?.[0] || "");
   if (signerAddress.toLowerCase() !== String(senderWallet || "").toLowerCase()) {
     throw new Error("The active wallet account does not match your linked wallet.");
   }
@@ -49,19 +48,26 @@ export async function submitConnectedWalletTransfer({ senderWallet, receiverWall
   if (!ethers.isAddress(contractAddress)) {
     throw new Error("The remittance contract is not configured in the frontend.");
   }
-  const contract = new ethers.Contract(contractAddress, REMITTANCE_ABI, signer);
-  const tx = await contract.transfer(receiverWallet, { value: ethers.parseEther(String(amountEth)) });
-  return tx.hash;
+  const contractInterface = new ethers.Interface(REMITTANCE_ABI);
+  return walletProvider.request({
+    method: "eth_sendTransaction",
+    params: [{
+      from: signerAddress,
+      to: contractAddress,
+      value: ethers.toBeHex(ethers.parseEther(String(amountEth))),
+      data: contractInterface.encodeFunctionData("transfer", [receiverWallet]),
+    }],
+  });
 }
 
 async function getInjectedNativeBalance(wallet) {
-  const ethereum = getInjectedWalletProvider();
-  if (!ethereum?.request) return null;
+  const walletProvider = getInjectedWalletProvider();
+  if (!walletProvider?.request) return null;
 
   const expectedChainId = Number(import.meta.env.VITE_CHAIN_ID || import.meta.env.VITE_REM_CHAIN_ID || 97);
   const [chainIdHex, accounts] = await Promise.all([
-    ethereum.request({ method: "eth_chainId" }),
-    ethereum.request({ method: "eth_accounts" }),
+    walletProvider.request({ method: "eth_chainId" }),
+    walletProvider.request({ method: "eth_accounts" }),
   ]);
 
   if (Number.parseInt(String(chainIdHex), 16) !== expectedChainId) return null;
@@ -70,7 +76,7 @@ async function getInjectedNativeBalance(wallet) {
     return null;
   }
 
-  const balanceHex = await ethereum.request({
+  const balanceHex = await walletProvider.request({
     method: "eth_getBalance",
     params: [wallet, "latest"],
   });

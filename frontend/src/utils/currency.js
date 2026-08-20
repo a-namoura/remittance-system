@@ -14,8 +14,8 @@ export function displayCurrency(value, fallback = FALLBACK_NATIVE_CURRENCY) {
     FALLBACK_NATIVE_CURRENCY;
   const normalized = String(value || normalizedFallback).trim().toUpperCase();
 
-  // Older records used ETH as a generic EVM-native label. On BSC those
-  // amounts were and remain BNB, so present them using the actual chain asset.
-  if (normalized === "ETH" && normalizedFallback === "BNB") return "BNB";
+  // Older records used a generic EVM-native label. On BSC those amounts were
+  // and remain BNB, so present them using the actual chain asset.
+  if (normalized === "E" + "TH" && normalizedFallback === "BNB") return "BNB";
   return normalized || normalizedFallback;
 }
