@@ -102,16 +102,25 @@ export function PageNotice({ children, className = "", variant = "info" }) {
   return <div className={joinClasses(toneClass, className)}>{children}</div>;
 }
 
-export function PageLoading({ children = "Loading...", className = "", large = false }) {
+export function PageLoading({
+  children = "Loading...",
+  className = "",
+  large = false,
+  page = false,
+}) {
   const label = typeof children === "string" ? children : "Loading...";
 
   return (
     <div
-      className={joinClasses("app-page-loading", className)}
+      className={joinClasses(
+        "app-page-loading",
+        page ? "app-page-loading-full" : "",
+        className
+      )}
       role="status"
       aria-label={label}
     >
-      <LoadingIcon label={label} large={large} />
+      <LoadingIcon label={label} large={large || page} />
     </div>
   );
 }

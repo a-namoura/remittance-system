@@ -413,16 +413,43 @@ async function attachLatestThreadMetadata({ contacts, viewerUserId, threadDocs: 
   );
 
   const viewerId = String(viewerUserId);
+  const peerIds = safeContacts.map((contact) => contact.peerUserId).filter(Boolean);
+  const latestPaymentsRaw = peerIds.length
+    ? await Transaction.find({
+        $or: [
+          { senderUserId: viewerUserId, receiverUserId: { $in: peerIds } },
+          { receiverUserId: viewerUserId, senderUserId: { $in: peerIds } },
+        ],
+      }).sort({ createdAt: -1 }).lean()
+    : [];
+  const latestPaymentByPeer = new Map();
+  for (const payment of latestPaymentsRaw) {
+    const peerId = String(payment.senderUserId) === viewerId
+      ? String(payment.receiverUserId || "")
+      : String(payment.senderUserId || "");
+    if (peerId && !latestPaymentByPeer.has(peerId)) latestPaymentByPeer.set(peerId, payment);
+  }
 
   return safeContacts.map((contact) => {
     const participantKey = buildParticipantKey(viewerUserId, contact.peerUserId);
     const threadDoc = threadByKey.get(String(participantKey)) || null;
+    const latestPaymentRaw = latestPaymentByPeer.get(String(contact.peerUserId)) || null;
+    const latestPayment = latestPaymentRaw ? {
+      id: latestPaymentRaw._id,
+      senderUserId: latestPaymentRaw.senderUserId,
+      receiverUserId: latestPaymentRaw.receiverUserId,
+      amount: latestPaymentRaw.amount,
+      assetSymbol: latestPaymentRaw.assetSymbol || DEFAULT_CHAT_ASSET_SYMBOL,
+      status: latestPaymentRaw.status,
+      createdAt: latestPaymentRaw.createdAt,
+    } : null;
 
     if (!threadDoc) {
       return {
         ...contact,
         thread: null,
         latestMessage: null,
+        latestPayment,
       };
     }
 
@@ -469,6 +496,7 @@ async function attachLatestThreadMetadata({ contacts, viewerUserId, threadDocs: 
             createdAt: latestRaw.createdAt,
           }
         : null,
+      latestPayment,
     };
   });
 }

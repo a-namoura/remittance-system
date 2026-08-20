@@ -1,10 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Navbar from "./components/Navbar.jsx";
 import ThemeToggle from "./components/ThemeToggle.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
-import GlobalRequestFeedback from "./components/GlobalRequestFeedback.jsx";
 import SystemNotifications from "./components/SystemNotifications.jsx";
 import { PageLoading } from "./components/PageLayout.jsx";
 
@@ -61,7 +60,7 @@ const ADMIN_ROUTES = [
 ];
 
 function RouteLoading() {
-  return <PageLoading className="m-6">Loading page...</PageLoading>;
+  return <PageLoading page>Loading page...</PageLoading>;
 }
 
 function PublicLayout({ children }) {
@@ -104,11 +103,8 @@ function AuthenticatedLayout({ children }) {
 }
 
 export default function App() {
-  const location = useLocation();
-
   return (
     <>
-      <GlobalRequestFeedback key={`${location.pathname}${location.search}`} />
       <SystemNotifications />
 
       <Routes>

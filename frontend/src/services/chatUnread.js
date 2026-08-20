@@ -109,8 +109,14 @@ export function countUnreadConversations({ friends, viewerUserId } = {}) {
   let totalUnread = 0;
   for (const friend of safeFriends) {
     const peerUserId = String(friend?.peerUserId || "").trim();
-    const latestMessageId = String(friend?.latestMessage?.id || "").trim();
-    const latestRecipientUserId = String(friend?.latestMessage?.recipientUserId || "").trim();
+    const messageTime = new Date(friend?.latestMessage?.createdAt || 0).getTime() || 0;
+    const paymentTime = new Date(friend?.latestPayment?.createdAt || 0).getTime() || 0;
+    const paymentIsLatest = paymentTime > messageTime;
+    const latestEvent = paymentIsLatest ? friend?.latestPayment : friend?.latestMessage;
+    const latestMessageId = String(latestEvent?.id || "").trim();
+    const latestRecipientUserId = String(
+      paymentIsLatest ? latestEvent?.receiverUserId : latestEvent?.recipientUserId
+    ).trim();
 
     if (!peerUserId || !latestMessageId) continue;
     if (latestRecipientUserId !== normalizedViewerUserId) continue;

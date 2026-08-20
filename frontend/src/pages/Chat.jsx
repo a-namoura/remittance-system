@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   PageContainer,
   PageError,
@@ -269,8 +269,10 @@ function normalizeLookupValue(value) {
 }
 
 function getFriendLastActivityAt(friend) {
+  const messageAt = friend?.latestMessage?.createdAt;
+  const paymentAt = friend?.latestPayment?.createdAt;
   return (
-    friend?.latestMessage?.createdAt ||
+    (toEpochMs(paymentAt) > toEpochMs(messageAt) ? paymentAt : messageAt) ||
     friend?.thread?.lastMessageAt ||
     friend?.createdAt ||
     null
@@ -288,6 +290,7 @@ function isNearTimelineBottom(node) {
 }
 
 export default function Chat() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedPeerUserId = String(searchParams.get("friend") || "").trim();
   const requestedFriendContactId = String(searchParams.get("friendId") || "").trim();
@@ -352,6 +355,7 @@ export default function Chat() {
   const [walletBalanceError, setWalletBalanceError] = useState("");
 
   const [requestModal, setRequestModal] = useState(null);
+  const [selectedPayment, setSelectedPayment] = useState(null);
   const [requestModalError, setRequestModalError] = useState("");
   const [requestModalInfo, setRequestModalInfo] = useState("");
   const [requestModalLoading, setRequestModalLoading] = useState(false);
@@ -526,8 +530,13 @@ export default function Chat() {
       const peerId = String(friend?.peerUserId || "").trim();
       if (!peerId) continue;
 
-      const latestMessageId = String(friend?.latestMessage?.id || "").trim();
-      const latestRecipientId = String(friend?.latestMessage?.recipientUserId || "").trim();
+      const paymentIsLatest =
+        toEpochMs(friend?.latestPayment?.createdAt) > toEpochMs(friend?.latestMessage?.createdAt);
+      const latestEvent = paymentIsLatest ? friend?.latestPayment : friend?.latestMessage;
+      const latestMessageId = String(latestEvent?.id || "").trim();
+      const latestRecipientId = String(
+        paymentIsLatest ? latestEvent?.receiverUserId : latestEvent?.recipientUserId
+      ).trim();
       const seenMessageId = String(lastSeenByPeer[peerId] || "").trim();
 
       unreadByPeer[peerId] =
@@ -806,7 +815,12 @@ export default function Chat() {
 
     const activeFriendEntry =
       friends.find((friend) => String(friend?.peerUserId || "").trim() === peerId) || null;
-    const latestMessageId = String(activeFriendEntry?.latestMessage?.id || "").trim();
+    const paymentIsLatest =
+      toEpochMs(activeFriendEntry?.latestPayment?.createdAt) >
+      toEpochMs(activeFriendEntry?.latestMessage?.createdAt);
+    const latestMessageId = String(
+      (paymentIsLatest ? activeFriendEntry?.latestPayment : activeFriendEntry?.latestMessage)?.id || ""
+    ).trim();
     if (!latestMessageId) return;
 
     markChatPeerLatestSeen({
@@ -1965,11 +1979,17 @@ export default function Chat() {
                     const unreadCount = Number(friendUnreadByPeer[peerId] || 0);
                     const latestPreview = String(friendPreviewByPeer[peerId] || "").trim();
                     const hasLatestMessage = Boolean(friend?.latestMessage?.id);
+                    const latestPayment = friend?.latestPayment || null;
+                    const paymentIsLatest =
+                      toEpochMs(latestPayment?.createdAt) >
+                      toEpochMs(friend?.latestMessage?.createdAt);
                     const lastActivityAt = getFriendLastActivityAt(friend);
                     const isLatestMine =
                       String(friend?.latestMessage?.senderUserId || "").trim() ===
                       String(me?.id || "").trim();
-                    const previewLine = hasLatestMessage
+                    const previewLine = paymentIsLatest
+                      ? `${String(latestPayment?.senderUserId) === String(me?.id) ? "You sent" : "You received"} ${formatAmount(latestPayment?.amount)} ${displayCurrency(latestPayment?.assetSymbol, nativeCurrency)}`
+                      : hasLatestMessage
                       ? `${isLatestMine ? "You: " : ""}${latestPreview || "New message"}`
                       : "No messages yet.";
                     return (
@@ -2099,7 +2119,9 @@ export default function Chat() {
                               </div>
                             )}
                             <div className={`flex ${isSent ? "justify-end" : "justify-start"}`}>
-                              <div
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPayment(payment)}
                                 className={`max-w-[18rem] rounded-2xl border px-4 py-3 shadow-sm ${
                                   isSent
                                     ? "border-purple-200 bg-purple-50"
@@ -2129,7 +2151,7 @@ export default function Chat() {
                                 <p className="mt-2 text-xs text-gray-600">
                                   {formatClock(payment.createdAt)} | {payment.status}
                                 </p>
-                              </div>
+                              </button>
                             </div>
                           </div>
                         );
@@ -2424,7 +2446,7 @@ export default function Chat() {
                         </svg>
                         {composerActionsOpen ? "Hide" : "Actions"}
                       </button>
-                      <form onSubmit={handleSendText} className="min-w-0 flex-1">
+                      <form onSubmit={handleSendText} autoComplete="off" className="min-w-0 flex-1">
                         <label htmlFor="chat-message-input" className={FORM_FIELD_LABEL_CLASS}>
                           Message
                         </label>
@@ -2432,6 +2454,12 @@ export default function Chat() {
                           <input
                             id="chat-message-input"
                             type="text"
+                            name="chat-message"
+                            autoComplete="off"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            data-lpignore="true"
+                            data-1p-ignore="true"
                             value={chatInput}
                             onChange={(event) => setChatInput(event.target.value)}
                             placeholder="Type a message..."
@@ -2500,6 +2528,43 @@ export default function Chat() {
           </section>
         </div>
       </section>
+
+      {selectedPayment ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedPayment(null);
+          }}
+        >
+          <section role="dialog" aria-modal="true" aria-labelledby="transaction-summary-title" className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
+            <div className="flex items-center justify-between gap-3">
+              <h3 id="transaction-summary-title" className="text-base font-semibold text-gray-900">Transaction summary</h3>
+              <button type="button" onClick={() => setSelectedPayment(null)} className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">Close</button>
+            </div>
+            <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
+                {selectedPayment.direction === "sent" ? "You sent" : "You received"}
+              </p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">
+                {formatAmount(selectedPayment.amount)} {displayCurrency(selectedPayment.assetSymbol, nativeCurrency)}
+              </p>
+              <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <div><dt className="text-xs text-gray-500">Status</dt><dd className="font-medium capitalize text-gray-900">{selectedPayment.status}</dd></div>
+                <div><dt className="text-xs text-gray-500">Date</dt><dd className="font-medium text-gray-900">{formatDay(selectedPayment.createdAt)} {formatClock(selectedPayment.createdAt)}</dd></div>
+              </dl>
+              {selectedPayment.note ? <p className="mt-3 whitespace-pre-wrap border-t border-gray-200 pt-3 text-sm text-gray-700">{selectedPayment.note}</p> : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate(`/transactions/${selectedPayment.id}`)}
+              className="mt-4 w-full rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700"
+            >
+              Expand transaction details
+            </button>
+          </section>
+        </div>
+      ) : null}
 
       {isSendComposer || isRequestComposer ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/35 px-4">

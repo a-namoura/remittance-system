@@ -89,6 +89,10 @@ button:not(:disabled):hover {
   @apply flex w-full items-center justify-center py-4 text-gray-500 dark:text-gray-400;
 }
 
+.app-page-loading-full {
+  @apply min-h-[calc(100dvh-7rem)] py-0 md:min-h-[calc(100dvh-4rem)];
+}
+
 .app-page-spinner {
   @apply inline-block h-5 w-5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent;
 }

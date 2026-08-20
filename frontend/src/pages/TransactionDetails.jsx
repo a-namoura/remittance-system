@@ -12,6 +12,7 @@ import { formatDateTime } from "../utils/datetime.js";
 import { displayCurrency } from "../utils/currency.js";
 import { getExplorerTxUrl } from "../utils/explorer.js";
 import { openExternalUrl } from "../utils/security.js";
+import { downloadTransactionReceipt } from "../utils/transactionReceipt.js";
 import CopyableWalletAddress from "../components/CopyableWalletAddress.jsx";
 import BackButton from "../components/BackButton.jsx";
 
@@ -41,6 +42,16 @@ export default function TransactionDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const [receiptError, setReceiptError] = useState("");
+
+  function handleDownloadReceipt() {
+    try {
+      setReceiptError("");
+      downloadTransactionReceipt(transaction);
+    } catch (err) {
+      setReceiptError(getUserErrorMessage(err, "Failed to create the receipt."));
+    }
+  }
 
   async function handleCancel() {
     if (!transaction?.canCancel || cancelling) return;
@@ -143,6 +154,8 @@ export default function TransactionDetails() {
 
       {!loading ? <PageError className="mt-4">{error}</PageError> : null}
 
+      <PageError className="mt-4">{receiptError}</PageError>
+
       {!loading && !error && !transaction && (
         <div className="mt-4 text-sm text-gray-500">No transaction found.</div>
       )}
@@ -188,6 +201,25 @@ export default function TransactionDetails() {
                   className="rounded-full border border-red-200 px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {cancelling ? "Cancelling..." : "Cancel transfer"}
+                </button>
+              )}
+              {String(transaction.status || "").toLowerCase() === "success" && (
+                <button
+                  type="button"
+                  onClick={handleDownloadReceipt}
+                  className="inline-flex items-center gap-2 rounded-full bg-purple-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                >
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    className="h-4 w-4"
+                    aria-hidden="true"
+                  >
+                    <path d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 15.5h12" />
+                  </svg>
+                  Download receipt (PDF)
                 </button>
               )}
             </div>
