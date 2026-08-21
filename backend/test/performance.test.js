@@ -128,7 +128,7 @@ test("real representative Express endpoints respond within 2 seconds with mocked
   // These protected routes short-circuit before touching MongoDB or blockchain
   // services; the request harness therefore exercises actual Express routing
   // without any live infrastructure dependency.
-  for (const endpoint of ["/api/health", "/api/me", "/api/transactions/my?limit=10", "/api/transactions/send"]) {
+  for (const endpoint of ["/api/health/live", "/api/me", "/api/transactions/my?limit=10", "/api/transactions/send"]) {
     const startedAt = Date.now();
     const response = endpoint === "/api/transactions/send"
       ? await request(app).post(endpoint).send({ receiverWallet: RECIPIENT, amountEth: 1 })

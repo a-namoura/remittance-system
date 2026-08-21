@@ -12,12 +12,13 @@ import { adminRouter } from "./adminRoutes.js";
 import { friendRouter } from "./friendRoutes.js";
 import { chatRouter } from "./chatRoutes.js";
 import { logAudit } from "../utils/audit.js";
+import { liveHealth, readyHealth, summaryHealth } from "../health.js";
 
 export const apiRouter = express.Router();
 
-apiRouter.get("/health", (req, res) => {
-  res.json({ status: "API running" });
-});
+apiRouter.get("/health/live", liveHealth);
+apiRouter.get("/health/ready", readyHealth);
+apiRouter.get("/health", summaryHealth);
 
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/users", userRouter);
