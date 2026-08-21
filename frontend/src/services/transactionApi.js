@@ -18,6 +18,14 @@ function configuredChainId() {
   return BigInt(import.meta.env.VITE_CHAIN_ID || import.meta.env.VITE_REM_CHAIN_ID || 97);
 }
 
+function configuredTransferGasLimit() {
+  const configured = Number(import.meta.env.VITE_REM_TRANSFER_GAS_LIMIT || 120000);
+  if (!Number.isSafeInteger(configured) || configured < 21000 || configured > 500000) {
+    throw new Error("The remittance transfer gas limit is invalid.");
+  }
+  return BigInt(configured);
+}
+
 export async function submitConnectedWalletTransfer({ senderWallet, receiverWallet, amountEth }) {
   const walletProvider = getInjectedWalletProvider();
   if (!walletProvider?.request) throw new Error("Wallet provider not found. Connect MetaMask and try again.");
@@ -56,6 +64,7 @@ export async function submitConnectedWalletTransfer({ senderWallet, receiverWall
       to: contractAddress,
       value: ethers.toBeHex(ethers.parseEther(String(amountEth))),
       data: contractInterface.encodeFunctionData("transfer", [receiverWallet]),
+      gas: ethers.toBeHex(configuredTransferGasLimit()),
     }],
   });
 }
