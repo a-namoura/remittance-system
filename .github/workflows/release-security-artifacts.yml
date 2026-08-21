@@ -72,7 +72,7 @@ jobs:
           test -n "$AWS_REGION"
           test "$SECURITY_ARCHIVE_RETENTION_DAYS" -ge 2555
       - name: Configure immutable archive credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.SECURITY_ARCHIVE_AWS_ROLE_ARN }}
           aws-region: ${{ vars.SECURITY_ARCHIVE_AWS_REGION }}
