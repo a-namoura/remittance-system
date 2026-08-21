@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { getRemittanceContractAddress, getRemittanceProvider } from "./blockchain/remittanceClient.js";
 import { BlockchainSyncState } from "./models/BlockchainSyncState.js";
+import { incrementMetric, setMetric } from "./utils/metrics.js";
 
 const DEFAULT_MAX_RECONCILIATION_LAG_BLOCKS = 25;
 const DEFAULT_HEALTH_CHECK_TIMEOUT_MS = 2_000;
@@ -65,6 +66,7 @@ export function createHealthChecks({
       }
       return { ok: true, chainId, latestBlock };
     } catch {
+      incrementMetric("rpc_failures_total", { operation: "health_check" });
       return failed("rpc_unreachable");
     }
   }
@@ -84,6 +86,7 @@ export function createHealthChecks({
       if (!state) return failed("not_initialized", { lagBlocks: null });
 
       const lagBlocks = Math.max(0, blockchain.latestBlock - state.lastProcessedBlock);
+      setMetric("reconciliation_lag_blocks", lagBlocks);
       const maxLagBlocks = positiveInteger(
         env.HEALTH_RECONCILIATION_MAX_LAG_BLOCKS,
         DEFAULT_MAX_RECONCILIATION_LAG_BLOCKS

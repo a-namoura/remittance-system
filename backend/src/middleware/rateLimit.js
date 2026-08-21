@@ -1,3 +1,5 @@
+import { incrementMetric } from "../utils/metrics.js";
+
 const buckets = new Map();
 
 const minute = 60_000;
@@ -68,6 +70,7 @@ export function apiRateLimit({ policies = RATE_LIMIT_POLICIES, now = Date.now } 
 
     if (bucket.count <= policy.max) return next();
 
+    incrementMetric("rate_limit_hits_total", { policy: policyName });
     res.setHeader("Retry-After", String(retryAfter));
     const error = new Error("Too many requests. Please try again later.");
     error.statusCode = 429;

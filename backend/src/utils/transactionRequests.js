@@ -156,6 +156,7 @@ export async function markTransactionFailed(txDoc, err) {
   txDoc.blockchainSyncedAt = new Date();
 
   await saveTransactionWithinSyncWindow(txDoc, receivedAt);
+  incrementMetric("transaction_status_total", { status: txDoc.status });
 }
 
 function isTransactionCancellation(err) {
@@ -202,6 +203,10 @@ function isTemporaryBlockchainInfrastructureError(err) {
 export async function preserveTransactionForRecovery(txDoc, err) {
   if (!txDoc) return;
 
+  if (isTemporaryBlockchainInfrastructureError(err)) {
+    incrementMetric("rpc_failures_total", { operation: "transaction_confirmation" });
+  }
+
   txDoc.reconciliationError = getTransactionFailureReason(err);
   txDoc.lastReconciledAt = new Date();
   await txDoc.save();
@@ -243,6 +248,7 @@ export async function recordTransactionSubmission(txDoc, submission) {
     throw err;
   }
   incrementMetric("transaction_submissions_total", { asset: txDoc.assetSymbol || "unknown" });
+  incrementMetric("transaction_status_total", { status: "pending" });
   observeMetric("transaction_submission_latency_ms", Math.max(0, Date.now() - submissionStartedAt), { asset: txDoc.assetSymbol || "unknown" });
   return txDoc;
 }
@@ -276,6 +282,7 @@ export async function syncTransactionWithBlockchainResult(
 
   await saveTransactionWithinSyncWindow(txDoc, resultReceivedAt);
   incrementMetric("transaction_settlements_total", { status: txDoc.status, asset: txDoc.assetSymbol || "unknown" });
+  incrementMetric("transaction_status_total", { status: txDoc.status });
   observeMetric("transaction_settlement_sync_ms", Math.max(0, Date.now() - resultReceivedAt.getTime()), { status: txDoc.status });
 
   if (executionSucceeded) {

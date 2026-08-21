@@ -17,7 +17,7 @@ import {
   syncTransactionWithBlockchainResult,
 } from "../utils/transactionRequests.js";
 import { refreshTransactionWalletBalances } from "../utils/walletBalances.js";
-import { incrementMetric, observeMetric } from "../utils/metrics.js";
+import { incrementMetric, observeMetric, setMetric } from "../utils/metrics.js";
 
 const DEFAULT_INTERVAL_MS = 15_000;
 const DEFAULT_BATCH_SIZE = 100;
@@ -141,6 +141,7 @@ export async function queryTransferEventsAdaptive(
     const events = await contract.queryFilter(filter, fromBlock, toBlock);
     return [{ fromBlock, toBlock, events }];
   } catch (err) {
+    incrementMetric("rpc_failures_total", { operation: "query_logs" });
     if (!isRpcLogLimitError(err) || fromBlock >= toBlock) throw err;
 
     const middleBlock = Math.floor((fromBlock + toBlock) / 2);
@@ -357,6 +358,7 @@ export async function reconcileTransaction(
   try {
     receipt = await provider.getTransactionReceipt(txDoc.txHash);
   } catch (err) {
+    incrementMetric("rpc_failures_total", { operation: "get_transaction_receipt" });
     // A transport/RPC failure says nothing about chain execution.  In
     // particular, never turn a known final result into a non-terminal state.
     // Pending records remain pending so their idempotency key continues to
@@ -598,6 +600,7 @@ async function syncTransferEvents(provider, config) {
     : initialBlock;
 
   if (fromBlock > safeBlock) {
+    setMetric("reconciliation_lag_blocks", Math.max(0, safeBlock - (state?.lastProcessedBlock || safeBlock)));
     return { scanned: 0, ingested: 0, updated: 0 };
   }
 
@@ -624,6 +627,7 @@ async function syncTransferEvents(provider, config) {
       );
     } catch (err) {
       if (isRpcLogLimitError(err)) {
+        setMetric("reconciliation_lag_blocks", Math.max(0, safeBlock - (batchStart - 1)));
         return {
           scanned,
           ingested,
@@ -657,6 +661,8 @@ async function syncTransferEvents(provider, config) {
       );
     }
   }
+
+  setMetric("reconciliation_lag_blocks", 0);
 
   return { scanned, ingested, updated };
 }
@@ -726,6 +732,7 @@ export async function reconcileTransactions({ force = false, forceBefore, skipEv
       try {
         events = await syncTransferEvents(provider, config);
       } catch (err) {
+        incrementMetric("rpc_failures_total", { operation: "event_sync" });
         errors += 1;
         events = {
           ...events,

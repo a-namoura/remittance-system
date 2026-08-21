@@ -5,6 +5,7 @@ import {
   getRateLimitPolicy,
   resetRateLimitBuckets,
 } from "../src/middleware/rateLimit.js";
+import { getMetricsSnapshot, resetMetrics } from "../src/utils/metrics.js";
 
 function responseStub() {
   const headers = new Map();
@@ -28,7 +29,10 @@ function invoke(middleware, { path, ip = "127.0.0.1" }) {
   return { called, error, res };
 }
 
-test.beforeEach(() => resetRateLimitBuckets());
+test.beforeEach(() => {
+  resetRateLimitBuckets();
+  resetMetrics();
+});
 
 test("rate limit policy selects sensitive endpoint groups and general fallback", () => {
   assert.equal(getRateLimitPolicy({ originalUrl: "/api/auth/login" }), "login");
@@ -53,6 +57,8 @@ test("login requests are throttled and return retry headers", () => {
   assert.match(throttled.error?.message, /Too many requests/);
   assert.equal(throttled.res.headers.get("ratelimit-limit"), "5");
   assert.ok(Number(throttled.res.headers.get("retry-after")) > 0);
+  const hit = getMetricsSnapshot().counters.find((metric) => metric.name === "rate_limit_hits_total");
+  assert.deepEqual(hit, { name: "rate_limit_hits_total", labels: { policy: "login" }, value: 1 });
 });
 
 test("sensitive categories use independent shared counters", () => {

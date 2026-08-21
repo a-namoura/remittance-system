@@ -13,12 +13,21 @@ import { friendRouter } from "./friendRoutes.js";
 import { chatRouter } from "./chatRoutes.js";
 import { logAudit } from "../utils/audit.js";
 import { liveHealth, readyHealth, summaryHealth } from "../health.js";
+import { getPublicMetricsSnapshot } from "../utils/metrics.js";
 
 export const apiRouter = express.Router();
 
 apiRouter.get("/health/live", liveHealth);
 apiRouter.get("/health/ready", readyHealth);
 apiRouter.get("/health", summaryHealth);
+apiRouter.get(
+  "/metrics",
+  (req, res, next) => {
+    if (String(process.env.METRICS_PUBLIC || "false").toLowerCase() === "true") return next();
+    return protect(req, res, (err) => err ? next(err) : requireAdmin(req, res, next));
+  },
+  (req, res) => res.json(getPublicMetricsSnapshot())
+);
 
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/users", userRouter);

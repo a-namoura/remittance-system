@@ -22,6 +22,9 @@ export function responseSlaMonitor(req, res, next) {
     const route = req.route?.path || req.baseUrl || "unmatched";
     const labels = { method: req.method, route, status: res.statusCode };
     incrementMetric("http_requests_total", labels);
+    if (res.statusCode >= 400) {
+      incrementMetric("http_errors_total", labels);
+    }
     observeMetric("http_request_duration_ms", elapsedMs, labels);
     console.info({ event: "http_request_completed", method: req.method, route, statusCode: res.statusCode, durationMs: Math.round(elapsedMs) });
     if (elapsedMs <= slaMs) return;

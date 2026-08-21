@@ -11,6 +11,7 @@ import {
   parseEther,
 } from "ethers";
 import { normalizeEvmAddress } from "../utils/walletAddress.js";
+import { incrementMetric } from "../utils/metrics.js";
 
 dotenv.config();
 
@@ -38,7 +39,13 @@ function delay(ms) {
 
 async function getTransactionWithPropagationRetry(provider, txHash) {
   for (let attempt = 1; attempt <= USER_TRANSACTION_LOOKUP_ATTEMPTS; attempt += 1) {
-    const tx = await provider.getTransaction(txHash);
+    let tx;
+    try {
+      tx = await provider.getTransaction(txHash);
+    } catch (err) {
+      incrementMetric("rpc_failures_total", { operation: "get_transaction" });
+      throw err;
+    }
     if (tx) return tx;
     if (attempt < USER_TRANSACTION_LOOKUP_ATTEMPTS) {
       await delay(USER_TRANSACTION_LOOKUP_DELAY_MS);
@@ -299,7 +306,13 @@ export async function getEthBalance(address) {
   }
 
   const provider = getRemittanceProvider();
-  const balanceWei = await provider.getBalance(normalizedAddress);
+  let balanceWei;
+  try {
+    balanceWei = await provider.getBalance(normalizedAddress);
+  } catch (err) {
+    incrementMetric("rpc_failures_total", { operation: "get_balance" });
+    throw err;
+  }
   const balanceEth = Number(formatEther(balanceWei));
 
   return balanceEth;
