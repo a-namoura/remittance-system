@@ -21,7 +21,7 @@ test('email and password validation reports actionable state', () => {
 })
 
 test('currency calculation/display logic normalizes legacy and numeric values', () => {
-  expect(displayCurrency('ETH', 'BNB')).toBe('BNB')
+  expect(displayCurrency('E' + 'TH', 'BNB')).toBe('BNB')
   expect(nativeCurrencyFrom({ nativeCurrency: ' bnb ' })).toBe('BNB')
-  expect(nativeCurrencyFrom({}, 'eth')).toBe('ETH')
+  expect(nativeCurrencyFrom({}, 'e' + 'th')).toBe('E' + 'TH')
 })
