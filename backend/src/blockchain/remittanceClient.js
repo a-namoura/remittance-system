@@ -12,6 +12,7 @@ import {
 } from "ethers";
 import { normalizeEvmAddress } from "../utils/walletAddress.js";
 import { incrementMetric } from "../utils/metrics.js";
+import { decryptCustodialPrivateKey } from "../utils/custodialWallet.js";
 
 dotenv.config();
 
@@ -215,6 +216,26 @@ export async function submitRemittance(
       amountEth,
     }),
   };
+}
+
+export async function submitCustodialRemittance(walletDoc, receiver, amountEth, options = {}) {
+  if (walletDoc?.type !== "custodial") {
+    throw new Error("A custodial wallet is required for server-side signing.");
+  }
+  const privateKey = decryptCustodialPrivateKey(walletDoc);
+  return submitRemittance(receiver, amountEth, {
+    ...options,
+    getClient: () => {
+      const wallet = new Wallet(privateKey, getRemittanceProvider());
+      if (normalizeEvmAddress(wallet.address) !== normalizeEvmAddress(walletDoc.address)) {
+        throw new Error("Custodial wallet key does not match its stored address.");
+      }
+      return {
+        wallet,
+        contract: new Contract(getRemittanceContractAddress(), REMITTANCE_ABI, wallet),
+      };
+    },
+  });
 }
 
 /**

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import {
   createWalletChallenge,
+  createAppWallet,
   linkWalletToUser,
   unlinkWalletFromUser,
 } from "../services/walletApi.js";
@@ -88,6 +89,7 @@ function formatWalletVerificationError(error) {
 
 export default function ConnectWalletButton({
   connected,
+  walletType,
   onLinked,
   onDisconnected,
 }) {
@@ -96,6 +98,26 @@ export default function ConnectWalletButton({
   const [walletNotification, showWalletNotification] =
     useTransitionNotification();
   const [loading, setLoading] = useState(false);
+
+  async function handleCreateWallet() {
+    try {
+      setError("");
+      setStatus("");
+      setLoading(true);
+      const token = requireAuthToken();
+      if (!token) throw new Error("You must be logged in to create a wallet.");
+      const result = await createAppWallet({ token });
+      setStatus(result.message || "Your app wallet was created successfully.");
+      showWalletNotification("App wallet created successfully", { variant: "success" });
+      if (typeof onLinked === "function") onLinked(result.wallet.address, result.wallet);
+    } catch (err) {
+      const message = getUserErrorMessage(err, "Failed to create app wallet.");
+      setError(message);
+      showWalletNotification(message, { variant: "error" });
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     const walletProvider = getMetaMaskProvider();
@@ -200,7 +222,7 @@ export default function ConnectWalletButton({
       setStatus(statusMessage);
       showWalletNotification("Wallet connected successfully", { variant: "success" });
       if (typeof onLinked === "function") {
-        onLinked(normalizedAddress);
+        onLinked(normalizedAddress, { address: normalizedAddress, type: "external" });
       }
     } catch (err) {
       const message = getUserErrorMessage(err, "Failed to connect wallet.");
@@ -265,7 +287,18 @@ export default function ConnectWalletButton({
             {label}
           </button>
 
-          {connected && (
+          {!connected && (
+            <button
+              type="button"
+              onClick={handleCreateWallet}
+              disabled={loading}
+              className={`inline-flex items-center justify-center ${FORM_INLINE_SECONDARY_BUTTON_CLASS}`}
+            >
+              Create app wallet
+            </button>
+          )}
+
+          {connected && walletType !== "custodial" && (
             <button
               type="button"
               onClick={handleUnlink}

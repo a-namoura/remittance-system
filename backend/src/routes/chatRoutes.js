@@ -13,6 +13,7 @@ import { Transaction } from "../models/Transaction.js";
 import {
   getUserRemittanceSubmission,
   getRemittanceSignerAddress,
+  submitCustodialRemittance,
   submitRemittance,
 } from "../blockchain/remittanceClient.js";
 import {
@@ -174,8 +175,8 @@ function resolveMessagePayloadCandidates(messageDoc, viewerId) {
 
   return uniquePayloads(
     isSender
-      ? senderCandidates
-      : recipientCandidates
+      ? [...senderCandidates, ...recipientCandidates]
+      : [...recipientCandidates, ...senderCandidates]
   );
 }
 
@@ -1172,7 +1173,7 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
         userId: senderUserId,
         isVerified: true,
       })
-        .select("address")
+        .select("address type +encryptedPrivateKey +encryptionIv +encryptionAuthTag +encryptionKeyVersion")
         .lean(),
       Wallet.findOne({
         userId: recipientUserId,
@@ -1214,16 +1215,20 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
     });
     await rejectInFlightDuplicateTransfer(res, transferRequestKey, req);
 
-    if (!req.body?.txHash) {
+    const isCustodialWallet = senderWalletDoc.type === "custodial";
+    if (!req.body?.txHash && !isCustodialWallet) {
       res.status(400);
       throw new Error("Sign and submit this payment with your linked wallet first.");
     }
-    const submission = await getUserRemittanceSubmission(req.body.txHash, {
-      sender: senderWallet,
-      receiver: recipientWallet,
-      amountEth: amountNumber,
-    });
-    txDoc = await Transaction.findOne({ txHash: submission.txHash });
+    let submission;
+    if (req.body?.txHash) {
+      submission = await getUserRemittanceSubmission(req.body.txHash, {
+        sender: senderWallet,
+        receiver: recipientWallet,
+        amountEth: amountNumber,
+      });
+      txDoc = await Transaction.findOne({ txHash: submission.txHash });
+    }
     if (txDoc) {
       txDoc.senderUserId = senderUserId;
       txDoc.receiverUserId = recipientUserId;
@@ -1244,7 +1249,16 @@ chatRouter.post("/threads/:threadId/send", protect, async (req, res, next) => {
         type: "sent",
         transferRequestKey,
       });
-      await recordTransactionSubmission(txDoc, submission);
+      if (isCustodialWallet) {
+        submission = await submitCustodialRemittance(
+          senderWalletDoc,
+          recipientWallet,
+          amountNumber,
+          { onSubmitted: (submitted) => recordTransactionSubmission(txDoc, submitted) }
+        );
+      } else {
+        await recordTransactionSubmission(txDoc, submission);
+      }
     }
 
     settleTransactionAfterSubmission({
@@ -1410,7 +1424,7 @@ chatRouter.post(
         userId: req.user._id,
         isVerified: true,
       })
-        .select("address")
+        .select("address type +encryptedPrivateKey +encryptionIv +encryptionAuthTag +encryptionKeyVersion")
         .lean();
       if (!payerWalletDoc?.address) {
         res.status(400);
@@ -1474,16 +1488,20 @@ chatRouter.post(
         throw new Error("Request is no longer pending.");
       }
 
-      if (!req.body?.txHash) {
+      const isCustodialWallet = payerWalletDoc.type === "custodial";
+      if (!req.body?.txHash && !isCustodialWallet) {
         res.status(400);
         throw new Error("Sign and submit this payment with your linked wallet first.");
       }
-      const submission = await getUserRemittanceSubmission(req.body.txHash, {
-        sender: payerWallet,
-        receiver: requesterWallet,
-        amountEth: requestAmountNumber,
-      });
-      txDoc = await Transaction.findOne({ txHash: submission.txHash });
+      let submission;
+      if (req.body?.txHash) {
+        submission = await getUserRemittanceSubmission(req.body.txHash, {
+          sender: payerWallet,
+          receiver: requesterWallet,
+          amountEth: requestAmountNumber,
+        });
+        txDoc = await Transaction.findOne({ txHash: submission.txHash });
+      }
       if (txDoc) {
         txDoc.senderUserId = req.user._id;
         txDoc.receiverUserId = lockedRequest.requesterUserId;
@@ -1501,7 +1519,16 @@ chatRouter.post(
           type: "sent",
           chatRequestId: lockedRequest._id,
         });
-        await recordTransactionSubmission(txDoc, submission);
+        if (isCustodialWallet) {
+          submission = await submitCustodialRemittance(
+            payerWalletDoc,
+            requesterWallet,
+            requestAmountNumber,
+            { onSubmitted: (submitted) => recordTransactionSubmission(txDoc, submitted) }
+          );
+        } else {
+          await recordTransactionSubmission(txDoc, submission);
+        }
       }
 
       settleTransactionAfterSubmission({
@@ -1523,7 +1550,7 @@ chatRouter.post(
           });
 
           const paidRequest = await ChatRequest.findOneAndUpdate(
-            { _id: lockedRequest._id, status: "processing" },
+            { _id: lockedRequest._id, status: { $in: ["pending", "processing"] } },
             {
               $set: {
                 status: "paid",

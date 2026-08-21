@@ -23,6 +23,16 @@ const walletSchema = new mongoose.Schema(
         message: createInvalidWalletAddressMessage("address"),
       },
     },
+    type: {
+      type: String,
+      enum: ["external", "custodial"],
+      default: "external",
+      required: true,
+    },
+    encryptedPrivateKey: { type: String, select: false },
+    encryptionIv: { type: String, select: false },
+    encryptionAuthTag: { type: String, select: false },
+    encryptionKeyVersion: { type: String, select: false },
     isVerified: {
       type: Boolean,
       default: false,

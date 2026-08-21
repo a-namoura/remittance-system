@@ -1041,14 +1041,17 @@ export default function SendMoney() {
         });
         requestReserved = true;
       }
-      setAwaitingWalletApproval(true);
-      const txHash = await submitConnectedWalletTransfer({
-        senderWallet: me?.wallet?.address,
-        receiverWallet: details.wallet,
-        amountEth: details.amount,
-      });
-      setAwaitingWalletApproval(false);
-      walletTxHash = txHash;
+      let txHash;
+      if (me?.wallet?.type !== "custodial") {
+        setAwaitingWalletApproval(true);
+        txHash = await submitConnectedWalletTransfer({
+          senderWallet: me?.wallet?.address,
+          receiverWallet: details.wallet,
+          amountEth: details.amount,
+        });
+        setAwaitingWalletApproval(false);
+        walletTxHash = txHash;
+      }
       const result = await sendTransaction({
         token,
         receiverWallet: details.wallet,
@@ -1128,14 +1131,17 @@ export default function SendMoney() {
         });
         requestReserved = true;
       }
-      setAwaitingWalletApproval(true);
-      const txHash = await submitConnectedWalletTransfer({
-        senderWallet: me?.wallet?.address,
-        receiverWallet: details.destination,
-        amountEth: details.amount,
-      });
-      setAwaitingWalletApproval(false);
-      walletTxHash = txHash;
+      let txHash;
+      if (me?.wallet?.type !== "custodial") {
+        setAwaitingWalletApproval(true);
+        txHash = await submitConnectedWalletTransfer({
+          senderWallet: me?.wallet?.address,
+          receiverWallet: details.destination,
+          amountEth: details.amount,
+        });
+        setAwaitingWalletApproval(false);
+        walletTxHash = txHash;
+      }
       const result = await sendTransaction({
         token,
         receiverWallet: details.destination,
@@ -1179,7 +1185,6 @@ export default function SendMoney() {
       setMethodError("Link and verify your wallet before generating a transfer link.");
       return;
     }
-
     const amount = Number(String(amountEth).trim());
     if (!Number.isFinite(amount) || amount <= 0) {
       setFieldErrors((current) => ({

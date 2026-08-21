@@ -5,6 +5,7 @@ import { allowBodyFields, allowQueryFields } from "../middleware/allowFields.js"
 import {
   getEthBalance,
   getUserRemittanceSubmission,
+  submitCustodialRemittance,
   submitRemittance,
 } from "../blockchain/remittanceClient.js";
 import { Transaction } from "../models/Transaction.js";
@@ -1085,7 +1086,10 @@ export function createSendTransactionRouter({
       "receiverWallet"
     );
 
-    const walletDoc = await walletModel.findOne({ userId: req.user._id });
+    const walletDoc = await walletModel.findOne(
+      { userId: req.user._id },
+      "+encryptedPrivateKey +encryptionIv +encryptionAuthTag +encryptionKeyVersion"
+    );
     if (!walletDoc || !walletDoc.isVerified) {
       res.status(400);
       throw new Error("You must link and verify a wallet before sending.");
@@ -1112,7 +1116,8 @@ export function createSendTransactionRouter({
       res.status(409);
       throw new Error("Quote is invalid, expired, already used, or does not match this transfer.");
     }
-    if (!txHash && submitRemittanceRpc === submitRemittance) {
+    const isCustodialWallet = walletDoc.type === "custodial";
+    if (!txHash && !isCustodialWallet && submitRemittanceRpc === submitRemittance) {
       res.status(400);
       throw new Error("Sign and submit this payment with your linked wallet first.");
     }
@@ -1237,9 +1242,13 @@ export function createSendTransactionRouter({
           receiver: normalizedReceiverWallet,
           amountEth: amountNumber,
         })
-      : await submitRemittanceRpc(normalizedReceiverWallet, amountNumber, {
+      : await (isCustodialWallet && submitRemittanceRpc === submitRemittance
+        ? submitCustodialRemittance(walletDoc, normalizedReceiverWallet, amountNumber, {
+            onSubmitted: (submission) => recordSubmission(txDoc, submission),
+          })
+        : submitRemittanceRpc(normalizedReceiverWallet, amountNumber, {
           onSubmitted: (submission) => recordSubmission(txDoc, submission),
-        });
+        }));
     if (txHash) await recordSubmission(txDoc, submission);
 
     settleSubmission({

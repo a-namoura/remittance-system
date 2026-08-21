@@ -315,9 +315,14 @@ export default function Account() {
 
           <ConnectWalletButton
             connected={accountLinked}
-            onLinked={(address) => {
+            walletType={me?.wallet?.type}
+            onLinked={(address, wallet) => {
               setAccountLinked(true);
               setAccountAddress(address);
+              setMe((current) => current ? {
+                ...current,
+                wallet: { ...current.wallet, ...wallet, linked: true, isVerified: true },
+              } : current);
               setAccountBalances({});
               setSelectedCurrency("");
               if (me?.id) {

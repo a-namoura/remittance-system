@@ -1578,14 +1578,17 @@ export default function Chat() {
       setSendingTransfer(true);
       setTimelineError("");
       setTimelineInfo("");
-      setAwaitingWalletApproval(true);
-      const txHash = await submitConnectedWalletTransfer({
-        senderWallet: me?.wallet?.address,
-        receiverWallet: activeFriend?.walletAddress,
-        amountEth: draft.amount,
-      });
-      setAwaitingWalletApproval(false);
-      walletTxHash = txHash;
+      let txHash;
+      if (me?.wallet?.type !== "custodial") {
+        setAwaitingWalletApproval(true);
+        txHash = await submitConnectedWalletTransfer({
+          senderWallet: me?.wallet?.address,
+          receiverWallet: activeFriend?.walletAddress,
+          amountEth: draft.amount,
+        });
+        setAwaitingWalletApproval(false);
+        walletTxHash = txHash;
+      }
       await sendChatTransfer({
         token,
         threadId: activeThread.id,
@@ -1743,14 +1746,17 @@ export default function Chat() {
         requestId: requestModal.id,
         prepare: true,
       });
-      setAwaitingWalletApproval(true);
-      const txHash = await submitConnectedWalletTransfer({
-        senderWallet: prepared?.payment?.senderWallet,
-        receiverWallet: prepared?.payment?.receiverWallet,
-        amountEth: prepared?.payment?.amount,
-      });
-      setAwaitingWalletApproval(false);
-      walletTxHash = txHash;
+      let txHash;
+      if (me?.wallet?.type !== "custodial") {
+        setAwaitingWalletApproval(true);
+        txHash = await submitConnectedWalletTransfer({
+          senderWallet: prepared?.payment?.senderWallet,
+          receiverWallet: prepared?.payment?.receiverWallet,
+          amountEth: prepared?.payment?.amount,
+        });
+        setAwaitingWalletApproval(false);
+        walletTxHash = txHash;
+      }
       const response = await payChatRequest({
         token,
         threadId: activeThread.id,

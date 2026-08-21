@@ -28,3 +28,10 @@ export async function unlinkWalletFromUser({ token }) {
     token,
   });
 }
+
+export async function createAppWallet({ token }) {
+  return apiRequest("/api/wallet/create", {
+    method: "POST",
+    token,
+  });
+}

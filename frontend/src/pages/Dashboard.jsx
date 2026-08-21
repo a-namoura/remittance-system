@@ -622,15 +622,13 @@ export default function Dashboard() {
             +
           </button>
 
-          {me?.wallet?.linked && me?.wallet?.address ? (
-            <button
-              type="button"
-              onClick={() => navigate("/send")}
-              className="flex-1 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:from-purple-700 hover:to-indigo-700"
-            >
-              Send
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => navigate("/send")}
+            className="flex-1 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:from-purple-700 hover:to-indigo-700"
+          >
+            Send
+          </button>
         </div>
       </div>
 

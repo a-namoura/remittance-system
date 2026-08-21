@@ -71,7 +71,7 @@ apiRouter.get("/me", protect, async (req, res, next) => {
       isVerified: true,
     })
       .select(
-        "address isVerified verifiedAt nativeBalance nativeBalanceSymbol nativeBalanceUpdatedAt balanceSyncError"
+        "address type isVerified verifiedAt nativeBalance nativeBalanceSymbol nativeBalanceUpdatedAt balanceSyncError"
       )
       .lean();
 
@@ -90,6 +90,7 @@ apiRouter.get("/me", protect, async (req, res, next) => {
           ? {
               linked: true,
               address: walletDoc.address,
+              type: walletDoc.type || "external",
               isVerified: Boolean(walletDoc.isVerified),
               verifiedAt: walletDoc.verifiedAt || null,
               balance: walletDoc.nativeBalance ?? null,
@@ -101,6 +102,7 @@ apiRouter.get("/me", protect, async (req, res, next) => {
               linked: false,
               address: "",
               isVerified: false,
+              type: null,
               verifiedAt: null,
               balance: null,
               balanceSymbol: null,

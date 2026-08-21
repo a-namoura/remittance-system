@@ -10,6 +10,7 @@ import {
 import { logAudit } from "../utils/audit.js";
 import { refreshWalletBalance } from "../utils/walletBalances.js";
 import { getRemittanceSignerAddress } from "../blockchain/remittanceClient.js";
+import { createCustodialWallet } from "../utils/custodialWallet.js";
 
 const WALLET_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
@@ -304,10 +305,19 @@ export async function linkWallet(req, res) {
   const doc = await Wallet.findOneAndUpdate(
     { userId },
     {
-      userId,
-      address: normalizedAddress,
-      isVerified: true,
-      verifiedAt: new Date(),
+      $set: {
+        userId,
+        address: normalizedAddress,
+        isVerified: true,
+        verifiedAt: new Date(),
+        type: "external",
+      },
+      $unset: {
+        encryptedPrivateKey: 1,
+        encryptionIv: 1,
+        encryptionAuthTag: 1,
+        encryptionKeyVersion: 1,
+      },
     },
     { returnDocument: "after", runValidators: true, upsert: true }
   );
@@ -331,6 +341,7 @@ export async function linkWallet(req, res) {
     message: "Wallet successfully verified and linked to your account.",
     wallet: {
       address: doc.address,
+      type: doc.type,
       isVerified: doc.isVerified,
       verifiedAt: doc.verifiedAt,
       balance: doc.nativeBalance ?? null,
@@ -339,6 +350,49 @@ export async function linkWallet(req, res) {
       balanceSyncError: doc.balanceSyncError || null,
     },
   });
+}
+
+// POST /api/wallet/create
+export async function createManagedWallet(req, res, next) {
+  try {
+    const userId = req.user._id;
+    const existing = await Wallet.findOne({ userId }).select("address type");
+    if (existing) {
+      return res.status(409).json({
+        message: "This account already has a wallet. Unlink the external wallet before creating an app wallet.",
+      });
+    }
+
+    await logWalletConnectionEvent({
+      req,
+      operation: "create_custodial",
+      outcome: "attempt",
+    });
+    const generated = createCustodialWallet();
+    const doc = await Wallet.create({
+      userId,
+      ...generated,
+      type: "custodial",
+      isVerified: true,
+      verifiedAt: new Date(),
+    });
+
+    await logWalletConnectionEvent({
+      req,
+      operation: "create_custodial",
+      outcome: "success",
+      walletAddress: doc.address,
+    });
+    void refreshWalletBalance(doc.address).catch(() => {});
+
+    return res.status(201).json({
+      ok: true,
+      message: "Your app wallet was created successfully.",
+      wallet: { address: doc.address, type: doc.type, isVerified: true, verifiedAt: doc.verifiedAt },
+    });
+  } catch (error) {
+    next(error);
+  }
 }
 
 // DELETE /api/wallet/link
@@ -351,6 +405,12 @@ export async function unlinkWallet(req, res) {
     outcome: "attempt",
   });
 
+  const currentWallet = await Wallet.findOne({ userId }).select("address type");
+  if (currentWallet?.type === "custodial") {
+    return res.status(400).json({
+      message: "App wallets cannot be unlinked because doing so could make their funds inaccessible.",
+    });
+  }
   const walletDoc = await Wallet.findOneAndDelete({ userId });
 
   await logWalletConnectionEvent({
