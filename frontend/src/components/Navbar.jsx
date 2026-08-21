@@ -9,7 +9,8 @@ import {
 import { clearSessionStorage, requireAuthToken } from "../services/session.js";
 import ThemeToggle from "./ThemeToggle.jsx";
 
-const NAVBAR_CHAT_SYNC_MS = 3000;
+// Keep unread state fresh without consuming the shared API rate-limit budget.
+const NAVBAR_CHAT_SYNC_MS = 15000;
 const NAVBAR_BADGE_PULSE_MS = 700;
 
 const BASE_NAV_GROUPS = [

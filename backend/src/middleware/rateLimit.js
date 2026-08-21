@@ -9,7 +9,7 @@ export const RATE_LIMIT_POLICIES = Object.freeze({
   passwordReset: Object.freeze({ windowMs: 15 * minute, max: 5 }),
   verification: Object.freeze({ windowMs: 10 * minute, max: 5 }),
   transaction: Object.freeze({ windowMs: 5 * minute, max: 30 }),
-  general: Object.freeze({ windowMs: 15 * minute, max: 100 }),
+  general: Object.freeze({ windowMs: 15 * minute, max: 300 }),
 });
 
 function requestPath(req) {
@@ -45,6 +45,10 @@ function clientKey(req) {
 
 export function apiRateLimit({ policies = RATE_LIMIT_POLICIES, now = Date.now } = {}) {
   return (req, res, next) => {
+    // Health probes must remain available even when an application client has
+    // exhausted its request budget; otherwise a healthy server appears down.
+    if (requestPath(req).startsWith("/health")) return next();
+
     const policyName = getRateLimitPolicy(req);
     const policy = policies[policyName];
     const timestamp = now();

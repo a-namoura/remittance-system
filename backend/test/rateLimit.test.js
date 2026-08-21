@@ -77,10 +77,11 @@ test("sensitive categories use independent shared counters", () => {
   assert.equal(invoke(middleware, { path: "/api/transactions/send" }).error, undefined);
   assert.equal(invoke(middleware, { path: "/api/health" }).error, undefined);
   assert.equal(invoke(middleware, { path: "/api/me" }).error, undefined);
+  assert.equal(invoke(middleware, { path: "/api/users/search" }).error, undefined);
   assert.equal(invoke(middleware, { path: "/api/users/search" }).error?.statusCode, 429);
 });
 
-test("rate limit window resets after it expires", () => {
+test("health checks bypass rate limits and application windows reset", () => {
   let timestamp = 1_000;
   const policy = { windowMs: 100, max: 1 };
   const policies = {
@@ -93,7 +94,9 @@ test("rate limit window resets after it expires", () => {
   const middleware = apiRateLimit({ policies, now: () => timestamp });
 
   assert.equal(invoke(middleware, { path: "/api/health" }).error, undefined);
-  assert.equal(invoke(middleware, { path: "/api/health" }).error?.statusCode, 429);
-  timestamp += 100;
   assert.equal(invoke(middleware, { path: "/api/health" }).error, undefined);
+  assert.equal(invoke(middleware, { path: "/api/me" }).error, undefined);
+  assert.equal(invoke(middleware, { path: "/api/me" }).error?.statusCode, 429);
+  timestamp += 100;
+  assert.equal(invoke(middleware, { path: "/api/me" }).error, undefined);
 });
