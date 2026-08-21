@@ -269,7 +269,7 @@ async function applyChatRequestSettlement(txDoc) {
 
   if (txDoc.status === "success") {
     await ChatRequest.findOneAndUpdate(
-      { _id: txDoc.chatRequestId, status: "processing" },
+      { _id: txDoc.chatRequestId, status: { $in: ["pending", "processing"] } },
       {
         $set: {
           status: "paid",

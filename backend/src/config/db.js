@@ -1,6 +1,35 @@
 import mongoose from "mongoose";
 import { ChatMessage } from "../models/ChatMessage.js";
 import { ChatRequest } from "../models/ChatRequest.js";
+import { Transaction } from "../models/Transaction.js";
+
+async function repairSuccessfulChatRequestSettlements() {
+  const settledTransactions = await Transaction.find({
+    status: "success",
+    chatRequestId: { $ne: null },
+  })
+    .select("_id chatRequestId senderUserId txHash blockchainSyncedAt")
+    .lean();
+
+  for (const transaction of settledTransactions) {
+    await ChatRequest.updateOne(
+      {
+        _id: transaction.chatRequestId,
+        status: { $in: ["pending", "processing"] },
+      },
+      {
+        $set: {
+          status: "paid",
+          paidAt: transaction.blockchainSyncedAt || new Date(),
+          paidByUserId: transaction.senderUserId,
+          paidTransactionId: transaction._id,
+          paidTxHash: transaction.txHash || null,
+          processingAt: null,
+        },
+      }
+    );
+  }
+}
 
 export async function connectDB() {
   const uri = process.env.MONGODB_URI;
@@ -31,6 +60,7 @@ export async function connectDB() {
       { note: { $exists: true } },
       { $unset: { note: "" } }
     );
+    await repairSuccessfulChatRequestSettlements();
     console.log("MongoDB connected");
   } catch (err) {
     console.error("MongoDB connection failed:", err.message);
