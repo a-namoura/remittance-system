@@ -3,11 +3,18 @@ import { resolve } from "node:path";
 
 const root = process.cwd();
 const packages = ["backend", "frontend", "contracts"];
+const supportedNodeMajor = "22";
 const supportedNode = ">=22 <23";
+const supportedNodeImage = "node:22-alpine";
 const failures = [];
 
 function fail(message) {
   failures.push(message);
+}
+
+const nvmVersion = readFileSync(resolve(root, ".nvmrc"), "utf8").trim();
+if (nvmVersion !== supportedNodeMajor) {
+  fail(`.nvmrc must select Node ${supportedNodeMajor}.`);
 }
 
 for (const directory of packages) {
@@ -15,6 +22,14 @@ for (const directory of packages) {
   const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
   if (packageJson.engines?.node !== supportedNode) {
     fail(`${directory}/package.json must declare engines.node as ${supportedNode}.`);
+  }
+}
+
+for (const directory of ["backend", "frontend"]) {
+  const dockerfile = readFileSync(resolve(root, directory, "Dockerfile"), "utf8");
+  const baseImage = dockerfile.match(/^FROM\s+(\S+)/m)?.[1];
+  if (baseImage !== supportedNodeImage) {
+    fail(`${directory}/Dockerfile must use ${supportedNodeImage}.`);
   }
 }
 

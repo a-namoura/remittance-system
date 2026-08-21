@@ -13,6 +13,7 @@ on:
       - "**/Dockerfile"
       - "**/package.json"
       - "**/package-lock.json"
+      - ".nvmrc"
       - ".github/workflows/production-config-review.yml"
       - ".github/scripts/check-production-config.mjs"
       - "docs/production-config-review.md"

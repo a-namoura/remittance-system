@@ -12,7 +12,7 @@ Smart contracts and Hardhat scripts for remittance settlement on EVM-compatible 
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22.x (the supported project runtime)
 - npm 10+
 
 ## Install

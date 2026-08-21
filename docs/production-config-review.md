@@ -10,4 +10,4 @@ Only non-sensitive, browser-safe values may use the `VITE_` prefix. They are emb
 
 Keep credentials and private operational settings in the deployment platform's secret manager, never in an environment example, frontend environment file, repository variable, image, or workflow log. This includes `JWT_SECRET`, `MONGODB_URI`, `BSC_TESTNET_PRIVATE_KEY`, `BACKUP_ENCRYPTION_KEY`, and restore credentials. Give production application, backup, and restore roles separate secret access as described in [production security](production-security.md).
 
-The policy check rejects populated secret-like entries in committed `.env.example` files and secret-like `VITE_` variables. It also verifies every Node package declares the supported runtime range.
+The policy check rejects populated secret-like entries in committed `.env.example` files and secret-like `VITE_` variables. It also keeps the supported Node 22.x runtime aligned across `.nvmrc`, every package's `engines.node` range, and the backend/frontend Docker base images. Node-based CI jobs read `.nvmrc` through `actions/setup-node`.

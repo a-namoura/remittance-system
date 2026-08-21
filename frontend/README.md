@@ -11,7 +11,7 @@ React + Vite client for the remittance system.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22.x (the supported project runtime)
 - npm 10+
 - Running backend API (default: `http://localhost:5000`)
 
