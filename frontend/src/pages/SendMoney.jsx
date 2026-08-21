@@ -13,6 +13,7 @@ import { apiRequest } from "../services/api.js";
 import { getCurrentUser } from "../services/authApi.js";
 import { createFriend, listFriends } from "../services/friendApi.js";
 import {
+  createTransferQuote,
   createTransferLink,
   pollTransactionUntilSettled,
   resolvePaymentRequestLink,
@@ -317,6 +318,10 @@ export default function SendMoney() {
     useTransitionNotification();
   const [availableBalance, setAvailableBalance] = useState(null);
   const [nativeCurrency, setNativeCurrency] = useState(FALLBACK_NATIVE_CURRENCY);
+  const [availableCurrencies, setAvailableCurrencies] = useState([FALLBACK_NATIVE_CURRENCY]);
+  const [destinationCurrency, setDestinationCurrency] = useState(FALLBACK_NATIVE_CURRENCY);
+  const [transferQuote, setTransferQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState("");
 
@@ -436,7 +441,13 @@ export default function SendMoney() {
         const balance =
           typeof result?.balance === "number" ? result.balance : null;
         setAvailableBalance(balance);
-        setNativeCurrency(nativeCurrencyFrom(result));
+        const loadedNativeCurrency = nativeCurrencyFrom(result);
+        const loadedCurrencies = Array.isArray(result?.availableCurrencies) && result.availableCurrencies.length
+          ? result.availableCurrencies
+          : [loadedNativeCurrency];
+        setNativeCurrency(loadedNativeCurrency);
+        setAvailableCurrencies(loadedCurrencies);
+        setDestinationCurrency(loadedNativeCurrency);
       } catch (err) {
         if (isCancelled) return;
         setAvailableBalance(null);
@@ -717,6 +728,7 @@ export default function SendMoney() {
     setVerificationChannel("email");
     setMethodError("");
     setMethodSuccess("");
+    setTransferQuote(null);
     setFieldErrors({ destination: "", amount: "", code: "" });
   }
 
@@ -881,11 +893,34 @@ export default function SendMoney() {
     return { wallet: normalizedWallet, amount };
   }
 
-  function goToAddressVerification() {
+  async function goToAddressVerification() {
     setMethodError("");
     setMethodSuccess("");
 
-    if (!validateAddressTransferDetails()) return;
+    const details = validateAddressTransferDetails();
+    if (!details) return;
+
+    const token = requireAuthToken();
+    if (!token) {
+      setMethodError("You must be logged in.");
+      return;
+    }
+
+    try {
+      setQuoteLoading(true);
+      const response = await createTransferQuote({
+        token,
+        sourceAmount: details.amount,
+        sourceCurrency: nativeCurrency,
+        destinationCurrency,
+      });
+      setTransferQuote(response.quote);
+    } catch (error) {
+      setMethodError(getUserErrorMessage(error, "Failed to create a transfer quote."));
+      return;
+    } finally {
+      setQuoteLoading(false);
+    }
 
     setTransferStep("verification");
     setVerificationCode("");
@@ -1023,6 +1058,7 @@ export default function SendMoney() {
         txHash,
         requestToken: requestTokenParam || undefined,
         commitmentKey: requestCommitmentKey || undefined,
+        quoteId: transferQuote?.quoteId,
       });
       requestReserved = false;
 
@@ -1075,6 +1111,10 @@ export default function SendMoney() {
       setMethodError("You must be logged in.");
       return;
     }
+    if (!transferQuote || new Date(transferQuote.expiresAt).getTime() <= Date.now()) {
+      setMethodError("This quote has expired. Return to details to create a new quote.");
+      return;
+    }
 
     let walletTxHash = "";
     let requestReserved = false;
@@ -1105,6 +1145,7 @@ export default function SendMoney() {
         txHash,
         requestToken: requestTokenParam || undefined,
         commitmentKey: requestCommitmentKey || undefined,
+        quoteId: transferQuote?.quoteId,
       });
       requestReserved = false;
 
@@ -1724,6 +1765,7 @@ export default function SendMoney() {
                         disabled={Boolean(requestTokenParam)}
                         onValueChange={(value) => {
                           setAmountEth(value);
+                          setTransferQuote(null);
                           setVerificationCode("");
                           setVerificationDestination("");
                           setFieldErrors((current) => ({
@@ -1738,6 +1780,22 @@ export default function SendMoney() {
                       <FieldError>{fieldErrors.amount}</FieldError>
                     </div>
 
+                    <div>
+                      <label className={FORM_FIELD_LABEL_CLASS}>Recipient currency</label>
+                      <select
+                        value={destinationCurrency}
+                        onChange={(event) => {
+                          setDestinationCurrency(event.target.value);
+                          setTransferQuote(null);
+                        }}
+                        className={FORM_SELECT_BASE_CLASS}
+                      >
+                        {availableCurrencies.map((currency) => (
+                          <option key={currency} value={currency}>{currency}</option>
+                        ))}
+                      </select>
+                    </div>
+
                     {!addressFieldsReady ? (
                       <p className={FORM_HELP_TEXT_CLASS}>
                         {hasSelectedAddressDestination
@@ -1749,10 +1807,10 @@ export default function SendMoney() {
                     <button
                       type="button"
                       onClick={goToAddressVerification}
-                      disabled={!addressFieldsReady}
+                      disabled={!addressFieldsReady || quoteLoading}
                       className={`w-full ${FORM_INLINE_PRIMARY_BUTTON_CLASS}`}
                     >
-                      Continue to verification
+                      {quoteLoading ? "Creating quote..." : "Continue to verification"}
                     </button>
                   </div>
                 ) : (
@@ -1782,9 +1840,25 @@ export default function SendMoney() {
                             </p>
                           </div>
                           <div>
-                            <p className="text-gray-500">Total amount</p>
+                            <p className="text-gray-500">Source amount</p>
                             <p className="font-semibold text-gray-900">{amountEth || "0"} {nativeCurrency}</p>
                           </div>
+                          {transferQuote ? (
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 border-t border-gray-200 pt-2">
+                              <span className="text-gray-500">Quote ID</span>
+                              <span className="truncate text-right font-mono" title={transferQuote.quoteId}>{transferQuote.quoteId}</span>
+                              <span className="text-gray-500">Exchange rate</span>
+                              <span className="text-right font-medium">1 {transferQuote.sourceCurrency} = {transferQuote.exchangeRate} {transferQuote.destinationCurrency}</span>
+                              <span className="text-gray-500">Service fee</span>
+                              <span className="text-right">{transferQuote.serviceFee} {transferQuote.sourceCurrency}</span>
+                              <span className="text-gray-500">Estimated network fee</span>
+                              <span className="text-right">{transferQuote.estimatedNetworkFee} {transferQuote.sourceCurrency}</span>
+                              <span className="font-semibold text-gray-700">Recipient receives</span>
+                              <span className="text-right font-semibold">{transferQuote.recipientAmount} {transferQuote.destinationCurrency}</span>
+                              <span className="text-gray-500">Quote expires</span>
+                              <span className="text-right">{new Date(transferQuote.expiresAt).toLocaleTimeString()}</span>
+                            </div>
+                          ) : null}
                         </div>
                         {!balanceLoading && Number.isFinite(availableBalance) ? (
                           <p className="mt-1 text-[11px] text-gray-500">
@@ -1797,7 +1871,10 @@ export default function SendMoney() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => setTransferStep("details")}
+                        onClick={() => {
+                          setTransferQuote(null);
+                          setTransferStep("details");
+                        }}
                         className={`shrink-0 ${FORM_SMALL_SECONDARY_BUTTON_CLASS}`}
                       >
                         Edit
@@ -1860,7 +1937,7 @@ export default function SendMoney() {
                         </div>
                         <button
                           type="submit"
-                          disabled={sending || !canSubmitAddressTransfer}
+                          disabled={sending || !canSubmitAddressTransfer || !transferQuote}
                           className={FORM_INLINE_PRIMARY_BUTTON_CLASS}
                         >
                           {awaitingWalletApproval

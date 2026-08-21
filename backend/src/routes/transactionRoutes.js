@@ -8,6 +8,7 @@ import {
   submitRemittance,
 } from "../blockchain/remittanceClient.js";
 import { Transaction } from "../models/Transaction.js";
+import { TransferQuote } from "../models/TransferQuote.js";
 import { IdempotencyRecord } from "../models/IdempotencyRecord.js";
 import { Wallet } from "../models/Wallet.js";
 import { PaymentLink } from "../models/PaymentLink.js";
@@ -57,6 +58,7 @@ import {
 } from "../utils/idempotency.js";
 import { addLogContext } from "../utils/logging.js";
 import { incrementMetric } from "../utils/metrics.js";
+import { calculateTransferQuote, serializeTransferQuote } from "../utils/transferQuotes.js";
 
 export const transactionRouter = express.Router();
 
@@ -69,6 +71,29 @@ export const MY_TRANSACTION_STATUSES = Object.freeze([
   "cancelled",
 ]);
 export const MY_TRANSACTION_VIEWS = Object.freeze(["all", "sent", "received"]);
+
+transactionRouter.post(
+  "/quote",
+  protect,
+  allowQueryFields([]),
+  allowBodyFields(["sourceAmount", "sourceCurrency", "destinationCurrency"]),
+  async (req, res, next) => {
+    try {
+      const terms = calculateTransferQuote(req.body || {});
+      const configuredTtl = Number(process.env.REM_QUOTE_TTL_SECONDS || 300);
+      const ttlSeconds = Number.isFinite(configuredTtl) ? Math.max(30, configuredTtl) : 300;
+      const quote = await TransferQuote.create({
+        userId: req.user._id,
+        ...terms,
+        expiresAt: new Date(Date.now() + ttlSeconds * 1000),
+      });
+      res.status(201).json({ ok: true, quote: serializeTransferQuote(quote) });
+    } catch (error) {
+      if (error?.statusCode) res.status(error.statusCode);
+      next(error);
+    }
+  }
+);
 
 function isValidIsoDate(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -1002,6 +1027,7 @@ export function createSendTransactionRouter({
   settleSubmission = settleTransactionAfterSubmission,
   markFailed = markTransactionFailedAndLogSyncError,
   idempotencyModel = IdempotencyRecord,
+  quoteModel = TransferQuote,
 } = {}) {
   const router = express.Router();
   const rejectInsufficientBalance = async (res, walletAddress, amount) => {
@@ -1019,7 +1045,7 @@ export function createSendTransactionRouter({
   "/send",
   protectMiddleware,
   allowQueryFields([]),
-  allowBodyFields(["receiverWallet", "amountEth", "verificationCode", "assetSymbol", "txHash", "requestToken", "commitmentKey"]),
+  allowBodyFields(["receiverWallet", "amountEth", "verificationCode", "assetSymbol", "txHash", "requestToken", "commitmentKey", "quoteId"]),
   async (req, res, next) => {
   let txDoc;
   let requestLinkDoc;
@@ -1027,7 +1053,7 @@ export function createSendTransactionRouter({
   let idempotencyRecord;
 
   try {
-    const { receiverWallet, amountEth, verificationCode, txHash } = req.body;
+    const { receiverWallet, amountEth, verificationCode, txHash, quoteId } = req.body;
     const requestToken = String(req.body?.requestToken || "").trim();
     const assetSymbol = normalizeTransferAssetSymbol(req.body?.assetSymbol);
     const idempotencyKey = readIdempotencyKey(req);
@@ -1043,9 +1069,9 @@ export function createSendTransactionRouter({
       },
     });
 
-    if (!receiverWallet || !amountEth) {
+    if (!receiverWallet || !amountEth || !quoteId) {
       res.status(400);
-      throw new Error("receiverWallet and amountEth are required.");
+      throw new Error("receiverWallet, amountEth, and quoteId are required.");
     }
 
     if (assetSymbol !== DEFAULT_ASSET_SYMBOL) {
@@ -1074,6 +1100,26 @@ export function createSendTransactionRouter({
     const amountNumber = Number(amountEth);
     rejectInvalidTransferAmount(res, amountNumber);
     rejectOutOfRangeTransferAmount(res, amountNumber);
+    const quote = await quoteModel.findOne({
+      _id: quoteId,
+      userId: req.user._id,
+      sourceAmount: amountNumber,
+      sourceCurrency: assetSymbol,
+      consumedAt: null,
+      expiresAt: { $gt: new Date() },
+    });
+    if (!quote) {
+      res.status(409);
+      throw new Error("Quote is invalid, expired, already used, or does not match this transfer.");
+    }
+    if (!txHash && submitRemittanceRpc === submitRemittance) {
+      res.status(400);
+      throw new Error("Sign and submit this payment with your linked wallet first.");
+    }
+    if (requestToken && !requestToken.startsWith("req_")) {
+      res.status(400);
+      throw new Error("Invalid payment request token.");
+    }
     const idempotency = await acquireIdempotency({
       model: idempotencyModel,
       userId: req.user._id,
@@ -1086,6 +1132,7 @@ export function createSendTransactionRouter({
         assetSymbol,
         txHash: String(txHash || "").toLowerCase(),
         requestToken,
+        quoteId: String(quoteId),
       }),
     });
     if (idempotency.replay) {
@@ -1114,16 +1161,17 @@ export function createSendTransactionRouter({
       throw codeErr;
     }
 
-    if (!txHash && submitRemittanceRpc === submitRemittance) {
-      res.status(400);
-      throw new Error("Sign and submit this payment with your linked wallet first.");
+    const consumedQuote = await quoteModel.findOneAndUpdate(
+      { _id: quote._id, userId: req.user._id, consumedAt: null, expiresAt: { $gt: new Date() } },
+      { $set: { consumedAt: new Date() } },
+      { returnDocument: "after" }
+    );
+    if (!consumedQuote) {
+      res.status(409);
+      throw new Error("Quote is invalid, expired, or already used.");
     }
 
     if (requestToken) {
-      if (!requestToken.startsWith("req_")) {
-        res.status(400);
-        throw new Error("Invalid payment request token.");
-      }
       requestLinkDoc = await requestLinkModel.findOneAndUpdate(
         {
           tokenHash: hashPurposeBoundLinkToken("request", requestToken),
@@ -1164,7 +1212,18 @@ export function createSendTransactionRouter({
       status: "pending",
       type: "sent",
       transferRequestKey,
+      quoteId: consumedQuote._id,
+      sourceCurrency: consumedQuote.sourceCurrency,
+      destinationCurrency: consumedQuote.destinationCurrency,
+      appliedExchangeRate: consumedQuote.exchangeRate,
+      appliedServiceFee: consumedQuote.serviceFee,
+      appliedEstimatedNetworkFee: consumedQuote.estimatedNetworkFee,
+      recipientAmount: consumedQuote.recipientAmount,
     });
+    await quoteModel.updateOne(
+      { _id: consumedQuote._id },
+      { $set: { transactionId: txDoc._id } }
+    );
     addLogContext({ transactionId: String(txDoc._id) });
     incrementMetric("transactions_created_total", { flow: "direct_send", asset: txDoc.assetSymbol });
     if (requestLinkDoc) {
@@ -1246,6 +1305,7 @@ export function createSendTransactionRouter({
         blockchainSyncedAt: txDoc.blockchainSyncedAt || null,
         blockchainSubmittedAt: txDoc.blockchainSubmittedAt || submission.submittedAt,
         assetSymbol: normalizeTransferAssetSymbol(txDoc.assetSymbol),
+        quote: serializeTransferQuote(consumedQuote),
       },
     };
     await completeIdempotency({
@@ -1513,6 +1573,13 @@ transactionRouter.get(
         fiatAmountUsd,
         fiatCurrency,
         rateUsdPerAsset,
+        quoteId: t.quoteId || null,
+        sourceCurrency: t.sourceCurrency || assetSymbol,
+        destinationCurrency: t.destinationCurrency || assetSymbol,
+        exchangeRate: t.appliedExchangeRate ?? null,
+        serviceFee: t.appliedServiceFee ?? null,
+        estimatedNetworkFee: t.appliedEstimatedNetworkFee ?? null,
+        recipientAmount: t.recipientAmount ?? null,
         canCancel: isSender && t.status === "pending" && !t.txHash,
       };
     });
@@ -1654,6 +1721,13 @@ transactionRouter.get(
         receiverWallet: tx.receiverWallet,
         amount: tx.amount,
         assetSymbol,
+        quoteId: tx.quoteId || null,
+        sourceCurrency: tx.sourceCurrency || assetSymbol,
+        destinationCurrency: tx.destinationCurrency || assetSymbol,
+        exchangeRate: tx.appliedExchangeRate ?? null,
+        serviceFee: tx.appliedServiceFee ?? null,
+        estimatedNetworkFee: tx.appliedEstimatedNetworkFee ?? null,
+        recipientAmount: tx.recipientAmount ?? null,
         status: tx.status,
         txHash: tx.txHash || null,
         failureReason: tx.failureReason || null,

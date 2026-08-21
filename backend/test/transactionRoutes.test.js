@@ -99,7 +99,14 @@ test("authenticated send returns 202 using injected verification and RPC depende
   const senderWallet = "0x1111111111111111111111111111111111111111";
   const receiverWallet = "0x2222222222222222222222222222222222222222";
   const calls = { verify: 0, submit: 0 };
+  let createdPayload;
   const transaction = { _id: "transaction-1", status: "pending", assetSymbol: "BNB" };
+  const quote = {
+    _id: "quote-1", sourceAmount: 1.25, sourceCurrency: "BNB",
+    destinationCurrency: "BNB", exchangeRate: 1, serviceFee: 0.0125,
+    estimatedNetworkFee: 0.0001, recipientAmount: 1.25,
+    expiresAt: new Date("2026-08-05T12:05:00.000Z"), consumedAt: null,
+  };
   const walletModel = {
     findOne(query) {
       if (query.userId) return Promise.resolve({ address: senderWallet, isVerified: true });
@@ -128,7 +135,12 @@ test("authenticated send returns 202 using injected verification and RPC depende
     getNativeBalance: async () => 5,
     updateWalletBalance: async () => {},
     walletModel,
-    transactionModel: { create: async () => transaction },
+    transactionModel: { create: async (payload) => { createdPayload = payload; return transaction; } },
+    quoteModel: {
+      findOne: async () => quote,
+      findOneAndUpdate: async () => ({ ...quote, consumedAt: new Date() }),
+      updateOne: async () => {},
+    },
     logAttempt: async () => {},
     logResult: async () => {},
     createRequestKey: () => "request-1",
@@ -142,7 +154,7 @@ test("authenticated send returns 202 using injected verification and RPC depende
   const response = await request(app)
     .post("/send")
     .set("Authorization", "Bearer test-token")
-    .send({ receiverWallet, amountEth: "1.25", verificationCode: "123456" });
+    .send({ receiverWallet, amountEth: "1.25", verificationCode: "123456", quoteId: "quote-1" });
 
   assert.ok(performance.now() - startedAt <= 2000);
   assert.equal(response.status, 202);
@@ -159,7 +171,29 @@ test("authenticated send returns 202 using injected verification and RPC depende
       blockchainSyncedAt: null,
       blockchainSubmittedAt: "2026-08-05T12:00:00.000Z",
       assetSymbol: "BNB",
+      quote: {
+        quoteId: "quote-1",
+        sourceAmount: 1.25,
+        sourceCurrency: "BNB",
+        destinationCurrency: "BNB",
+        exchangeRate: 1,
+        serviceFee: 0.0125,
+        estimatedNetworkFee: 0.0001,
+        recipientAmount: 1.25,
+        expiresAt: "2026-08-05T12:05:00.000Z",
+      },
     },
   });
   assert.deepEqual(calls, { verify: 1, submit: 1 });
+  assert.equal(createdPayload.quoteId, "quote-1");
+  assert.equal(createdPayload.appliedExchangeRate, 1);
+  assert.equal(createdPayload.appliedServiceFee, 0.0125);
+  assert.equal(createdPayload.appliedEstimatedNetworkFee, 0.0001);
+  assert.equal(createdPayload.recipientAmount, 1.25);
+
+  const missingQuoteResponse = await request(app)
+    .post("/send")
+    .set("Authorization", "Bearer test-token")
+    .send({ receiverWallet, amountEth: "1.25", verificationCode: "123456" });
+  assert.equal(missingQuoteResponse.status, 400);
 });

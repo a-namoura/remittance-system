@@ -104,6 +104,13 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    quoteId: { type: mongoose.Schema.Types.ObjectId, ref: "TransferQuote" },
+    sourceCurrency: { type: String, trim: true, uppercase: true, maxlength: 10 },
+    destinationCurrency: { type: String, trim: true, uppercase: true, maxlength: 10 },
+    appliedExchangeRate: { type: Number, min: Number.MIN_VALUE },
+    appliedServiceFee: { type: Number, min: 0 },
+    appliedEstimatedNetworkFee: { type: Number, min: 0 },
+    recipientAmount: { type: Number, min: 0 },
     // The wallet that actually signed and funded the blockchain transaction.
     // The wallet proven from the blockchain transaction. New user transfers
     // require this to match senderWallet; legacy custodial records may differ.

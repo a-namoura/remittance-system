@@ -181,6 +181,14 @@ export async function sendPaymentVerificationCode({
   });
 }
 
+export async function createTransferQuote({ token, sourceAmount, sourceCurrency, destinationCurrency } = {}) {
+  return apiRequest("/api/transactions/quote", {
+    method: "POST",
+    token,
+    body: { sourceAmount, sourceCurrency, destinationCurrency },
+  });
+}
+
 export async function sendTransaction({
   token,
   receiverWallet,
@@ -190,6 +198,7 @@ export async function sendTransaction({
   txHash,
   requestToken,
   commitmentKey,
+  quoteId,
 } = {}) {
   return apiRequest("/api/transactions/send", {
     method: "POST",
@@ -202,6 +211,7 @@ export async function sendTransaction({
       txHash,
       requestToken,
       commitmentKey,
+      quoteId,
     },
   });
 }
