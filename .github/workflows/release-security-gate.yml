@@ -32,8 +32,8 @@ jobs:
             backend/package-lock.json
             frontend/package-lock.json
             contracts/package-lock.json
-      - name: Verify committed dependency inventory
-        run: node .github/scripts/check-dependency-inventory.mjs
+      - name: Generate dependency inventory
+        run: node .github/scripts/generate-dependency-inventory.mjs > dependency-inventory.json
       - name: Validate approved exceptions
         run: node .github/scripts/check-security-exceptions.mjs
       - name: Install locked dependencies

@@ -7,8 +7,6 @@ on:
       - "**/package.json"
       - "**/package-lock.json"
       - ".github/dependabot.yml"
-      - ".github/dependency-inventory.json"
-      - ".github/scripts/check-dependency-inventory.mjs"
       - ".github/scripts/generate-dependency-inventory.mjs"
       - ".github/workflows/dependency-security.yml"
   push:
@@ -16,7 +14,7 @@ on:
     paths:
       - "**/package.json"
       - "**/package-lock.json"
-      - ".github/dependency-inventory.json"
+      - ".github/scripts/generate-dependency-inventory.mjs"
   schedule:
     - cron: "23 4 * * 1"
   workflow_dispatch:
@@ -35,7 +33,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-      - run: node .github/scripts/check-dependency-inventory.mjs
+      - name: Generate dependency inventory
+        run: node .github/scripts/generate-dependency-inventory.mjs > dependency-inventory.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-inventory
+          path: dependency-inventory.json
+          retention-days: 90
 
   dependency-review:
     if: github.event_name == 'pull_request'

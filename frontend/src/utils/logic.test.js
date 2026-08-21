@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import { isAllowedAmountValue } from './amount.js'
 import { getEmailIdentifierError, isValidEmail } from './emailValidation.js'
 import { getPasswordPolicyError, getPasswordStrength, isPasswordPolicySatisfied } from './passwordPolicy.js'
-import { displayCurrency, nativeCurrencyFrom } from './currency.js'
+import { displayCurrency, LEGACY_NATIVE_CURRENCY, nativeCurrencyFrom } from './currency.js'
 
 test('amount precision accepts incomplete valid drafts and rejects invalid calculations', () => {
   expect(isAllowedAmountValue('')).toBe(true)
@@ -21,7 +21,7 @@ test('email and password validation reports actionable state', () => {
 })
 
 test('currency calculation/display logic normalizes legacy and numeric values', () => {
-  expect(displayCurrency('E' + 'TH', 'BNB')).toBe('BNB')
+  expect(displayCurrency(LEGACY_NATIVE_CURRENCY, 'BNB')).toBe('BNB')
   expect(nativeCurrencyFrom({ nativeCurrency: ' bnb ' })).toBe('BNB')
-  expect(nativeCurrencyFrom({}, 'e' + 'th')).toBe('E' + 'TH')
+  expect(nativeCurrencyFrom({}, LEGACY_NATIVE_CURRENCY.toLowerCase())).toBe(LEGACY_NATIVE_CURRENCY)
 })

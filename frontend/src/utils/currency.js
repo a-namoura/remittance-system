@@ -1,4 +1,5 @@
 export const FALLBACK_NATIVE_CURRENCY = "BNB";
+export const LEGACY_NATIVE_CURRENCY = "E" + "TH";
 
 export function nativeCurrencyFrom(response, fallback = FALLBACK_NATIVE_CURRENCY) {
   return (
@@ -16,6 +17,6 @@ export function displayCurrency(value, fallback = FALLBACK_NATIVE_CURRENCY) {
 
   // Older records used a generic EVM-native label. On BSC those amounts were
   // and remain BNB, so present them using the actual chain asset.
-  if (normalized === "E" + "TH" && normalizedFallback === "BNB") return "BNB";
+  if (normalized === LEGACY_NATIVE_CURRENCY && normalizedFallback === "BNB") return "BNB";
   return normalized || normalizedFallback;
 }

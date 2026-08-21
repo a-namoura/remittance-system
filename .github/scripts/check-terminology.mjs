@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { strict as assert } from "node:assert";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = process.cwd();
@@ -48,7 +48,9 @@ const failures = [];
 
 for (const file of files) {
   if (file === policyFile || file.endsWith("package-lock.json") || file.endsWith(".pdf")) continue;
-  const lines = readFileSync(resolve(root, file), "utf8").split(/\r?\n/);
+  const path = resolve(root, file);
+  if (!existsSync(path)) continue;
+  const lines = readFileSync(path, "utf8").split(/\r?\n/);
   for (const [index, line] of lines.entries()) {
     for (const violation of findViolations(file, line)) failures.push(`${file}:${index + 1}: ${violation}`);
   }

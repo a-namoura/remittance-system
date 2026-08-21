@@ -56,9 +56,7 @@
 /.github/workflows/dependency-security.yml @a-namoura
 /.github/workflows/release-security-artifacts.yml @a-namoura
 /.github/workflows/release-security-gate.yml @a-namoura
-/.github/dependency-inventory.json @a-namoura
 /.github/security-exceptions/ @a-namoura
-/.github/scripts/check-dependency-inventory.mjs @a-namoura
 /.github/scripts/generate-dependency-inventory.mjs @a-namoura
 /.github/scripts/check-security-exceptions.mjs @a-namoura
 /.github/scripts/check-npm-audit-gate.mjs @a-namoura
