@@ -48,16 +48,16 @@ const BASE_NAV_GROUPS = [
 const ADMIN_NAV_GROUP = {
   title: "Admin",
   items: [
-    { to: "/admin", label: "Dashboard", icon: "admin" },
+    { to: "/admin", label: "Dashboard", icon: "admin", exact: true },
     { to: "/admin/audit-logs", label: "Audit logs", icon: "audit" },
   ],
 };
 
-function isActivePath(currentPath, targetPath) {
-  if (targetPath === "/dashboard") {
-    return currentPath === "/dashboard";
+function isActivePath(currentPath, targetPath, exact = false) {
+  if (exact || targetPath === "/dashboard") {
+    return currentPath === targetPath;
   }
-  return currentPath.startsWith(targetPath);
+  return currentPath === targetPath || currentPath.startsWith(`${targetPath}/`);
 }
 
 function getUserInitials(user) {
@@ -525,7 +525,7 @@ export default function Navbar({
 
               <div className={`${group.title && !sidebarCollapsed ? "mt-2" : ""} space-y-1`}>
                 {group.items.map((item) => {
-                  const active = isActivePath(location.pathname, item.to);
+                  const active = isActivePath(location.pathname, item.to, item.exact);
                   const showChatBadge = item.to === "/chat" && chatUnreadCount > 0;
 
                   return (
@@ -669,7 +669,7 @@ export default function Navbar({
         <div className="border-t border-gray-200 px-3 py-2 md:hidden">
           <div className="flex items-center gap-2 overflow-x-auto pb-1">
             {mobileNavItems.map((item) => {
-              const active = isActivePath(location.pathname, item.to);
+              const active = isActivePath(location.pathname, item.to, item.exact);
               const showChatBadge = item.to === "/chat" && chatUnreadCount > 0;
 
               return (
