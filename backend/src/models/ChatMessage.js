@@ -4,13 +4,13 @@ const encryptedPayloadSchema = new mongoose.Schema(
   {
     ciphertext: {
       type: String,
-      required: true,
+      required: function requireUserSender() { return this.messageType !== "system"; },
       trim: true,
       maxlength: 16000,
     },
     iv: {
       type: String,
-      required: true,
+      required: function requireUserRecipient() { return this.messageType !== "system"; },
       trim: true,
       maxlength: 256,
     },
@@ -46,7 +46,7 @@ const chatMessageSchema = new mongoose.Schema(
     },
     messageType: {
       type: String,
-      enum: ["text", "request"],
+      enum: ["text", "request", "system"],
       default: "text",
       required: true,
     },
@@ -55,18 +55,25 @@ const chatMessageSchema = new mongoose.Schema(
       ref: "ChatRequest",
       index: true,
     },
+    systemText: { type: String, trim: true, maxlength: 1000 },
     cipherForSender: {
       type: encryptedPayloadSchema,
-      required: true,
+      required: function requireSenderCipher() { return this.messageType !== "system"; },
     },
     cipherForRecipient: {
       type: encryptedPayloadSchema,
-      required: true,
+      required: function requireRecipientCipher() { return this.messageType !== "system"; },
     },
   },
   { timestamps: true }
 );
 
 chatMessageSchema.index({ threadId: 1, createdAt: 1 });
+
+chatMessageSchema.pre("validate", function validateSystemMessage() {
+  if (this.messageType === "system" && !String(this.systemText || "").trim()) {
+    this.invalidate("systemText", "A system message must include text.");
+  }
+});
 
 export const ChatMessage = mongoose.model("ChatMessage", chatMessageSchema);

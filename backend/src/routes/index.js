@@ -11,6 +11,7 @@ import { transactionRouter } from "./transactionRoutes.js";
 import { adminRouter } from "./adminRoutes.js";
 import { friendRouter } from "./friendRoutes.js";
 import { chatRouter } from "./chatRoutes.js";
+import { notificationRouter } from "./notificationRoutes.js";
 import { logAudit } from "../utils/audit.js";
 import { liveHealth, readyHealth, summaryHealth } from "../health.js";
 import { getPublicMetricsSnapshot } from "../utils/metrics.js";
@@ -35,6 +36,7 @@ apiRouter.use("/wallet", walletRouter);
 apiRouter.use("/transactions", transactionRouter);
 apiRouter.use("/friends", friendRouter);
 apiRouter.use("/chats", chatRouter);
+apiRouter.use("/notifications", notificationRouter);
 
 apiRouter.use("/admin", protect, requireAdmin, adminRouter);
 

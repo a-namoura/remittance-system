@@ -238,6 +238,35 @@ export async function submitCustodialRemittance(walletDoc, receiver, amountEth, 
   });
 }
 
+export async function sponsorCustodialRemittanceGas(walletDoc, receiver, amountEth) {
+  if (walletDoc?.type !== "custodial") throw new Error("A custodial wallet is required for gas sponsorship.");
+  const provider = getRemittanceProvider();
+  const privateKey = decryptCustodialPrivateKey(walletDoc);
+  const custodialSigner = new Wallet(privateKey, provider);
+  const contract = new Contract(getRemittanceContractAddress(), REMITTANCE_ABI, custodialSigner);
+  const value = parseEther(String(amountEth));
+  const [balance, feeData, estimatedGas] = await Promise.all([
+    provider.getBalance(custodialSigner.address),
+    provider.getFeeData(),
+    contract.transfer.estimateGas(normalizeEvmAddress(receiver), { value }),
+  ]);
+  const gasPrice = feeData.maxFeePerGas || feeData.gasPrice;
+  if (!gasPrice) throw new Error("Unable to calculate reversal gas cost.");
+  const gasCost = estimatedGas * gasPrice;
+  const required = value + gasCost;
+  if (balance >= required) return { sponsoredWei: 0n, sponsoredAmount: 0, txHash: null };
+
+  const sponsoredWei = required - balance;
+  const { wallet: sponsor } = getRemittanceClient();
+  if (normalizeEvmAddress(sponsor.address) === normalizeEvmAddress(custodialSigner.address)) {
+    throw new Error("The reversal gas sponsor cannot be the receiving custodial wallet.");
+  }
+  const funding = await sponsor.sendTransaction({ to: custodialSigner.address, value: sponsoredWei });
+  const receipt = await funding.wait();
+  if (Number(receipt?.status) !== 1) throw new Error("Reversal gas sponsorship failed.");
+  return { sponsoredWei, sponsoredAmount: Number(formatEther(sponsoredWei)), txHash: funding.hash };
+}
+
 /**
  * Adopts a transaction broadcast by a user's injected wallet. The transaction
  * is validated before it is attached to an application payment record.

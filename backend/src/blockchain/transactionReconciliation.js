@@ -352,6 +352,11 @@ export async function reconcileTransaction(
   config,
   { receiptTransferEvent = transferEventFromReceipt } = {}
 ) {
+  // An administrative reversal is an application decision layered over the
+  // immutable chain result. Even a forced reconciliation must preserve it.
+  if (txDoc.status === "reversed") {
+    return { corrected: false, skipped: true };
+  }
   const checkedAt = new Date();
   let receipt;
 

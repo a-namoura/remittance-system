@@ -60,6 +60,7 @@ import {
 import { addLogContext } from "../utils/logging.js";
 import { incrementMetric } from "../utils/metrics.js";
 import { calculateTransferQuote, serializeTransferQuote } from "../utils/transferQuotes.js";
+import { repairUnfundedReversals } from "../utils/reversalIntegrity.js";
 
 export const transactionRouter = express.Router();
 
@@ -70,6 +71,7 @@ export const MY_TRANSACTION_STATUSES = Object.freeze([
   "success",
   "failed",
   "cancelled",
+  "reversed",
 ]);
 export const MY_TRANSACTION_VIEWS = Object.freeze(["all", "sent", "received"]);
 
@@ -1484,6 +1486,7 @@ transactionRouter.get(
   allowBodyFields([]),
   async (req, res, next) => {
   try {
+    await repairUnfundedReversals();
     const {
       status,
       from,
@@ -1589,6 +1592,11 @@ transactionRouter.get(
         serviceFee: t.appliedServiceFee ?? null,
         estimatedNetworkFee: t.appliedEstimatedNetworkFee ?? null,
         recipientAmount: t.recipientAmount ?? null,
+        reversedAt: t.reversedAt || null,
+        reversalReason: t.reversalReason || null,
+        reversalStatus: t.reversalStatus || null,
+        reversalTxHash: t.reversalTxHash || null,
+        reversalFailureReason: t.reversalFailureReason || null,
         canCancel: isSender && t.status === "pending" && !t.txHash,
       };
     });
@@ -1682,6 +1690,7 @@ transactionRouter.get(
   allowBodyFields([]),
   async (req, res, next) => {
   try {
+    await repairUnfundedReversals();
     const { id } = req.params;
 
     const tx = await Transaction.findById(id).lean();
@@ -1741,6 +1750,11 @@ transactionRouter.get(
         txHash: tx.txHash || null,
         failureReason: tx.failureReason || null,
         reconciliationError: tx.reconciliationError || null,
+        reversedAt: tx.reversedAt || null,
+        reversalReason: tx.reversalReason || null,
+        reversalStatus: tx.reversalStatus || null,
+        reversalTxHash: tx.reversalTxHash || null,
+        reversalFailureReason: tx.reversalFailureReason || null,
         blockchainResultReceivedAt: tx.blockchainResultReceivedAt || null,
         blockchainSyncedAt: tx.blockchainSyncedAt || null,
         type: tx.type || null,

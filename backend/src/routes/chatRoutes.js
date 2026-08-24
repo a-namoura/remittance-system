@@ -476,6 +476,7 @@ async function attachLatestThreadMetadata({ contacts, viewerUserId, threadDocs: 
             senderUserId: latestRaw.senderUserId,
             recipientUserId: latestRaw.recipientUserId,
             messageType: latestRaw.messageType,
+            systemText: latestRaw.systemText || null,
             request: latestRequest
               ? {
                   id: latestRequest._id,
@@ -794,6 +795,7 @@ chatRouter.get("/threads/:threadId/history", protect, async (req, res, next) => 
           senderUserId: messageDoc.senderUserId,
           recipientUserId: messageDoc.recipientUserId,
           messageType: messageDoc.messageType,
+          systemText: messageDoc.systemText || null,
           request: attachedRequest
             ? {
                 id: attachedRequest._id,

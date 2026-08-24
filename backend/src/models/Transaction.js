@@ -49,7 +49,7 @@ const transactionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "success", "failed", "cancelled"],
+      enum: ["pending", "success", "failed", "cancelled", "reversed"],
       default: "pending",
     },
     txHash: { type: String, trim: true },
@@ -130,6 +130,19 @@ const transactionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "ChatRequest",
     },
+    reversedAt: { type: Date },
+    reversedByAdminId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    reversalReason: { type: String, trim: true, maxlength: 500 },
+    reversalStatus: { type: String, enum: ["processing", "failed", "success"] },
+    reversalTxHash: { type: String, trim: true },
+    reversalSubmittedAt: { type: Date },
+    reversalFailureReason: { type: String, trim: true, maxlength: 1000 },
+    reversalReceiverBalanceBefore: { type: Number, min: 0 },
+    reversalReceiverBalanceAfter: { type: Number, min: 0 },
+    reversalSenderBalanceBefore: { type: Number, min: 0 },
+    reversalSenderBalanceAfter: { type: Number, min: 0 },
+    reversalGasSponsored: { type: Number, min: 0, default: 0 },
+    reversalGasFundingTxHash: { type: String, trim: true },
 
     // helpful for filters later (sent/received)
     type: {
@@ -168,5 +181,22 @@ transactionSchema.index(
     name: "unique_transaction_hash",
   }
 );
+
+transactionSchema.pre("validate", function enforceFundedReversal() {
+  if (
+    this.status === "reversed" &&
+    (this.reversalStatus !== "success" ||
+      !String(this.reversalTxHash || "").trim() ||
+      !this.reversedAt ||
+      !Number.isFinite(this.reversalReceiverBalanceBefore) ||
+      !Number.isFinite(this.reversalReceiverBalanceAfter) ||
+      !Number.isFinite(this.reversalSenderBalanceBefore) ||
+      !Number.isFinite(this.reversalSenderBalanceAfter) ||
+      this.reversalReceiverBalanceBefore + Number(this.reversalGasSponsored || 0) - this.reversalReceiverBalanceAfter + 1e-12 < this.amount ||
+      this.reversalSenderBalanceAfter - this.reversalSenderBalanceBefore + 1e-12 < this.amount)
+  ) {
+    this.invalidate("status", "A transaction cannot be marked reversed until the return transfer is confirmed on-chain.");
+  }
+});
 
 export const Transaction = mongoose.model("Transaction", transactionSchema);
