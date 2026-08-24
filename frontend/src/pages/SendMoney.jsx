@@ -49,6 +49,7 @@ import { isAllowedAmountValue } from "../utils/amount.js";
 import useCountdown from "../hooks/useCountdown.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
+import { promptInSystem } from "../services/inSystemDialogs.js";
 import { decryptRequestPayload } from "../utils/requestLinkCrypto.js";
 const RESEND_DELAY = 30;
 
@@ -1259,7 +1260,7 @@ export default function SendMoney() {
       return;
     }
 
-    window.prompt("Copy this link:", generatedLink);
+    await promptInSystem({ title: "Copy payment link", message: "Automatic clipboard access is unavailable. Select and copy this link.", defaultValue: generatedLink, confirmLabel: "Done", readOnly: true });
   }
 
   async function handleShareLink() {

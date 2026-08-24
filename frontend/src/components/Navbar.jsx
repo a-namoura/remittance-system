@@ -8,6 +8,7 @@ import {
 } from "../services/chatUnread.js";
 import { clearSessionStorage, requireAuthToken } from "../services/session.js";
 import ThemeToggle from "./ThemeToggle.jsx";
+import { listNotifications } from "../services/notificationApi.js";
 
 // Keep unread state fresh without consuming the shared API rate-limit budget.
 const NAVBAR_CHAT_SYNC_MS = 15000;
@@ -34,6 +35,7 @@ const BASE_NAV_GROUPS = [
     items: [
       { to: "/contacts", label: "Contacts", icon: "friends" },
       { to: "/chat", label: "Chat", icon: "chat" },
+      { to: "/notifications", label: "Notifications", icon: "notifications" },
     ],
   },
   {
@@ -49,6 +51,11 @@ const ADMIN_NAV_GROUP = {
   title: "Admin",
   items: [
     { to: "/admin", label: "Dashboard", icon: "admin", exact: true },
+    { to: "/admin/analytics", label: "Analytics", icon: "activity" },
+    { to: "/admin/users", label: "Users", icon: "friends" },
+    { to: "/admin/wallets", label: "Wallets", icon: "account" },
+    { to: "/admin/reports", label: "Reports", icon: "chat" },
+    { to: "/admin/transactions", label: "Transactions", icon: "send" },
     { to: "/admin/audit-logs", label: "Audit logs", icon: "audit" },
   ],
 };
@@ -84,6 +91,9 @@ function getUserInitials(user) {
 }
 
 function navIcon(name) {
+  if (name === "notifications") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z" /><path d="M10 21h4" /></svg>;
+  }
   if (name === "home") {
     return (
       <svg
@@ -289,6 +299,7 @@ export default function Navbar({
   const [me, setMe] = useState(null);
   const [loadingMe, setLoadingMe] = useState(true);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const [pulseUnreadBadge, setPulseUnreadBadge] = useState(false);
 
   const location = useLocation();
@@ -427,6 +438,22 @@ export default function Navbar({
   }, [me?.id]);
 
   useEffect(() => {
+    let cancelled = false;
+    let timer;
+    async function refresh() {
+      const token = requireAuthToken();
+      if (!token || cancelled) return;
+      try {
+        const response = await listNotifications({ token });
+        if (!cancelled) setNotificationUnreadCount(response.unreadCount || 0);
+      } catch { /* retain the last known badge count */ }
+      if (!cancelled) timer = window.setTimeout(refresh, NAVBAR_CHAT_SYNC_MS);
+    }
+    if (me?.id) refresh(); else queueMicrotask(() => setNotificationUnreadCount(0));
+    return () => { cancelled = true; if (timer) window.clearTimeout(timer); };
+  }, [me?.id, location.pathname]);
+
+  useEffect(() => {
     const previousUnread = previousUnreadCountRef.current;
 
     if (
@@ -527,6 +554,7 @@ export default function Navbar({
                 {group.items.map((item) => {
                   const active = isActivePath(location.pathname, item.to, item.exact);
                   const showChatBadge = item.to === "/chat" && chatUnreadCount > 0;
+                  const itemUnreadCount = showChatBadge ? chatUnreadCount : item.to === "/notifications" ? notificationUnreadCount : 0;
 
                   return (
                     <Link
@@ -547,7 +575,7 @@ export default function Navbar({
 
                       {!sidebarCollapsed ? <span className="truncate">{item.label}</span> : null}
 
-                      {showChatBadge ? (
+                      {itemUnreadCount > 0 ? (
                         sidebarCollapsed ? (
                           <span className="absolute right-2 top-2 inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
                         ) : (
@@ -556,7 +584,7 @@ export default function Navbar({
                               active ? "bg-white/20 text-white" : "bg-red-500 text-white"
                             }`}
                           >
-                            {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                            {itemUnreadCount > 99 ? "99+" : itemUnreadCount}
                           </span>
                         )
                       ) : null}
@@ -599,6 +627,11 @@ export default function Navbar({
 
           <div className="flex shrink-0 items-center gap-2">
             <ThemeToggle />
+
+            <Link to="/notifications" aria-label={notificationUnreadCount ? `Open notifications (${notificationUnreadCount} unread)` : "Open notifications"} title="Notifications" className={`relative inline-flex h-9 w-9 items-center justify-center rounded-full border transition ${location.pathname.startsWith("/notifications") ? "border-purple-600 bg-purple-600 text-white" : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"}`}>
+              {navIcon("notifications")}
+              {notificationUnreadCount > 0 && <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-4 text-white">{notificationUnreadCount > 99 ? "99+" : notificationUnreadCount}</span>}
+            </Link>
 
             <Link
               to="/chat"
@@ -671,6 +704,7 @@ export default function Navbar({
             {mobileNavItems.map((item) => {
               const active = isActivePath(location.pathname, item.to, item.exact);
               const showChatBadge = item.to === "/chat" && chatUnreadCount > 0;
+              const itemUnreadCount = showChatBadge ? chatUnreadCount : item.to === "/notifications" ? notificationUnreadCount : 0;
 
               return (
                 <Link
@@ -683,9 +717,9 @@ export default function Navbar({
                   }`}
                 >
                   {item.label}
-                  {showChatBadge ? (
+                  {itemUnreadCount > 0 ? (
                     <span className="absolute -right-1 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-4 text-white">
-                      {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                      {itemUnreadCount > 99 ? "99+" : itemUnreadCount}
                     </span>
                   ) : null}
                 </Link>

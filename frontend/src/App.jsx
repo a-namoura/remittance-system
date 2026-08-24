@@ -5,6 +5,7 @@ import ThemeToggle from "./components/ThemeToggle.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AdminRoute from "./components/AdminRoute.jsx";
 import SystemNotifications from "./components/SystemNotifications.jsx";
+import InSystemDialogs from "./components/InSystemDialogs.jsx";
 import { PageLoading } from "./components/PageLayout.jsx";
 
 const Landing = lazy(() => import("./pages/Landing.jsx"));
@@ -24,6 +25,7 @@ const Chat = lazy(() => import("./pages/Chat.jsx"));
 const SendMoney = lazy(() => import("./pages/SendMoney.jsx"));
 const Transactions = lazy(() => import("./pages/Transactions.jsx"));
 const TransactionDetails = lazy(() => import("./pages/TransactionDetails.jsx"));
+const Notifications = lazy(() => import("./pages/Notifications.jsx"));
 const Admin = lazy(() => import("./pages/Admin.jsx"));
 const AdminAuditLogs = lazy(() => import("./pages/AdminAuditLogs.jsx"));
 
@@ -47,6 +49,7 @@ const PROTECTED_ROUTES = [
   { path: "/request", element: <RequestMoney /> },
   { path: "/request-money", element: <Navigate to="/request" replace /> },
   { path: "/chat", element: <Chat /> },
+  { path: "/notifications", element: <Notifications /> },
   { path: "/send", element: <SendMoney /> },
   { path: "/send/:requestToken", element: <SendMoney /> },
   { path: "/send-money", element: <Navigate to="/send" replace /> },
@@ -55,7 +58,12 @@ const PROTECTED_ROUTES = [
 ];
 
 const ADMIN_ROUTES = [
-  { path: "/admin", element: <Admin /> },
+  { path: "/admin", element: <Admin key="overview" section="overview" /> },
+  { path: "/admin/analytics", element: <Admin key="analytics" section="analytics" /> },
+  { path: "/admin/users", element: <Admin key="users" section="users" /> },
+  { path: "/admin/wallets", element: <Admin key="wallets" section="wallets" /> },
+  { path: "/admin/reports", element: <Admin key="reports" section="reports" /> },
+  { path: "/admin/transactions", element: <Admin key="transactions" section="transactions" /> },
   { path: "/admin/audit-logs", element: <AdminAuditLogs /> },
 ];
 
@@ -106,6 +114,7 @@ export default function App() {
   return (
     <>
       <SystemNotifications />
+      <InSystemDialogs />
 
       <Routes>
         {PUBLIC_ROUTES.map(({ path, element }) => (

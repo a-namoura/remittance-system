@@ -4,15 +4,11 @@ export default function BackButton({ fallback = "/dashboard", to = "", label = "
   const navigate = useNavigate();
 
   function goBack() {
-    if (to) {
-      navigate(to);
-      return;
-    }
     if (window.history.length > 1) {
       navigate(-1);
       return;
     }
-    navigate(fallback);
+    navigate(to || fallback);
   }
 
   return (

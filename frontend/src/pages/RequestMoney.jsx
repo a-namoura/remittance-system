@@ -23,6 +23,7 @@ import { createPaymentRequestLink, revokePaymentRequestLink } from "../services/
 import { createPaymentCommitment, encryptRequestPayload } from "../utils/requestLinkCrypto.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
+import { promptInSystem } from "../services/inSystemDialogs.js";
 function buildRequestLink(requestToken, encryptionKey) {
   const origin =
     typeof window !== "undefined" && window.location?.origin
@@ -169,7 +170,7 @@ export default function RequestMoney() {
       window.setTimeout(() => setLinkCopied(false), 1400);
       return;
     }
-    window.prompt("Copy this request link:", generatedLink);
+    await promptInSystem({ title: "Copy request link", message: "Automatic clipboard access is unavailable. Select and copy this link.", defaultValue: generatedLink, confirmLabel: "Done", readOnly: true });
   }
 
   async function handleShareLink() {

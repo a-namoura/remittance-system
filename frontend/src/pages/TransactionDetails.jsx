@@ -21,6 +21,7 @@ function statusBadgeClasses(status) {
   if (status === "success") return "bg-green-100 text-green-700";
   if (status === "failed") return "bg-red-100 text-red-700";
   if (status === "cancelled") return "bg-gray-100 text-gray-700";
+  if (status === "reversed") return "bg-orange-100 text-orange-800";
   return "bg-yellow-100 text-yellow-800";
 }
 
@@ -231,6 +232,15 @@ export default function TransactionDetails() {
               <div className="mt-1">
                 {transaction.reconciliationError}
               </div>
+            </div>
+          )}
+
+          {transaction.status === "reversed" && transaction.reversalReason && (
+            <div className="rounded-xl border border-orange-300 bg-orange-50 p-4 text-sm text-orange-900">
+              <div className="font-semibold">Transaction reversed</div>
+              <div className="mt-1">{transaction.reversalReason}</div>
+              <div className="mt-1 text-xs">The funds were returned in a separate blockchain transaction.</div>
+              {transaction.reversalTxHash && <button type="button" onClick={() => openExternalUrl(getExplorerTxUrl(transaction.reversalTxHash))} className="mt-2 font-mono text-xs text-purple-700 hover:underline">View return transaction</button>}
             </div>
           )}
 

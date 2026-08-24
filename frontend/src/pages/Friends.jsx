@@ -17,6 +17,7 @@ import { isValidEvmAddress } from "../utils/security.js";
 import { getUserErrorMessage } from "../utils/userError.js";
 import { blockUser } from "../services/userApi.js";
 import ActionDialog from "../components/ActionDialog.jsx";
+import { confirmInSystem } from "../services/inSystemDialogs.js";
 import CopyableWalletAddress from "../components/CopyableWalletAddress.jsx";
 const MAX_FRIEND_NAME = 80;
 const MAX_FRIEND_USERNAME = 40;
@@ -120,7 +121,7 @@ export default function Friends() {
       return;
     }
 
-    const confirmed = window.confirm("Remove this contact from your list?");
+    const confirmed = await confirmInSystem({ title: "Remove contact?", message: "Remove this contact from your list?", confirmLabel: "Remove contact", danger: true });
     if (!confirmed) return;
 
     try {

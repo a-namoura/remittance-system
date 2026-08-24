@@ -886,7 +886,9 @@ export default function Chat() {
         }
 
         let preview = "";
-        if (latestMessage.messageType === "request") {
+        if (latestMessage.messageType === "system") {
+          preview = String(latestMessage.systemText || "System message").trim();
+        } else if (latestMessage.messageType === "request") {
           const requestAmount = latestMessage?.request?.amount;
           preview =
             requestAmount != null && requestAmount !== ""
@@ -993,6 +995,9 @@ export default function Chat() {
         });
         const decryptedMessages = await Promise.all(
           (history?.messages || []).map(async (message) => {
+            if (message.messageType === "system") {
+              return { ...message, decoded: { kind: "system", text: message.systemText || "System message" } };
+            }
             try {
               const plaintext = await decryptPayloadFromMessage({
                 message,
@@ -2168,6 +2173,14 @@ export default function Chat() {
                       const isSendingMessage =
                         String(message.deliveryStatus || "").trim().toLowerCase() === "sending";
                       const decoded = message.decoded || { kind: "text", text: "" };
+                      if (decoded.kind === "system") {
+                        return (
+                          <div key={entry.id} className="space-y-2">
+                            {showDate && <div className="text-center text-[11px] font-medium text-gray-500">{formatDay(entry.createdAt)}</div>}
+                            <div className="flex justify-center"><div className="max-w-[85%] rounded-full border border-purple-200 bg-purple-50 px-4 py-2 text-center text-xs text-purple-800"><span className="font-semibold">System</span> · {decoded.text}<span className="ml-2 text-purple-500">{formatClock(message.createdAt)}</span></div></div>
+                          </div>
+                        );
+                      }
                       const isFailedOutgoing = decoded.kind === "failed" && isMine;
                       const isFailedOutgoingRequest =
                         decoded.kind === "failed_request" && isMine;
