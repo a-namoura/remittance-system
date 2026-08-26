@@ -590,7 +590,7 @@ export default function Dashboard() {
                         transaction.status
                       )}`}
                     >
-                      {transaction.status}
+                      {transaction.status === "reversed" ? "refunded" : transaction.status}
                     </span>
                   </div>
                 </Link>

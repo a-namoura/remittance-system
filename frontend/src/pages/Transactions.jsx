@@ -183,7 +183,7 @@ export default function Transactions() {
               <option value="pending">Pending</option>
               <option value="failed">Failed</option>
               <option value="cancelled">Cancelled</option>
-              <option value="reversed">Reversed</option>
+              <option value="reversed">Refunded</option>
             </select>
           </div>
 
@@ -348,7 +348,7 @@ export default function Transactions() {
                           transaction.status
                         )}`}
                       >
-                        {transaction.status}
+                        {transaction.status === "reversed" ? "refunded" : transaction.status}
                       </span>
                     </div>
                   </div>

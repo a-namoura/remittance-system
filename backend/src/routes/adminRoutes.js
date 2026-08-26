@@ -363,10 +363,10 @@ adminRouter.patch(
         res.status(400);
         throw new Error("Invalid transaction id.");
       }
-      const reason = String(req.body?.reason || "Reversed by an administrator.").trim();
+      const reason = String(req.body?.reason || "Refunded by an administrator.").trim();
       if (!reason || reason.length > 500) {
         res.status(400);
-        throw new Error("Reversal reason must be between 1 and 500 characters.");
+        throw new Error("Refund reason must be between 1 and 500 characters.");
       }
       const transaction = await Transaction.findOneAndUpdate(
         { _id: id, status: "success", $or: [{ reversalStatus: { $exists: false } }, { reversalStatus: "failed", reversalTxHash: { $exists: false } }] },
@@ -457,7 +457,7 @@ adminRouter.patch(
         await Notification.insertMany(userIds.map((userId) => ({
           userId,
           type: "transaction_reversed",
-          title: "Transaction reversed",
+          title: "Transaction refunded",
           message: `${amount} was returned to the sender on-chain. Reason: ${reason}`,
           transactionId: transaction._id,
         })));

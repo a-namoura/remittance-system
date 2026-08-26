@@ -184,7 +184,7 @@ export default function TransactionDetails() {
                   transaction.status
                 )}`}
               >
-                {transaction.status}
+                {transaction.status === "reversed" ? "refunded" : transaction.status}
               </span>
               {(transaction.direction || transaction.type) && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-gray-100 text-gray-700">
@@ -237,7 +237,7 @@ export default function TransactionDetails() {
 
           {transaction.status === "reversed" && transaction.reversalReason && (
             <div className="rounded-xl border border-orange-300 bg-orange-50 p-4 text-sm text-orange-900">
-              <div className="font-semibold">Transaction reversed</div>
+              <div className="font-semibold">Transaction refunded</div>
               <div className="mt-1">{transaction.reversalReason}</div>
               <div className="mt-1 text-xs">The funds were returned in a separate blockchain transaction.</div>
               {transaction.reversalTxHash && <button type="button" onClick={() => openExternalUrl(getExplorerTxUrl(transaction.reversalTxHash))} className="mt-2 font-mono text-xs text-purple-700 hover:underline">View return transaction</button>}
