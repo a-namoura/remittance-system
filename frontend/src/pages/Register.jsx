@@ -20,6 +20,7 @@ import {
 } from "../styles/formClasses.js";
 import FormSubmitButton from "../components/FormSubmitButton.jsx";
 import useCountdown from "../hooks/useCountdown.js";
+import { DEFAULT_COUNTRY, getCountryOptions } from "../utils/countries.js";
 
 import { getUserErrorMessage } from "../utils/userError.js";
 const STEPS = {
@@ -41,18 +42,6 @@ function delay(ms) {
     globalThis.setTimeout(resolve, ms);
   });
 }
-
-const COUNTRIES_API = import.meta.env.VITE_COUNTRIES_API;
-const FLAG_BASE = import.meta.env.VITE_FLAG_BASE_URL || "";
-
-const DEFAULT_COUNTRY = {
-  name: "Palestine",
-  flag: FLAG_BASE ? `${FLAG_BASE}/ps.png` : "",
-  iso2: "PS",
-  iso3: "PSE",
-  dialCode: "+970",
-  currencies: {},
-};
 
 const DEFAULT_SUBTITLE =
   "Register to send, receive, and track cross-border payments securely.";
@@ -140,8 +129,7 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
 
   const [country, setCountry] = useState(DEFAULT_COUNTRY);
-  const [countries, setCountries] = useState([]);
-  const [countryLoading, setCountryLoading] = useState(false);
+  const [countries] = useState(getCountryOptions);
 
   const [phone, setPhone] = useState("");
   const [phoneCode, setPhoneCode] = useState("");
@@ -171,95 +159,6 @@ export default function Register() {
 
   useEffect(() => {
     clearAuthToken();
-  }, []);
-
-  useEffect(() => {
-    let isCancelled = false;
-    const controller = new AbortController();
-
-    async function loadCountries() {
-      if (!COUNTRIES_API) {
-        return;
-      }
-
-      try {
-        setCountryLoading(true);
-
-        const res = await fetch(COUNTRIES_API, { signal: controller.signal });
-        if (!res.ok) throw new Error(`Countries API error ${res.status}`);
-        const data = await res.json();
-
-        let list = data
-          .map((c) => {
-            const originalName = c?.name;
-            if (!originalName) return null;
-
-            const iso2 = c?.alpha2Code || "";
-            const iso3 = c?.alpha3Code || "";
-
-            let dialCode = "";
-            if (Array.isArray(c?.callingCodes) && c.callingCodes.length > 0) {
-              const raw = String(c.callingCodes[0]).trim();
-              if (raw) dialCode = raw.startsWith("+") ? raw : `+${raw}`;
-            }
-
-            let flag = "";
-            if (FLAG_BASE && iso2) {
-              flag = `${FLAG_BASE}/${iso2.toLowerCase()}.png`;
-            }
-
-            let displayName = originalName;
-            let displayFlag = flag;
-
-            if (originalName.toLowerCase() === "israel") {
-              displayName = "Occupied Palestinian Territories";
-              displayFlag = FLAG_BASE ? `${FLAG_BASE}/ps.png` : flag;
-            }
-
-            if (!displayName) return null;
-
-            return {
-              name: displayName,
-              flag: displayFlag,
-              iso2,
-              iso3,
-              dialCode,
-              currencies: {},
-            };
-          })
-          .filter(Boolean)
-          .filter((c) => c.iso2?.toUpperCase() !== "PS")
-          .sort((a, b) => a.name.localeCompare(b.name));
-
-        const optName = "Occupied Palestinian Territories";
-        const opt = list.find((c) => c.name === optName);
-        const rest = list.filter((c) => c.name !== optName);
-        if (opt) {
-          list = [opt, ...rest];
-        }
-
-        if (!isCancelled) {
-          setCountries(list);
-        }
-      } catch (err) {
-        if (err?.name !== "AbortError") {
-          if (!isCancelled) {
-            setCountries([]);
-          }
-        }
-      } finally {
-        if (!isCancelled) {
-          setCountryLoading(false);
-        }
-      }
-    }
-
-    loadCountries();
-
-    return () => {
-      isCancelled = true;
-      controller.abort();
-    };
   }, []);
 
   function resetEmailVerification() {
@@ -862,13 +761,9 @@ export default function Register() {
                 </select>
 
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                  <img
-                    src={
-                      country?.flag || (FLAG_BASE ? `${FLAG_BASE}/ps.png` : "")
-                    }
-                    alt={country?.name || "Palestine"}
-                    className="h-4 w-6 rounded-sm border object-cover"
-                  />
+                  <span className="text-xl leading-none" role="img" aria-label={`${country?.name || "Palestine"} flag`}>
+                    {country?.flagEmoji || DEFAULT_COUNTRY.flagEmoji}
+                  </span>
                 </div>
 
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">
@@ -876,7 +771,6 @@ export default function Register() {
                 </div>
               </div>
 
-              {countryLoading && <PageLoading>Loading countries</PageLoading>}
             </div>
 
             <div>

@@ -7,13 +7,9 @@ import { getUserErrorMessage } from "../utils/userError.js";
 import { sendPhoneChangeCode, updateMyProfile, verifyPhoneChange } from "../services/userApi.js";
 import CopyableWalletAddress from "../components/CopyableWalletAddress.jsx";
 import { FORM_CODE_INPUT_CLASS } from "../styles/formClasses.js";
+import { DEFAULT_COUNTRY, getCountryOptions } from "../utils/countries.js";
 
-const COUNTRIES_API = import.meta.env.VITE_COUNTRIES_API;
-const FLAG_BASE = import.meta.env.VITE_FLAG_BASE_URL || "";
 const MAX_LOCAL_PHONE_DIGITS = 12;
-const DEFAULT_COUNTRY = {
-  name: "Palestine", flag: FLAG_BASE ? `${FLAG_BASE}/ps.png` : "", iso2: "PS", iso3: "PSE", dialCode: "+970",
-};
 
 function normalizeDigits(value) { return String(value || "").replace(/\D/g, ""); }
 
@@ -44,8 +40,7 @@ export default function Profile() {
   const [phoneCodeSent, setPhoneCodeSent] = useState(false);
   const [phoneBusy, setPhoneBusy] = useState(false);
   const [country, setCountry] = useState(DEFAULT_COUNTRY);
-  const [countries, setCountries] = useState([]);
-  const [countryLoading, setCountryLoading] = useState(false);
+  const [countries] = useState(getCountryOptions);
   const [localPhone, setLocalPhone] = useState("");
 
   useEffect(() => {
@@ -67,39 +62,6 @@ export default function Profile() {
     }
     load();
     return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    if (!COUNTRIES_API) return undefined;
-    let cancelled = false;
-    const controller = new AbortController();
-    async function loadCountries() {
-      try {
-        setCountryLoading(true);
-        const response = await fetch(COUNTRIES_API, { signal: controller.signal });
-        if (!response.ok) throw new Error(`Countries API error ${response.status}`);
-        const data = await response.json();
-        const list = data.map((item) => {
-          const name = item?.name;
-          const iso2 = item?.alpha2Code || "";
-          const iso3 = item?.alpha3Code || "";
-          const rawCode = String(item?.callingCodes?.[0] || "").trim();
-          if (!name || !rawCode) return null;
-          const occupied = name.toLowerCase() === "israel";
-          return {
-            name: occupied ? "Occupied Palestinian Territories" : name,
-            iso2, iso3,
-            dialCode: rawCode.startsWith("+") ? rawCode : `+${rawCode}`,
-            flag: FLAG_BASE && iso2 ? `${FLAG_BASE}/${(occupied ? "ps" : iso2.toLowerCase())}.png` : "",
-          };
-        }).filter(Boolean).filter((item) => item.iso2?.toUpperCase() !== "PS").sort((a, b) => a.name.localeCompare(b.name));
-        if (!cancelled) setCountries(list);
-      } catch (err) {
-        if (!cancelled && err?.name !== "AbortError") setCountries([]);
-      } finally { if (!cancelled) setCountryLoading(false); }
-    }
-    loadCountries();
-    return () => { cancelled = true; controller.abort(); };
   }, []);
 
   const displayName = useMemo(() =>
@@ -184,8 +146,8 @@ export default function Profile() {
                 <div><label className="mb-1 block text-xs font-medium text-gray-600">Country code</label><div className="relative">
                   <select className="w-full appearance-none rounded-xl border border-gray-200 bg-white py-2 pl-11 pr-8 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500" value={country.name} onChange={(e) => { const next = e.target.value === "Palestine" ? DEFAULT_COUNTRY : countries.find((item) => item.name === e.target.value); if (next) { setCountry(next); if (localPhone) updatePhone(localPhone, next); } }}>
                     <option value="Palestine">Palestine</option>{countries.map((item) => <option key={item.iso3 || item.name} value={item.name}>{item.name}</option>)}
-                  </select><div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><img src={country.flag} alt={country.name} className="h-4 w-6 rounded-sm border object-cover" /></div><div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">v</div>
-                </div>{countryLoading ? <PageLoading>Loading countries</PageLoading> : null}</div>
+                  </select><div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><span className="text-xl leading-none" role="img" aria-label={`${country.name} flag`}>{country.flagEmoji}</span></div><div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">v</div>
+                </div></div>
                 <div><label className="mb-1 block text-xs font-medium text-gray-600">Mobile number</label><div className="flex overflow-hidden rounded-xl border border-gray-200 bg-white focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-500"><div className="flex items-center whitespace-nowrap border-r border-gray-200 bg-gray-50 px-3 text-sm text-gray-700">{country.dialCode}</div><input type="tel" autoComplete="tel-national" value={localPhone} maxLength={MAX_LOCAL_PHONE_DIGITS} onChange={(e) => updatePhone(e.target.value)} placeholder="XX XXX XXXX" className="flex-1 border-0 px-3 py-2 text-sm focus:outline-none" /></div></div>
                 <p className="text-xs text-gray-500">Enter the new number. It will be saved only after SMS verification.</p>
                 {form.phoneNumber !== (user.phoneNumber || "") ? <div className="mt-3 flex flex-wrap items-end gap-3">

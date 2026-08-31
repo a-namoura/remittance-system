@@ -27,25 +27,25 @@
   .dark {
     color-scheme: dark;
 
-    --rm-app-bg: 3 7 18;
+    --rm-app-bg: 10 15 31;
 
-    --rm-surface-0: 17 24 39;
-    --rm-surface-1: 30 41 59;
-    --rm-surface-2: 51 65 85;
-    --rm-surface-3: 71 85 105;
-    --rm-surface-4: 100 116 139;
+    --rm-surface-0: 19 27 46;
+    --rm-surface-1: 26 36 59;
+    --rm-surface-2: 38 50 76;
+    --rm-surface-3: 55 69 98;
+    --rm-surface-4: 91 108 142;
 
     --rm-text-strong: 241 245 249;
-    --rm-text-default: 203 213 225;
-    --rm-text-muted: 148 163 184;
-    --rm-text-subtle: 100 116 139;
+    --rm-text-default: 213 221 237;
+    --rm-text-muted: 165 179 207;
+    --rm-text-subtle: 117 135 169;
 
     --rm-border-soft: 51 65 85;
     --rm-border-default: 71 85 105;
     --rm-border-strong: 100 116 139;
 
     --rm-ring-neutral: 71 85 105;
-    --rm-ring-accent: 99 102 241;
+    --rm-ring-accent: 139 123 255;
   }
 
   .dark input::placeholder,
@@ -95,15 +95,15 @@
   }
 
   .dark :where(.bg-gray-800) {
-    background-color: rgb(30 41 59) !important;
+    background-color: rgb(32 43 68) !important;
   }
 
   .dark :where(.bg-gray-900) {
-    background-color: rgb(15 23 42) !important;
+    background-color: rgb(19 27 46) !important;
   }
 
   .dark :where(.bg-gray-950) {
-    background-color: rgb(3 7 18) !important;
+    background-color: rgb(10 15 31) !important;
   }
 
   /* Neutral text */
@@ -297,6 +297,12 @@
     background-color: rgb(88 28 135 / 0.24) !important;
   }
 
+  /* Keep translucent lavender detail rows dark and gently tinted. Without this
+     explicit opacity variant Tailwind's light color washes out the whole row. */
+  .dark :where(.bg-purple-50\/40) {
+    background-color: rgb(76 65 135 / 0.2) !important;
+  }
+
   .dark :where(.bg-purple-100) {
     background-color: rgb(88 28 135 / 0.34) !important;
   }
@@ -306,11 +312,11 @@
   }
 
   .dark :where(.bg-purple-600) {
-    background-color: rgb(147 51 234) !important;
+    background-color: rgb(124 92 238) !important;
   }
 
   .dark :where(.bg-purple-700) {
-    background-color: rgb(126 34 206) !important;
+    background-color: rgb(105 72 214) !important;
   }
 
   .dark :where(.border-purple-100) {
@@ -334,7 +340,7 @@
   }
 
   .dark :where(.text-purple-800, .text-purple-700, .text-purple-600, .text-purple-500) {
-    color: rgb(216 180 254) !important;
+    color: rgb(202 191 255) !important;
   }
 
   .dark :where(.text-purple-100) {
