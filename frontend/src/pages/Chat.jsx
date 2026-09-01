@@ -1067,7 +1067,12 @@ export default function Chat() {
         setTimelineInfo(history?.privacyNotice || "");
       } catch (err) {
         if (loadSeq !== historyLoadSeqRef.current) return;
-        setTimelineError(getUserErrorMessage(err, "Failed to load chat timeline."));
+        // A polling failure must not interrupt the user or replace a timeline
+        // that already loaded successfully. Interactive/initial loads still
+        // surface their error so the user knows the requested action failed.
+        if (!silent) {
+          setTimelineError(getUserErrorMessage(err, "Failed to load chat timeline."));
+        }
       } finally {
         if (!silent && loadSeq === historyLoadSeqRef.current) {
           setTimelineLoading(false);

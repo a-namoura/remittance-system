@@ -395,6 +395,21 @@
     color: rgb(253 230 138) !important;
   }
 
+  .dark .wallet-approval-status {
+    border-color: rgb(245 158 11 / 0.75) !important;
+    background-color: rgb(69 26 3 / 0.82) !important;
+    color: rgb(255 251 235) !important;
+  }
+
+  .dark .wallet-approval-status .wallet-approval-description {
+    color: rgb(254 240 138) !important;
+  }
+
+  .dark .wallet-approval-status .wallet-approval-spinner {
+    border-color: rgb(253 230 138) !important;
+    border-right-color: transparent !important;
+  }
+
   .dark :where(.bg-emerald-50) {
     background-color: rgb(6 78 59 / 0.3) !important;
   }

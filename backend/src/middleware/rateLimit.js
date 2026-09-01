@@ -1,14 +1,19 @@
 import { incrementMetric } from "../utils/metrics.js";
+import { createHash } from "node:crypto";
 
 const buckets = new Map();
 
 const minute = 60_000;
 
 export const RATE_LIMIT_POLICIES = Object.freeze({
-  login: Object.freeze({ windowMs: 15 * minute, max: 5 }),
+  // This endpoint both validates the login and delivers/resends a one-time
+  // code, so a five-request bucket locks legitimate users out too quickly.
+  login: Object.freeze({ windowMs: 15 * minute, max: 20 }),
+  loginOptions: Object.freeze({ windowMs: 15 * minute, max: 30 }),
   passwordReset: Object.freeze({ windowMs: 15 * minute, max: 5 }),
   verification: Object.freeze({ windowMs: 10 * minute, max: 5 }),
   transaction: Object.freeze({ windowMs: 5 * minute, max: 30 }),
+  read: Object.freeze({ windowMs: 15 * minute, max: 1_200 }),
   general: Object.freeze({ windowMs: 15 * minute, max: 300 }),
 });
 
@@ -20,9 +25,11 @@ function requestPath(req) {
 
 export function getRateLimitPolicy(req) {
   const path = requestPath(req);
+  const method = String(req.method || "GET").toUpperCase();
 
   if (path.startsWith("/auth/forgot-password/")) return "passwordReset";
-  if (path === "/auth/login" || path === "/auth/login/options") return "login";
+  if (path === "/auth/login/options") return "loginOptions";
+  if (path === "/auth/login") return "login";
   if (
     path === "/auth/verify-code" ||
     path === "/auth/resend-code" ||
@@ -33,14 +40,30 @@ export function getRateLimitPolicy(req) {
   ) {
     return "verification";
   }
-  if (path === "/transactions" || path.startsWith("/transactions/")) {
+  if (
+    method !== "GET" &&
+    method !== "HEAD" &&
+    (path === "/transactions" || path.startsWith("/transactions/"))
+  ) {
     return "transaction";
   }
+  if (method === "GET" || method === "HEAD") return "read";
   return "general";
 }
 
-function clientKey(req) {
-  return String(req.ip || req.socket?.remoteAddress || "unknown");
+function clientKey(req, policyName) {
+  const ip = String(req.ip || req.socket?.remoteAddress || "unknown");
+  const authorization = String(req.headers?.authorization || "").trim();
+
+  // Authenticated application traffic must not share a single allowance just
+  // because several users are behind the same proxy or NAT. Login and other
+  // pre-authentication limits deliberately remain IP-based.
+  if ((policyName === "read" || policyName === "general" || policyName === "transaction") && authorization) {
+    const credentialHash = createHash("sha256").update(authorization).digest("hex");
+    return `${ip}:${credentialHash}`;
+  }
+
+  return ip;
 }
 
 export function apiRateLimit({ policies = RATE_LIMIT_POLICIES, now = Date.now } = {}) {
@@ -52,7 +75,7 @@ export function apiRateLimit({ policies = RATE_LIMIT_POLICIES, now = Date.now } 
     const policyName = getRateLimitPolicy(req);
     const policy = policies[policyName];
     const timestamp = now();
-    const key = `${policyName}:${clientKey(req)}`;
+    const key = `${policyName}:${clientKey(req, policyName)}`;
     const current = buckets.get(key);
     const bucket = !current || current.resetAt <= timestamp
       ? { count: 0, resetAt: timestamp + policy.windowMs }

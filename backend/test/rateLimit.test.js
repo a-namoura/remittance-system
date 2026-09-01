@@ -18,11 +18,11 @@ function responseStub() {
   };
 }
 
-function invoke(middleware, { path, ip = "127.0.0.1" }) {
+function invoke(middleware, { path, ip = "127.0.0.1", method = "GET", authorization }) {
   const res = responseStub();
   let called = false;
   let error;
-  middleware({ originalUrl: path, ip }, res, (nextError) => {
+  middleware({ originalUrl: path, ip, method, headers: { authorization } }, res, (nextError) => {
     called = true;
     error = nextError;
   });
@@ -36,26 +36,28 @@ test.beforeEach(() => {
 
 test("rate limit policy selects sensitive endpoint groups and general fallback", () => {
   assert.equal(getRateLimitPolicy({ originalUrl: "/api/auth/login" }), "login");
+  assert.equal(getRateLimitPolicy({ originalUrl: "/api/auth/login/options" }), "loginOptions");
   assert.equal(getRateLimitPolicy({ originalUrl: "/api/auth/forgot-password/reset" }), "passwordReset");
   assert.equal(getRateLimitPolicy({ originalUrl: "/api/auth/register/verify-code" }), "verification");
   assert.equal(getRateLimitPolicy({ originalUrl: "/api/transactions/send-code" }), "verification");
-  assert.equal(getRateLimitPolicy({ originalUrl: "/api/transactions/my?limit=10" }), "transaction");
-  assert.equal(getRateLimitPolicy({ originalUrl: "/api/users/search" }), "general");
+  assert.equal(getRateLimitPolicy({ originalUrl: "/api/transactions/my?limit=10", method: "GET" }), "read");
+  assert.equal(getRateLimitPolicy({ originalUrl: "/api/transactions/send", method: "POST" }), "transaction");
+  assert.equal(getRateLimitPolicy({ originalUrl: "/api/users/search", method: "GET" }), "read");
 });
 
 test("login requests are throttled and return retry headers", () => {
   const middleware = apiRateLimit();
-  for (let request = 1; request <= 5; request += 1) {
+  for (let request = 1; request <= 20; request += 1) {
     const result = invoke(middleware, { path: "/api/auth/login" });
     assert.equal(result.error, undefined);
-    assert.equal(result.res.headers.get("ratelimit-remaining"), String(5 - request));
+    assert.equal(result.res.headers.get("ratelimit-remaining"), String(20 - request));
   }
 
-  const throttled = invoke(middleware, { path: "/api/auth/login/options" });
+  const throttled = invoke(middleware, { path: "/api/auth/login" });
   assert.equal(throttled.called, true);
   assert.equal(throttled.error?.statusCode, 429);
   assert.match(throttled.error?.message, /Too many requests/);
-  assert.equal(throttled.res.headers.get("ratelimit-limit"), "5");
+  assert.equal(throttled.res.headers.get("ratelimit-limit"), "20");
   assert.ok(Number(throttled.res.headers.get("retry-after")) > 0);
   const hit = getMetricsSnapshot().counters.find((metric) => metric.name === "rate_limit_hits_total");
   assert.deepEqual(hit, { name: "rate_limit_hits_total", labels: { policy: "login" }, value: 1 });
@@ -64,9 +66,11 @@ test("login requests are throttled and return retry headers", () => {
 test("sensitive categories use independent shared counters", () => {
   const policies = {
     login: { windowMs: 1_000, max: 1 },
+    loginOptions: { windowMs: 1_000, max: 1 },
     passwordReset: { windowMs: 1_000, max: 1 },
     verification: { windowMs: 1_000, max: 1 },
     transaction: { windowMs: 1_000, max: 1 },
+    read: { windowMs: 1_000, max: 2 },
     general: { windowMs: 1_000, max: 2 },
   };
   const middleware = apiRateLimit({ policies, now: () => 10_000 });
@@ -74,7 +78,7 @@ test("sensitive categories use independent shared counters", () => {
   assert.equal(invoke(middleware, { path: "/api/auth/forgot-password/start" }).error, undefined);
   assert.equal(invoke(middleware, { path: "/api/auth/forgot-password/verify" }).error?.statusCode, 429);
   assert.equal(invoke(middleware, { path: "/api/auth/verify-code" }).error, undefined);
-  assert.equal(invoke(middleware, { path: "/api/transactions/send" }).error, undefined);
+  assert.equal(invoke(middleware, { path: "/api/transactions/send", method: "POST" }).error, undefined);
   assert.equal(invoke(middleware, { path: "/api/health" }).error, undefined);
   assert.equal(invoke(middleware, { path: "/api/me" }).error, undefined);
   assert.equal(invoke(middleware, { path: "/api/users/search" }).error, undefined);
@@ -86,9 +90,11 @@ test("health checks bypass rate limits and application windows reset", () => {
   const policy = { windowMs: 100, max: 1 };
   const policies = {
     login: policy,
+    loginOptions: policy,
     passwordReset: policy,
     verification: policy,
     transaction: policy,
+    read: policy,
     general: policy,
   };
   const middleware = apiRateLimit({ policies, now: () => timestamp });
@@ -99,4 +105,41 @@ test("health checks bypass rate limits and application windows reset", () => {
   assert.equal(invoke(middleware, { path: "/api/me" }).error?.statusCode, 429);
   timestamp += 100;
   assert.equal(invoke(middleware, { path: "/api/me" }).error, undefined);
+});
+
+test("authenticated users behind one IP receive independent application buckets", () => {
+  const policy = { windowMs: 1_000, max: 1 };
+  const policies = {
+    login: policy,
+    loginOptions: policy,
+    passwordReset: policy,
+    verification: policy,
+    transaction: policy,
+    read: policy,
+    general: policy,
+  };
+  const middleware = apiRateLimit({ policies, now: () => 10_000 });
+
+  assert.equal(invoke(middleware, { path: "/api/me", authorization: "Bearer user-a" }).error, undefined);
+  assert.equal(invoke(middleware, { path: "/api/me", authorization: "Bearer user-b" }).error, undefined);
+  assert.equal(invoke(middleware, { path: "/api/me", authorization: "Bearer user-a" }).error?.statusCode, 429);
+});
+
+test("login option discovery does not consume password attempt allowance", () => {
+  const policy = { windowMs: 1_000, max: 1 };
+  const policies = {
+    login: policy,
+    loginOptions: { windowMs: 1_000, max: 2 },
+    passwordReset: policy,
+    verification: policy,
+    transaction: policy,
+    read: policy,
+    general: policy,
+  };
+  const middleware = apiRateLimit({ policies, now: () => 10_000 });
+
+  assert.equal(invoke(middleware, { path: "/api/auth/login/options", method: "POST" }).error, undefined);
+  assert.equal(invoke(middleware, { path: "/api/auth/login/options", method: "POST" }).error, undefined);
+  assert.equal(invoke(middleware, { path: "/api/auth/login", method: "POST" }).error, undefined);
+  assert.equal(invoke(middleware, { path: "/api/auth/login", method: "POST" }).error?.statusCode, 429);
 });
