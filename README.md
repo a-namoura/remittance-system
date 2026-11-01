@@ -1,48 +1,50 @@
 # Remittance System
 
-A full-stack remittance application with:
+Full-stack remittance application combining a React interface, an Express API, MongoDB persistence, and Solidity smart contracts. The codebase covers wallet-linked transfers, transaction tracking, and administration. Blockchain configuration targets **BNB Smart Chain Testnet**; this repository is not presented as a live financial service.
 
-- React frontend (`frontend/`)
-- Express + MongoDB backend (`backend/`)
-- Hardhat smart contracts (`contracts/`)
-- Shared blockchain artifacts (`blockchain/`)
+**Stack:** React 19 · Vite · Tailwind CSS · Node.js · Express · MongoDB / Mongoose · Solidity · Hardhat · ethers.js
 
-The system supports account onboarding, wallet linking, transfer links, direct sends, transaction tracking, friends/chat flows, and admin monitoring.
+## Application screenshots
 
-## Tech Stack
+These screenshots are stored in the repository (they are not mockups or a hosted demo).
 
-- Frontend: React 19, Vite, Tailwind CSS
-- Backend: Node.js, Express, Mongoose
-- Blockchain: Solidity + Hardhat 3 + ethers
-- Deployment target: BNB Smart Chain Testnet (chain ID `97`)
-- Wallet: MetaMask-compatible EVM wallet
+| Interface capture | Interface capture |
+| --- | --- |
+| ![Remittance System screenshot 1](screenshots/Screenshot%202026-01-15%20220440.png) | ![Remittance System screenshot 2](screenshots/Screenshot%202026-01-15%20231638.png) |
+| ![Remittance System screenshot 3](screenshots/Screenshot%202026-01-16%20135404.png) | ![Remittance System screenshot 4](screenshots/Screenshot%202026-01-16%20135514.png) |
 
-## Repository Layout
+## What the code implements
 
-```text
-remittance-system/
-|- backend/       # API + MongoDB integration + blockchain bridge
-|- frontend/      # Web app
-|- contracts/     # Solidity contracts + Hardhat scripts/tests
-|- blockchain/    # Shared ABI + deployment metadata used by backend
-|- docker-compose.yml
-`- README.md
+- **Account and wallet flows:** registration, login, wallet verification, profile and settings pages.
+- **Money movement:** send/request interfaces, transfer links, escrow-based claims, and transaction history.
+- **Transaction consistency:** asynchronous reconciliation between API records and on-chain transaction status.
+- **Contacts and messaging:** friends, chat flows, and notifications.
+- **Administration:** protected admin routes, audit logs, and monitoring pages.
+
+Implementation references: [frontend routes](frontend/src/App.jsx) · [API routes](backend/src/routes/index.js) · [smart contract](contracts/contracts/Remittance.sol) · [reconciliation](backend/src/blockchain/transactionReconciliation.js) · [backend tests](backend/test/)
+
+## Architecture
+
+```mermaid
+flowchart LR
+  UI[React and Vite client] -->|HTTP API| API[Express backend]
+  API <--> DB[(MongoDB)]
+  API --> Bridge[ethers.js integration]
+  Bridge --> Contract[Remittance Solidity contract]
+  Contract --> Network[BNB Smart Chain Testnet]
+  API --> Jobs[Transaction reconciliation]
+  Jobs --> Bridge
 ```
 
-## Prerequisites
+The frontend handles user-facing flows. Express exposes authenticated API routes and persists records in MongoDB. The blockchain integration uses contract artifacts in [`blockchain/`](blockchain/); reconciliation code tracks transactions after submission. The diagram shows the intended component relationships, not a claim of production deployment.
 
-- Node.js 22 (the supported runtime is Node 22.x)
-- npm 10+
-- MongoDB instance (local or hosted)
-- MetaMask (or compatible wallet) for wallet-linked flows
+## Run locally
 
-## Quick Start (Local Development)
+**Requirements:** Node.js 22.x, npm 10+, a reachable MongoDB instance, and an EVM-compatible wallet for wallet-related workflows.
 
-1. Configure backend environment:
-   - Create `backend/.env`
-   - You can start from root `.env.example`
-   - Add EVM-compatible blockchain and email settings shown below if you want full transfer and verification functionality
-2. Install backend dependencies and run backend:
+1. Prepare backend settings. Copy the [root environment example](.env.example) to `backend/.env` and set at least a valid `MONGODB_URI` and a strong `JWT_SECRET`. Optional wallet and on-chain operations require the applicable encryption keys, RPC URL, and contract configuration. Never commit secrets.
+
+2. Run the backend:
 
    ```bash
    cd backend
@@ -50,9 +52,7 @@ remittance-system/
    npm run dev
    ```
 
-3. Configure frontend environment:
-   - Create `frontend/.env` from `frontend/.env.example`
-4. Install frontend dependencies and run frontend:
+3. In another terminal, start the frontend. You can create `frontend/.env` with `VITE_API_URL=http://localhost:5000` if you need to specify the API origin:
 
    ```bash
    cd frontend
@@ -60,102 +60,53 @@ remittance-system/
    npm run dev
    ```
 
-5. Open:
-   - Frontend: `http://localhost:5173`
-   - Backend health: `http://localhost:5000/api/health`
+4. Open **http://localhost:5173**. The backend health endpoint is **http://localhost:5000/api/health**.
 
-## Backend Environment Variables
+### Docker
 
-Minimum required to boot API and auth:
-
-```env
-PORT=5000
-MONGODB_URI=mongodb://127.0.0.1:27017/remittance
-JWT_SECRET=replace-with-a-strong-secret
-NODE_ENV=development
-TRANSACTION_SYNC_TIMEOUT_MS=2000
-API_RESPONSE_SLA_MS=2000
-TRANSACTION_RECONCILIATION_ENABLED=true
-TRANSACTION_RECONCILIATION_INTERVAL_MS=15000
-TRANSACTION_RECONCILIATION_BATCH_SIZE=100
-TRANSACTION_RECONCILIATION_RECHECK_MS=3600000
-TRANSACTION_RECONCILIATION_MISS_THRESHOLD=3
-TRANSACTION_PENDING_RECEIPT_TIMEOUT_MS=1800000
-TRANSACTION_EVENT_SYNC_ENABLED=true
-TRANSACTION_EVENT_CONFIRMATIONS=3
-TRANSACTION_EVENT_BLOCK_BATCH_SIZE=1000
-TRANSACTION_EVENT_INITIAL_LOOKBACK_BLOCKS=5000
-TRANSACTION_EVENT_REORG_LOOKBACK_BLOCKS=12
-```
-
-Required for on-chain transfer flows (`/api/transactions/send`, claim, balance):
-
-```env
-BSC_TESTNET_RPC_URL=https://your-bsc-testnet-rpc
-BSC_TESTNET_PRIVATE_KEY=your-private-key
-REM_CONTRACT_ADDRESS=0xYourRemittanceContractAddress
-# Optional but recommended for complete historical event synchronization
-REM_CONTRACT_DEPLOYMENT_BLOCK=12345678
-```
-
-Transfer endpoints return after the EVM-compatible blockchain transaction is submitted and saved
-as pending. Confirmation is reconciled asynchronously, so block confirmation time
-is not part of the user request response time. The backend exposes the configured
-2-second response target in `X-Response-Sla-Ms` and logs responses that exceed it.
-
-### Notification SLA
-
-For registration, login, wallet linking, password reset, and transaction outcomes,
-the UI notification SLA starts when the browser receives the mocked or real backend
-response (or, for a transaction, when a poll response first reports a terminal
-status). The success or error notification, including the backend failure reason,
-must be visible within 2 seconds. Transaction status is polled every 1 second.
-
-Optional currency/email settings used by specific features:
-
-```env
-REM_NATIVE_CURRENCY=BNB
-REM_RATE_USD_PER_BNB=600
-REM_RATE_USD_PER_BTC=90000
-```
-
-## Run With Docker Compose
-
-`docker-compose.yml` starts frontend + backend containers.
-
-1. Ensure `backend/.env` exists and points to a reachable MongoDB instance.
-2. Start stack:
-
-   ```bash
-   docker compose up --build
-   ```
-
-3. Access app at `http://localhost:5173`.
-
-## Smart Contract Deployment
-
-From `contracts/`:
+With `backend/.env` configured and MongoDB reachable **from the container**, run:
 
 ```bash
+docker compose up --build
+```
+
+The Compose configuration exposes the frontend on port `5173` and the backend on `5000`. A host-only database URL such as `127.0.0.1` may need adjustment for container networking.
+
+### Smart contracts (testnet)
+
+```bash
+cd contracts
 npm ci
 npx hardhat compile
 npx hardhat test
-npx hardhat run scripts/deploy-remittance.ts --network bscTestnet
 ```
 
-After deployment, update shared artifacts in `blockchain/`:
+For testnet deployment, configure `BSC_TESTNET_RPC_URL` and `BSC_TESTNET_PRIVATE_KEY` according to the [contracts README](contracts/README.md), then use the deployment script documented there. Review the contract release checklist before publishing artifacts. Do not use real funds for experimentation.
 
-- `blockchain/Remittance.abi.json`
-- `blockchain/deployment.json`
+## Tests and project references
 
-The backend reads the ABI from `blockchain/Remittance.abi.json`.
+| Area | Command or reference |
+| --- | --- |
+| Backend tests | `cd backend && npm test` |
+| Frontend tests | `cd frontend && npm test` |
+| End-to-end tests | `cd frontend && npm run test:e2e` |
+| Smart contract tests | `cd contracts && npx hardhat test` |
+| Frontend documentation | [frontend/README.md](frontend/README.md) |
+| Smart contract documentation | [contracts/README.md](contracts/README.md) |
+| Threat model | [docs/threat-model.md](docs/threat-model.md) |
+| Security review | [docs/security-review.md](docs/security-review.md) |
+| Test matrix | [docs/security-test-matrix.md](docs/security-test-matrix.md) |
+| Requirements evidence | [docs/srs-system-requirements-evidence.md](docs/srs-system-requirements-evidence.md) |
 
-## Related Docs
+Tests and security documentation describe the repository's implementation and verification work; they are not proof that the system has been audited or deployed to production.
 
-- `frontend/README.md`
-- `contracts/README.md`
-- `docs/threat-model.md`
-- `docs/security-test-matrix.md`
-- `docs/vulnerability-register.md`
-- `docs/production-security.md`
-- `docs/security-review.md`
+## Repository layout
+
+```text
+frontend/      React UI, tests, and e2e tests
+backend/       Express API, MongoDB models, and background reconciliation
+contracts/     Solidity source, Hardhat tests, and deployment scripts
+blockchain/    Shared contract ABI and deployment metadata
+docs/          Requirements, security, and operational documents
+screenshots/   Application screenshots
+```
