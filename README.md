@@ -4,15 +4,6 @@ Full-stack remittance application combining a React interface, an Express API, M
 
 **Stack:** React 19 · Vite · Tailwind CSS · Node.js · Express · MongoDB / Mongoose · Solidity · Hardhat · ethers.js
 
-## Application screenshots
-
-These screenshots are stored in the repository (they are not mockups or a hosted demo).
-
-| Interface capture | Interface capture |
-| --- | --- |
-| ![Remittance System screenshot 1](screenshots/Screenshot%202026-01-15%20220440.png) | ![Remittance System screenshot 2](screenshots/Screenshot%202026-01-15%20231638.png) |
-| ![Remittance System screenshot 3](screenshots/Screenshot%202026-01-16%20135404.png) | ![Remittance System screenshot 4](screenshots/Screenshot%202026-01-16%20135514.png) |
-
 ## What the code implements
 
 - **Account and wallet flows:** registration, login, wallet verification, profile and settings pages.
