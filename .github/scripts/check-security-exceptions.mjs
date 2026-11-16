@@ -14,8 +14,11 @@ for (const file of readdirSync(exceptionsDirectory).filter((entry) => entry.ends
   const fields = Object.fromEntries(
     [...content.matchAll(/^([A-Za-z][A-Za-z ]+):\s*(.+)$/gm)].map(([, key, value]) => [key, value.trim()]),
   );
-  for (const field of ["Finding", "Severity", "Approved by", "Approval date", "Expires", "Tracking issue", "Mitigation"]) {
+  for (const field of ["Finding", "Projects", "Severity", "Approved by", "Approval date", "Expires", "Tracking issue", "Mitigation"]) {
     if (!fields[field]) errors.push(`${file}: missing ${field}.`);
+  }
+  if (fields.Projects && fields.Projects.split(",").some((project) => !["backend", "frontend", "contracts"].includes(project.trim()))) {
+    errors.push(`${file}: Projects must list backend, frontend, or contracts, separated by commas.`);
   }
   if (fields.Severity && !["high", "critical"].includes(fields.Severity.toLowerCase())) {
     errors.push(`${file}: Severity must be high or critical.`);

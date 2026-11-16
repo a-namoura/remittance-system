@@ -4,6 +4,7 @@ An exception is allowed only when a high or critical dependency finding cannot b
 
 ```text
 Finding: GHSA-... or scan identifier
+Projects: contracts
 Severity: high
 Approved by: GitHub handle of a release-security environment reviewer
 Approval date: YYYY-MM-DD
@@ -11,5 +12,7 @@ Expires: YYYY-MM-DD
 Tracking issue: https://github.com/OWNER/REPOSITORY/issues/123
 Mitigation: Compensating control and remediation plan
 ```
+
+Projects must list the affected project directories (`backend`, `frontend`, or `contracts`), separated by commas. An exception only covers its listed projects, including parent packages that inherit the same finding.
 
 The release approver must verify the evidence and expiration before approving the protected `release-security` environment. Exceptions expire on the stated date, must be removed when fixed, and must never cover a critical finding without a documented compensating control and release-owner approval.
