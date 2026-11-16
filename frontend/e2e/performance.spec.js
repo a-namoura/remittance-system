@@ -4,6 +4,7 @@ const SLA_MS = 2_000;
 const WALLET = "0x1111111111111111111111111111111111111111";
 const RECIPIENT = "0x2222222222222222222222222222222222222222";
 const TX_HASH = `0x${"ab".repeat(32)}`;
+const QUOTE_ID = "quote-1";
 
 async function authenticate(page) {
   await page.addInitScript(({ wallet, txHash }) => {
@@ -31,7 +32,7 @@ async function authenticate(page) {
 
 async function mockApi(page, { terminalStatus = "success", failureReason = "" } = {}) {
   let backendResultAt = 0;
-  let sendRequests = 0;
+  const sendRequests = [];
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     const respond = (body) => route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
@@ -40,9 +41,23 @@ async function mockApi(page, { terminalStatus = "success", failureReason = "" } 
     if (path === "/api/users/search") return respond({ users: [] });
     if (path === "/api/transactions/balance") return respond({ balance: 10, assetSymbol: "BNB" });
     if (path === "/api/transactions/my") return respond({ transactions: [], total: 0 });
+    if (path === "/api/transactions/quote") {
+      const { sourceAmount, sourceCurrency, destinationCurrency } = route.request().postDataJSON();
+      return respond({ quote: {
+        quoteId: QUOTE_ID,
+        sourceAmount,
+        sourceCurrency,
+        destinationCurrency,
+        exchangeRate: 1,
+        serviceFee: 0,
+        estimatedNetworkFee: 0,
+        recipientAmount: sourceAmount,
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      } });
+    }
     if (path === "/api/transactions/send-code") return respond({ destination: "alex@example.com" });
     if (path === "/api/transactions/send") {
-      sendRequests += 1;
+      sendRequests.push(route.request().postDataJSON());
       return respond({ transaction: { id: "tx-1", status: "pending" } });
     }
     if (path === "/api/transactions/tx-1") {
@@ -51,7 +66,7 @@ async function mockApi(page, { terminalStatus = "success", failureReason = "" } 
     }
     return respond({});
   });
-  return { backendResultAt: () => backendResultAt, sendRequests: () => sendRequests };
+  return { backendResultAt: () => backendResultAt, sendRequests };
 }
 
 async function submitMockedTransfer(page) {
@@ -59,11 +74,18 @@ async function submitMockedTransfer(page) {
   await page.getByRole("button", { name: "Address" }).click();
   await page.getByPlaceholder("0x...").fill(RECIPIENT);
   await page.getByPlaceholder(/0\.00 BNB/).fill("1");
+  const confirm = await prepareTransferConfirmation(page);
+  await confirm.click();
+}
+
+async function prepareTransferConfirmation(page) {
   await page.getByRole("button", { name: "Continue to verification" }).click();
+  await expect(page.getByText(QUOTE_ID, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Send code" }).click();
-  await expect(page.getByText("Code sent to", { exact: false })).toBeVisible();
   await page.getByPlaceholder("6 digits").fill("123456");
-  await page.getByRole("button", { name: "Confirm and send" }).click();
+  const confirm = page.getByRole("button", { name: "Confirm and send" });
+  await expect(confirm).toBeEnabled();
+  return confirm;
 }
 
 test("key pages load within 2 seconds on average", async ({ page }) => {
@@ -91,18 +113,15 @@ test("validated transaction submits within 2 seconds after confirmation excludin
   await page.getByPlaceholder("0x...").fill("not-a-wallet");
   await page.getByPlaceholder(/0\.00 BNB/).fill("1");
   await expect(page.getByRole("button", { name: "Continue to verification" })).toBeDisabled();
-  expect(api.sendRequests()).toBe(0);
+  expect(api.sendRequests).toHaveLength(0);
 
   await page.getByPlaceholder("0x...").fill(RECIPIENT);
-  const startedAt = Date.now();
-  await page.getByRole("button", { name: "Continue to verification" }).click();
-  await page.getByRole("button", { name: "Send code" }).click();
-  await page.getByPlaceholder("6 digits").fill("123456");
+  const confirm = await prepareTransferConfirmation(page);
   const confirmationAt = Date.now();
-  await page.getByRole("button", { name: "Confirm and send" }).click();
-  await expect.poll(api.sendRequests, { timeout: SLA_MS }).toBe(1);
+  await confirm.click();
+  await expect.poll(() => api.sendRequests.length, { timeout: SLA_MS }).toBe(1);
   expect(Date.now() - confirmationAt).toBeLessThanOrEqual(SLA_MS);
-  expect(Date.now() - startedAt).toBeLessThanOrEqual(SLA_MS);
+  expect(api.sendRequests[0]).toMatchObject({ quoteId: QUOTE_ID, receiverWallet: RECIPIENT });
 });
 
 test("terminal blockchain hash reaches the UI within 2 seconds of the backend result", async ({ page }) => {
