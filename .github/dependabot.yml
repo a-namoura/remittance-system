@@ -17,6 +17,9 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       non-major-updates:
         update-types: [minor, patch]
         group-by: dependency-name
@@ -34,6 +37,10 @@ updates:
       prefix: "chore(actions)"
   - package-ecosystem: docker
     directory: /backend
+    # Node major upgrades must update .nvmrc, engines and both images together.
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]
     schedule:
       interval: weekly
       day: monday
@@ -46,6 +53,9 @@ updates:
       prefix: "chore(docker)"
   - package-ecosystem: docker
     directory: /frontend
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]
     schedule:
       interval: weekly
       day: monday

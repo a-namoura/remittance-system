@@ -1,26 +1,38 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { unapprovedFindings, validateAuditReport } from "./npm-audit-report.mjs";
 
 const root = process.cwd();
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const projects = process.argv.slice(2);
+const includeDev = process.argv.includes("--include-dev");
+const projects = process.argv.slice(2).filter((argument) => argument !== "--include-dev");
 if (!projects.length) throw new Error("Pass at least one project directory.");
 
+// Standalone invocation must enforce expiration, just like the release workflow.
+execFileSync(process.execPath, [resolve(root, ".github/scripts/check-security-exceptions.mjs")], { stdio: "inherit" });
+
 const exceptionsDirectory = resolve(root, ".github/security-exceptions");
-const approvedFindings = new Set(
+const approvedExceptions = (
   existsSync(exceptionsDirectory)
     ? readdirSync(exceptionsDirectory)
         .filter((file) => file.endsWith(".md"))
-        .flatMap((file) => [...readFileSync(resolve(exceptionsDirectory, file), "utf8").matchAll(/^Finding:\s*(GHSA-[A-Za-z0-9-]+)/gm)].map((match) => match[1]))
-    : [],
+        .filter((file) => file !== "README.md")
+        .map((file) => {
+          const content = readFileSync(resolve(exceptionsDirectory, file), "utf8");
+          return {
+            finding: content.match(/^Finding:\s*(GHSA-[A-Za-z0-9-]+)/m)?.[1],
+            projects: (content.match(/^Projects:\s*(.+)$/m)?.[1] ?? "").split(",").map((name) => name.trim()),
+          };
+        })
+    : []
 );
 const failures = [];
 
 for (const project of projects) {
   let output;
   try {
-    output = execFileSync(npmCommand, ["audit", "--json", "--omit=dev"], {
+    output = execFileSync(npmCommand, ["audit", "--json", includeDev ? "--include=dev" : "--omit=dev"], {
       cwd: resolve(root, project),
       encoding: "utf8",
       shell: process.platform === "win32",
@@ -30,20 +42,13 @@ for (const project of projects) {
     output = error.stdout?.toString() ?? "";
     if (!output) throw error;
   }
-  const audit = JSON.parse(output);
-  for (const [name, vulnerability] of Object.entries(audit.vulnerabilities ?? {})) {
-    if (!["high", "critical"].includes(vulnerability.severity)) continue;
-    const findings = (vulnerability.via ?? [])
-      .filter((entry) => typeof entry === "object")
-      .flatMap((entry) => [...(entry.url ?? "").matchAll(/GHSA-[A-Za-z0-9-]+/g)].map((match) => match[0]));
-    if (!findings.length || !findings.every((finding) => approvedFindings.has(finding))) {
-      failures.push(`${project}: ${name} (${vulnerability.severity}; ${findings.join(", ") || "no GHSA identifier"})`);
-    }
-  }
+  const audit = validateAuditReport(JSON.parse(output));
+  const approvedFindings = new Set(approvedExceptions.filter((exception) => exception.projects.includes(project)).map((exception) => exception.finding));
+  failures.push(...unapprovedFindings(audit, approvedFindings).map((finding) => `${project}: ${finding}`));
 }
 
 if (failures.length) {
-  console.error(`Unapproved high-risk production dependency findings:\n- ${failures.join("\n- ")}`);
+  console.error(`Unapproved high-risk ${includeDev ? "supply-chain" : "production"} dependency findings:\n- ${failures.join("\n- ")}`);
   process.exit(1);
 }
-console.log("No unapproved high-risk production dependency findings.");
+console.log(`No unapproved high-risk ${includeDev ? "supply-chain" : "production"} dependency findings.`);

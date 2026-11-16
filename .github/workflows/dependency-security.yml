@@ -3,26 +3,20 @@ name: Dependency security
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "**/package.json"
-      - "**/package-lock.json"
-      - ".github/dependabot.yml"
-      - ".github/scripts/generate-dependency-inventory.mjs"
-      - ".github/workflows/dependency-security.yml"
   push:
     branches: [main]
-    paths:
-      - "**/package.json"
-      - "**/package-lock.json"
-      - ".github/scripts/generate-dependency-inventory.mjs"
   schedule:
-    - cron: "23 4 * * 1"
+    - cron: "23 4 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
   pull-requests: read
   security-events: write
+
+concurrency:
+  group: dependency-security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   dependency-inventory:
@@ -53,6 +47,7 @@ jobs:
   npm-audit:
     name: npm audit (${{ matrix.project }})
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -65,7 +60,8 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ matrix.project }}/package-lock.json
       - run: npm ci --ignore-scripts --prefix ${{ matrix.project }}
-      - run: npm audit --audit-level=high --omit=dev --prefix ${{ matrix.project }}
+      # Build, test, and deployment tools are part of the supply chain too.
+      - run: node .github/scripts/check-npm-audit-gate.mjs --include-dev ${{ matrix.project }}
 
   codeql:
     name: CodeQL (JavaScript/TypeScript)
